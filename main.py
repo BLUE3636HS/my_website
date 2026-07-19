@@ -39,6 +39,18 @@ CREATE TABLE IF NOT EXISTS user (
 """)
 userdb.commit()
 
+
+admindb = sqlite3.connect("database/admin_user.db", check_same_thread=False)
+admincursor = admindb.cursor()
+
+admincursor.execute("""
+CREATE TABLE IF NOT EXISTS admin_user (
+    id TEXT NOT NULL,
+    pwd TEXT NOT NULL
+)
+""")
+admindb.commit()
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="templates")
@@ -92,9 +104,24 @@ def pdf(id: int):
         filename = filename
     )
 
+@app.get("/login")
+def Login(request: Request):
+    return templates.TemplateResponse(
+        request = request,
+        name = "login.html"
+    )
+
+@app.get("/registration")
+def Registration(request: Request):
+    return templates.TemplateResponse(
+        request = request,
+        name = "registration.html"
+    )
+
+#ADMINページ
 @app.get("/admin")
 def Admin(request: Request):
-    if request.session.get("login") != True:
+    if request.session.get("admin_login") != True:
         return RedirectResponse(
             url="/admin/login",
             status_code=303
@@ -122,39 +149,14 @@ def Registration(request: Request):
 #仮 request.sessionをfalseにする
 @app.get("/reset")
 def Reset(request: Request):
+    request.session["admin_login"] = False
+    print(request.session.get("admin_login"))
     request.session["login"] = False
     print(request.session.get("login"))
 
 
-@app.post("/add")
-def Add(
-    name: str = Form(...),
-    introduce: str = Form(...),
-    pdf: UploadFile = File(...)
-):
-    #dbに保存
-    studycursor.execute(
-        """
-        INSERT INTO study (name, introduce, filename, pdfpath)
-        VALUES (?, ?, ?, ?)
-        """,
-        (name, introduce, pdf.filename, "")
-    )
-    id = studycursor.lastrowid
-    studycursor.execute(
-        "UPDATE study SET pdfpath = ? WHERE id = ?",
-        (f"{id}.pdf", id)
-    )
-    studydb.commit()
 
-    #pdfファイルを保存
-    pdf_path = f"uploads/{id}.pdf"
-    with open(pdf_path, "wb") as f:
-        shutil.copyfileobj(pdf.file, f)
-    
-    print("study.dbに情報を追加,ファイルを保存")
-
-@app.post("/admin/login")
+@app.post("/login")
 def Login(
     request: Request,
     id: str = Form(...),
@@ -167,19 +169,22 @@ def Login(
     )
     
     #入力情報と照合
-    hashed_pwd = usercursor.fetchone()[1]
-    pwdcheck = bcrypt.checkpw(
-        pwd.encode(),
-        hashed_pwd.encode()
-    )
+    hashed_pwd = usercursor.fetchone()
+    if hashed_pwd is None:
+        return {"result": False}
+    else:    
+        pwdcheck = bcrypt.checkpw(
+            pwd.encode(),
+            hashed_pwd[1].encode()
+        )
 
     if pwdcheck:
         request.session["login"] = True
         return {"result": True}
     else:
         return {"result": False}
-    
-@app.post("/admin/registration")
+
+@app.post("/registration")
 def Regisrtation(
     request: Request,
     id: str = Form(...),
@@ -217,6 +222,105 @@ def Regisrtation(
             userdb.commit()
             
             print("user.dbに情報を追加")
+
+            return {"result": 0}
+    else:
+        return {"result": 1}
+
+@app.post("/add")
+def Add(
+    name: str = Form(...),
+    introduce: str = Form(...),
+    pdf: UploadFile = File(...)
+):
+    #dbに保存
+    studycursor.execute(
+        """
+        INSERT INTO study (name, introduce, filename, pdfpath)
+        VALUES (?, ?, ?, ?)
+        """,
+        (name, introduce, pdf.filename, "")
+    )
+    id = studycursor.lastrowid
+    studycursor.execute(
+        "UPDATE study SET pdfpath = ? WHERE id = ?",
+        (f"{id}.pdf", id)
+    )
+    studydb.commit()
+
+    #pdfファイルを保存
+    pdf_path = f"uploads/{id}.pdf"
+    with open(pdf_path, "wb") as f:
+        shutil.copyfileobj(pdf.file, f)
+    
+    print("study.dbに情報を追加,ファイルを保存")
+
+@app.post("/admin/login")
+def Login(
+    request: Request,
+    id: str = Form(...),
+    pwd: str = Form(...)
+):
+    #admin_user.dbからチェック
+    admincursor.execute(
+        "SELECT * FROM admin_user WHERE id = ?",
+        (id,)
+    )    
+
+    #入力情報と照合
+    hashed_pwd = admincursor.fetchone()
+    if hashed_pwd is None:
+        return {"result": False}
+    else:    
+        pwdcheck = bcrypt.checkpw(
+            pwd.encode(),
+            hashed_pwd[1].encode()
+        )
+
+    if pwdcheck:
+        request.session["admin_login"] = True
+        return {"result": True}
+    else:
+        return {"result": False}
+    
+@app.post("/admin/registration")
+def Regisrtation(
+    request: Request,
+    id: str = Form(...),
+    pwd: str = Form(...)
+):
+    if (id.isascii() and
+        len(id) > 7 and
+        
+        pwd.isascii() and
+        len(pwd) > 7 and
+        any(i.isalpha() for i in pwd) and
+        any(i.isdigit() for i in pwd)
+        ):
+        #IDがかぶっていないかチェック
+        admincursor.execute(
+            "SELECT * FROM admin_user WHERE id = ?",
+            (id,)
+        )
+
+        if admincursor.fetchone() != None:
+            return {"result": 2}
+        else: 
+            #dbにIDとパスワードに追加
+            hashed_pwd = bcrypt.hashpw(
+                pwd.encode(),
+                bcrypt.gensalt()
+            ).decode()
+            admincursor.execute(
+                """
+                INSERT INTO admin_user (id, pwd)
+                VALUES (?, ?)
+                """,
+                (id, hashed_pwd)
+            )
+            admindb.commit()
+            
+            print("admin_user.dbに情報を追加")
 
             return {"result": 0}
     else:
