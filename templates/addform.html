@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>研究成果追加フォーム</title>
+        <meta charset="UTF-8">
+        <link rel="stylesheet" href="/static/style.css">
+    </head>
+    <body>
+        <form>
+            <h1>研究成果追加フォーム</h1>
+            <label for="name">名前</label><br>
+            <input type="text" id="name" maxlength="50"><br><br>
+            <label for="introduce">紹介文</label><br>
+            <textarea id="introduce" maxlength="100"></textarea><br><br>
+            <label for="pdf_file">研究成果ファイル</label><br>
+            <input type="file" id="pdf_file" accept=".pdf"><br><br>
+            <button type="button" id="add_btn">追加</button><br><br>
+            <a href="/home">ホームへ戻る</a>
+        </form>
+        <script src="/static/addform.js"></script>
+    </body>
+</html>

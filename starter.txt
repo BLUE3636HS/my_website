@@ -1,0 +1,3 @@
+cd Desktop\programing\web_page\my_web_app
+.venv\Scripts\activate
+uvicorn main:app --reload

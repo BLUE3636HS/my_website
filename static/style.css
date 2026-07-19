@@ -1,0 +1,24 @@
+h1{
+    color: #000000;
+}
+body{
+    background-color: #f0f0f0;
+}
+input{
+    width: 300px;
+}
+textarea{
+    width: 300px;
+    height: 120px;
+}
+button{
+    width: 120px;
+    height: 40px;
+}
+table{
+    width: 100%;
+}
+th,
+td{
+    min-width: 150px;
+}
