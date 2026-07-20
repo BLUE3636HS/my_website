@@ -5,7 +5,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
-import sqlite3, shutil, bcrypt
+import sqlite3, shutil, bcrypt, datetime
 
 app = FastAPI()
 app.add_middleware(
@@ -21,8 +21,9 @@ CREATE TABLE IF NOT EXISTS study (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     introduce TEXT NOT NULL,
-    filename TEXT,
-    pdfpath TEXT
+    filename TEXT NOT NULL,
+    pdfpath TEXT NOT NULL,
+    userid TEXT NOT NULL
 )
 """)
 studydb.commit()
@@ -68,24 +69,36 @@ def Home(request: Request):
 
 @app.get("/addform", response_class = HTMLResponse)
 def Start(request: Request):
-    return templates.TemplateResponse(
+    if request.session.get("user_login") != True:
+        return RedirectResponse(
+            url="/login",
+            status_code=303
+            )
+    else:
+        return templates.TemplateResponse(
         request = request,
         name = "addform.html"
     )
 
 @app.get("/studylist", response_class = HTMLResponse)
 def Start(request: Request):
-    studycursor.execute("SELECT * FROM study")
-    users = studycursor.fetchall()
+    if request.session.get("user_login") != True:
+        return RedirectResponse(
+            url="/login",
+            status_code=303
+            )
+    else:
+        studycursor.execute("SELECT * FROM study")
+        studies = studycursor.fetchall()
 
-    return templates.TemplateResponse(
-        request = request,
-        name = "pdflist.html",
-        context = {
-            "request": request,
-            "users": users
-        }
-    )
+        return templates.TemplateResponse(
+            request = request,
+            name = "pdflist.html",
+            context = {
+                "request": request,
+                "studies": studies
+            }
+        )
 
 @app.get("/uploads/{id}.pdf")
 def pdf(id: int):
@@ -95,13 +108,10 @@ def pdf(id: int):
         "SELECT filename FROM study WHERE id = ?",
         (id,)
     )
-    filename = studycursor.fetchone()[0]
-    print(filename)
 
     return FileResponse(
         path = pdf_path,
-        media_type = "application/pdf",
-        filename = filename
+        media_type = "application/pdf"
     )
 
 @app.get("/login")
@@ -151,8 +161,13 @@ def Registration(request: Request):
 def Reset(request: Request):
     request.session["admin_login"] = False
     print(request.session.get("admin_login"))
-    request.session["login"] = False
-    print(request.session.get("login"))
+    request.session["user_login"] = False
+    print(request.session.get("user_login"))
+
+#仮 sessionの中を確認
+@app.get("/session")
+def Session(request: Request):
+    return request.session
 
 
 
@@ -179,7 +194,9 @@ def Login(
         )
 
     if pwdcheck:
-        request.session["login"] = True
+        request.session["user_login"] = True
+        request.session["user_id"] = id
+        request.session["user_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         return {"result": True}
     else:
         return {"result": False}
@@ -229,6 +246,7 @@ def Regisrtation(
 
 @app.post("/add")
 def Add(
+    request: Request,
     name: str = Form(...),
     introduce: str = Form(...),
     pdf: UploadFile = File(...)
@@ -236,10 +254,10 @@ def Add(
     #dbに保存
     studycursor.execute(
         """
-        INSERT INTO study (name, introduce, filename, pdfpath)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO study (name, introduce, filename, pdfpath, userid)
+        VALUES (?, ?, ?, ?, ?)
         """,
-        (name, introduce, pdf.filename, "")
+        (name, introduce, pdf.filename, "", request.session.get("user_id"))
     )
     id = studycursor.lastrowid
     studycursor.execute(
@@ -279,6 +297,8 @@ def Login(
 
     if pwdcheck:
         request.session["admin_login"] = True
+        request.session["admin_id"] = id
+        request.session["admin_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         return {"result": True}
     else:
         return {"result": False}
