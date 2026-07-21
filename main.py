@@ -4,14 +4,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 import sqlite3, shutil, bcrypt, datetime
 
 app = FastAPI()
-app.add_middleware(
-    SessionMiddleware,
-    secret_key="blue"
-)
+
 
 studydb = sqlite3.connect("database/study.db", check_same_thread=False)
 studycursor = studydb.cursor()
@@ -58,8 +56,34 @@ templates = Jinja2Templates(directory="templates")
 
 
 #classの定義
+#httpが呼び出されたとき最初に実行
+class LoginCheckMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if(
+            request.url.path.startswith("/admin") and
+            request.url.path != "/admin/login" and
+            request.session.get("admin_login") != True
+        ):
+            return RedirectResponse("/admin/login", status_code = 303)
+        elif(
+                (
+                request.url.path.startswith("/addform") or
+                request.url.path.startswith("/studylist")
+                ) and
+            request.session.get("user_login") != True
+        ):
+            return RedirectResponse("/login", status_code = 303)
+        
+        response = await call_next(request)
+        return response
+app.add_middleware(LoginCheckMiddleware)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key="blue"
+)
 
 
+#get関数
 @app.get("/home", response_class = HTMLResponse)
 def Home(request: Request):
     return templates.TemplateResponse(
@@ -69,36 +93,42 @@ def Home(request: Request):
 
 @app.get("/addform", response_class = HTMLResponse)
 def Start(request: Request):
-    if request.session.get("user_login") != True:
-        return RedirectResponse(
-            url="/login",
-            status_code=303
-            )
-    else:
-        return templates.TemplateResponse(
+    return templates.TemplateResponse(
         request = request,
         name = "addform.html"
     )
 
 @app.get("/studylist", response_class = HTMLResponse)
 def Start(request: Request):
-    if request.session.get("user_login") != True:
-        return RedirectResponse(
-            url="/login",
-            status_code=303
-            )
-    else:
-        studycursor.execute("SELECT * FROM study")
-        studies = studycursor.fetchall()
+    # if request.session.get("user_login") != True:
+    #     return RedirectResponse(
+    #         url="/login",
+    #         status_code=303
+    #         )
+    # else:
+    #     studycursor.execute("SELECT * FROM study")
+    #     studies = studycursor.fetchall()
 
-        return templates.TemplateResponse(
-            request = request,
-            name = "pdflist.html",
-            context = {
-                "request": request,
-                "studies": studies
-            }
-        )
+    #     return templates.TemplateResponse(
+    #         request = request,
+    #         name = "pdflist.html",
+    #         context = {
+    #             "request": request,
+    #             "studies": studies
+    #         }
+    #     )
+    
+    studycursor.execute("SELECT * FROM study")
+    studies = studycursor.fetchall()
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "pdflist.html",
+        context = {
+            "request": request,
+            "studies": studies
+        }
+    )
 
 @app.get("/uploads/{id}.pdf")
 def pdf(id: int):
@@ -131,16 +161,21 @@ def Registration(request: Request):
 #ADMINページ
 @app.get("/admin")
 def Admin(request: Request):
-    if request.session.get("admin_login") != True:
-        return RedirectResponse(
-            url="/admin/login",
-            status_code=303
-            )
-    else:
-        return templates.TemplateResponse(
-            request = request,
-            name = "admin.html"
-        )
+    # if request.session.get("admin_login") != True:
+    #     return RedirectResponse(
+    #         url="/admin/login",
+    #         status_code=303
+    #         )
+    # else:
+    #     return templates.TemplateResponse(
+    #         request = request,
+    #         name = "admin.html"
+    #     )
+    
+    return templates.TemplateResponse(
+        request = request,
+        name = "admin.html"
+    )
 
 @app.get("/admin/login")
 def Login(request: Request):    
@@ -170,7 +205,7 @@ def Session(request: Request):
     return request.session
 
 
-
+#post関数
 @app.post("/login")
 def Login(
     request: Request,
