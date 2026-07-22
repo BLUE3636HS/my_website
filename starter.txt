@@ -1,3 +1,4 @@
-cd Desktop\programing\web_page\my_web_app
+cd Desktop\programing\web_page\my_website
+cd Desktop\programing\my_website
 .venv\Scripts\activate
 uvicorn main:app --reload

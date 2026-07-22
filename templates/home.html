@@ -1,17 +1,14 @@
-<!DOCTYPE html>
-<html>
-    <head>
-        <title>ホーム</title>
-        <meta charset="UTF-8">
-        <link rel="stylesheet" href="/static/style.css">
-    </head>
-    <body>
-        <form>
-            <h1>研究成果データベース</h1><br>
-            <h2>高校生の課題研究を検索、登録することができるデータベースです</h2><br>
-            <a href="/addform">研究成果追加フォーム</a><br>
-            <a href="/studylist">研究成果一覧</a><br><br>
-            <a href="/admin">管理者用ページ</a>
-        </form>
-    </body>
-</html>
+{% extends "base.html" %}
+{% block title %}ホーム{% endblock %}
+{% block css %}
+    <link rel="stylesheet" href="/static/home.css">
+{% endblock %}
+{% block content %}
+    <h1>研究成果データベース</h1><br>
+    <h2>高校生の課題研究を検索、登録することができるデータベースです</h2><br>
+    <a href="/addform">研究成果追加フォーム</a><br>
+    <a href="/studylist">研究成果一覧</a><br><br>
+    <a href="/admin">管理者用ページ</a>
+{% endblock %}
+{% block script %}
+{% endblock %}

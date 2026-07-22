@@ -1,0 +1,199 @@
+/* =========================
+   研究成果追加フォーム専用CSS
+========================= */
+
+
+/* メイン領域 */
+main {
+
+    max-width: 650px;
+
+    margin: 60px auto;
+
+    background-color: white;
+
+    padding: 45px;
+
+    border-radius: 15px;
+
+    box-shadow: 
+        0 5px 20px rgba(0,0,0,0.1);
+
+}
+
+
+/* タイトル */
+main h1 {
+
+    text-align: center;
+
+    color: #1f4e79;
+
+    font-size: 32px;
+
+    margin-bottom: 40px;
+
+}
+
+
+/* ラベル */
+main label {
+
+    display: block;
+
+    font-size: 17px;
+
+    font-weight: bold;
+
+    margin-bottom: 8px;
+
+    color: #333;
+
+}
+
+
+/* テキスト入力 */
+main input[type="text"],
+
+main textarea {
+
+    width: 100%;
+
+    padding: 12px;
+
+    font-size: 16px;
+
+    font-family: inherit;
+
+    border: 1px solid #ccc;
+
+    border-radius: 8px;
+
+    margin-bottom: 15px;
+
+}
+
+
+/* 紹介文 */
+main textarea {
+
+    height: 150px;
+
+    resize: vertical;
+
+}
+
+
+
+/* ファイル入力 */
+main input[type="file"] {
+
+    font-size: 15px;
+
+    margin-bottom: 20px;
+
+}
+
+
+
+/* 入力欄クリック時 */
+main input:focus,
+
+main textarea:focus {
+
+    outline: none;
+
+    border-color: #1f4e79;
+
+    box-shadow:
+        0 0 5px rgba(31,78,121,0.3);
+
+}
+
+
+
+/* 追加ボタン */
+main button {
+
+    display: block;
+
+    width: 220px;
+
+    margin: 30px auto 20px;
+
+
+    padding: 14px;
+
+
+    background-color: #1f4e79;
+
+    color: white;
+
+
+    border: none;
+
+    border-radius: 10px;
+
+
+    font-size: 18px;
+
+
+    cursor: pointer;
+
+
+    transition: 0.3s;
+
+}
+
+
+
+/* ボタンhover */
+main button:hover {
+
+    background-color: #163a5c;
+
+    transform: translateY(-3px);
+
+}
+
+
+
+/* ホームへ戻るリンク */
+main a {
+
+    display: block;
+
+    width: 220px;
+
+    margin: 0 auto;
+
+
+    padding: 12px;
+
+
+    text-align: center;
+
+
+    background-color: #555;
+
+    color: white;
+
+
+    text-decoration: none;
+
+
+    border-radius: 8px;
+
+
+    transition: 0.3s;
+
+}
+
+
+
+/* リンクhover */
+main a:hover {
+
+    background-color: #333;
+
+}

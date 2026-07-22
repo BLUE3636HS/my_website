@@ -24,7 +24,7 @@ add_btn.addEventListener("click", function(event){
     form_data.append("introduce", introduce_input.value);
     form_data.append("pdf", pdf_input.files[0]);
 
-    fetch("/add", {
+    fetch("/addform", {
         method:"POST",
         body: form_data
     });

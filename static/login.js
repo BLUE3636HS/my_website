@@ -18,7 +18,7 @@ log_btn.addEventListener("click", function(event){
     })
     .then(function(data){
         if(data.result == true){
-            window.location.href = "/home";
+            window.location.href = "/";
         }
         else{
             alert("ID または パスワード が違います");

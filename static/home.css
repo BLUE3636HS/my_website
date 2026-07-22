@@ -1,0 +1,114 @@
+/* =====================
+   ホーム画面専用CSS
+===================== */
+
+
+/* メイン領域 */
+
+main {
+
+    max-width: 900px;
+
+    margin: 60px auto;
+
+    background-color: white;
+
+    padding: 50px;
+
+    border-radius: 15px;
+
+    box-shadow:
+        0 5px 20px rgba(0,0,0,0.1);
+
+}
+
+
+/* タイトル */
+
+main h1 {
+
+    text-align: center;
+
+    font-size: 36px;
+
+    color: #1f4e79;
+
+    margin-bottom: 30px;
+
+}
+
+
+/* 説明 */
+
+main h2 {
+
+    text-align: center;
+
+    font-size: 18px;
+
+    font-weight: normal;
+
+    color: #555;
+
+    margin-bottom: 50px;
+
+}
+
+
+/* メニューリンク */
+
+main a {
+
+    display: block;
+
+    width: 300px;
+
+    margin: 15px auto;
+
+    padding: 15px;
+
+
+    text-align: center;
+
+
+    background-color: #1f4e79;
+
+    color: white;
+
+
+    text-decoration: none;
+
+    border-radius: 10px;
+
+
+    font-size: 18px;
+
+
+    transition: 0.3s;
+
+}
+
+
+main a:hover {
+
+    background-color: #163a5c;
+
+    transform: translateY(-3px);
+
+}
+
+
+/* 管理者ページ */
+
+main a:last-child {
+
+    background-color: #555;
+
+}
+
+
+main a:last-child:hover {
+
+    background-color: #333;
+
+}

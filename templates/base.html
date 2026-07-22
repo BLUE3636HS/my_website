@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>
+            {% block title %}
+            {% endblock %}
+        </title>
+        <meta charset="UTF-8">
+        <link rel="stylesheet" href="/static/style.css">
+        {% block css %}
+        {% endblock %}
+    </head>
+    <body>
+        <header>
+            <div class="header_left">
+                <a href="/">
+                    <img src="/static/top.png" alt="TEKNE工作室">
+                </a>
+            </div>
+            <div class="header_right">
+                {%if user_login != true%}
+                <a href="/login">ログイン</a>
+                <a href="/registration">会員登録</a>
+                {%else%}
+                <em>{{user_id}}さん</em>
+                <a href="/mypage">マイページ</a>
+                <a href="/logout">ログアウト</a>
+                {%endif%}
+            </div>
+        </header>
+        <main>
+            {% block content %}
+            {% endblock %}
+        </main>
+        {% block script %}
+        {% endblock %}
+    </body>
+</html>

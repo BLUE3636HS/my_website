@@ -1,0 +1,266 @@
+/* =========================
+   研究成果一覧専用CSS
+========================= */
+
+
+/* メイン領域 */
+main {
+
+    max-width: 1200px;
+
+    margin: 60px auto;
+
+    background-color: white;
+
+    padding: 45px;
+
+    border-radius: 15px;
+
+    box-shadow:
+        0 5px 20px rgba(0,0,0,0.1);
+
+}
+
+
+
+/* タイトル */
+main h1 {
+
+    text-align: center;
+
+    color: #1f4e79;
+
+    font-size: 32px;
+
+    margin-bottom: 40px;
+
+}
+
+
+
+/* =========================
+   表
+========================= */
+
+
+main table {
+
+    width: 100%;
+
+    border-collapse: collapse;
+
+}
+
+
+
+/* th, td共通 */
+
+main th,
+main td {
+
+    padding: 15px;
+
+    border: 1px solid #ddd;
+
+    vertical-align: middle;
+
+}
+
+
+
+/* 見出し */
+
+main th {
+
+    background-color: #1f4e79;
+
+    color: white;
+
+    font-size: 16px;
+
+    text-align: center;
+
+}
+
+
+
+/* データ部分 */
+
+main td {
+
+    background-color: white;
+
+    font-size: 15px;
+
+}
+
+
+
+/* =========================
+   列幅設定
+========================= */
+
+
+/* 名前 */
+
+main th:nth-child(1),
+main td:nth-child(1) {
+
+    min-width: 250px;
+
+    width: 150px;
+
+    text-align: center;
+
+    font-weight: bold;
+
+}
+
+
+
+/* 要約 */
+
+main th:nth-child(2),
+main td:nth-child(2) {
+
+    min-width: 300px;
+
+    width: auto;
+
+    text-align: left;
+
+}
+
+
+
+/* URL */
+
+main th:nth-child(3),
+main td:nth-child(3) {
+
+    min-width: 150px;
+
+    width: 150px;
+
+    text-align: center;
+
+}
+
+
+
+/* =========================
+   長文対策
+========================= */
+
+
+/* 要約 */
+
+main td:nth-child(2) {
+
+    word-break: break-word;
+
+}
+
+
+
+/* URL */
+
+main td:nth-child(3) a {
+
+    word-break: break-all;
+
+}
+
+
+
+/* =========================
+   行デザイン
+========================= */
+
+
+/* 偶数行 */
+
+main tr:nth-child(even) td {
+
+    background-color: #f5f8fc;
+
+}
+
+
+
+/* マウスを乗せた時 */
+
+main tr:hover td {
+
+    background-color: #e8f1fa;
+
+}
+
+
+
+/* =========================
+   PDFリンク
+========================= */
+
+
+main table a {
+
+    color: #1f4e79;
+
+    font-weight: bold;
+
+    text-decoration: none;
+
+}
+
+
+
+main table a:hover {
+
+    text-decoration: underline;
+
+}
+
+
+
+/* =========================
+   ホームへ戻る
+========================= */
+
+
+main > a {
+
+    display: block;
+
+    width: 220px;
+
+    margin: 35px auto 0;
+
+    padding: 12px;
+
+
+    text-align: center;
+
+
+    background-color: #555;
+
+    color: white;
+
+
+    text-decoration: none;
+
+
+    border-radius: 8px;
+
+
+    transition: 0.3s;
+
+}
+
+
+
+main > a:hover {
+
+    background-color: #333;
+
+}

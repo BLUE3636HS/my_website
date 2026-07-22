@@ -1,5 +1,6 @@
 let id = document.getElementById("id");
 let pwd = document.getElementById("pwd");
+let school = document.getElementById("school");
 let reg_btn = document.getElementById("reg_btn");
 
 reg_btn.addEventListener("click", function(event){
@@ -8,7 +9,8 @@ reg_btn.addEventListener("click", function(event){
 
     form_data.append("id", id.value);
     form_data.append("pwd", pwd.value);
-    
+    form_data.append("school", school.value);
+
     fetch("/admin/registration", {
         method: "POST",
         body: form_data
@@ -21,7 +23,7 @@ reg_btn.addEventListener("click", function(event){
             alert("登録しました")
         }
         else if(data.result == 2){
-            alert("IDがすでにとうろくされています\n変更してください")
+            alert("IDがすでに使用されています\n変更してください")
         }
         else{
             alert("条件を満たしていません")

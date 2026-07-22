@@ -2,11 +2,10 @@ from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-import sqlite3, shutil, bcrypt, datetime
+import sqlite3, shutil, bcrypt, datetime, csv
 
 app = FastAPI()
 
@@ -21,7 +20,8 @@ CREATE TABLE IF NOT EXISTS study (
     introduce TEXT NOT NULL,
     filename TEXT NOT NULL,
     pdfpath TEXT NOT NULL,
-    userid TEXT NOT NULL
+    userid TEXT NOT NULL,
+    time TEXT NOT NULL
 )
 """)
 studydb.commit()
@@ -33,7 +33,8 @@ usercursor = userdb.cursor()
 usercursor.execute("""
 CREATE TABLE IF NOT EXISTS user (
     id TEXT NOT NULL,
-    pwd TEXT NOT NULL
+    pwd TEXT NOT NULL,
+    school TEXT NOT NULL
 )
 """)
 userdb.commit()
@@ -45,7 +46,8 @@ admincursor = admindb.cursor()
 admincursor.execute("""
 CREATE TABLE IF NOT EXISTS admin_user (
     id TEXT NOT NULL,
-    pwd TEXT NOT NULL
+    pwd TEXT NOT NULL,
+    school TEXT NOT NULL
 )
 """)
 admindb.commit()
@@ -59,9 +61,30 @@ templates = Jinja2Templates(directory="templates")
 #httpが呼び出されたとき最初に実行
 class LoginCheckMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        #loginしてから一日以上たったらログアウト
+        if request.session.get("admin_login") == True:
+            login_time = datetime.datetime.strptime(
+                request.session.get("admin_time"),
+                "%Y-%m-%d %H:%M:%S"
+            )
+            if (datetime.datetime.now() - login_time).days >= 1:
+                request.session["admin_login"] = False
+                print("adminログアウト")
+        
+        if request.session.get("user_login") == True:
+            login_time = datetime.datetime.strptime(
+                request.session.get("user_time"),
+                "%Y-%m-%d %H:%M:%S"
+            )
+            if (datetime.datetime.now() - login_time).days >= 1:
+                request.session["user_login"] = False
+                print("userログアウト")
+
+        #loginしていない場合はログインページにリダイレクト
         if(
             request.url.path.startswith("/admin") and
             request.url.path != "/admin/login" and
+            request.url.path != "/admin/registration" and
             request.session.get("admin_login") != True
         ):
             return RedirectResponse("/admin/login", status_code = 303)
@@ -84,54 +107,49 @@ app.add_middleware(
 
 
 #get関数
-@app.get("/home", response_class = HTMLResponse)
-def Home(request: Request):
+@app.get("/", response_class = HTMLResponse)
+async def Home(request: Request):
     return templates.TemplateResponse(
         request = request,
-        name = "home.html"
+        name = "home.html",
+        context = {
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
     )
 
 @app.get("/addform", response_class = HTMLResponse)
-def Start(request: Request):
+async def AddForm(request: Request):
     return templates.TemplateResponse(
         request = request,
-        name = "addform.html"
+        name = "addform.html",
+        context = {
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
     )
 
 @app.get("/studylist", response_class = HTMLResponse)
-def Start(request: Request):
-    # if request.session.get("user_login") != True:
-    #     return RedirectResponse(
-    #         url="/login",
-    #         status_code=303
-    #         )
-    # else:
-    #     studycursor.execute("SELECT * FROM study")
-    #     studies = studycursor.fetchall()
-
-    #     return templates.TemplateResponse(
-    #         request = request,
-    #         name = "pdflist.html",
-    #         context = {
-    #             "request": request,
-    #             "studies": studies
-    #         }
-    #     )
-    
+async def StudyList(request: Request):    
     studycursor.execute("SELECT * FROM study")
     studies = studycursor.fetchall()
+    print(type(studies))
 
     return templates.TemplateResponse(
         request = request,
-        name = "pdflist.html",
+        name = "studylist.html",
         context = {
             "request": request,
-            "studies": studies
+            "studies": studies,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
         }
     )
 
 @app.get("/uploads/{id}.pdf")
-def pdf(id: int):
+async def pdf(id: int):
     pdf_path = f"uploads/{id}.pdf"
 
     studycursor.execute(
@@ -145,55 +163,75 @@ def pdf(id: int):
     )
 
 @app.get("/login")
-def Login(request: Request):
+async def Login(request: Request):
     return templates.TemplateResponse(
         request = request,
         name = "login.html"
     )
 
 @app.get("/registration")
-def Registration(request: Request):
+async def Registration(request: Request):
+    with open("csv/school.csv", "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        schools = [row[0] for row in reader]
+
     return templates.TemplateResponse(
         request = request,
-        name = "registration.html"
+        name = "registration.html",
+        context = {
+            "request": request,
+            "schools": schools
+        }
+    )
+
+@app.get("/logout")
+async def Logout(request: Request):
+    request.session.clear()
+    return templates.TemplateResponse(
+        request = request,
+        name = "logout.html"
+    )
+
+@app.get("/mypage")
+async def Mypage(request: Request):
+    return templates.TemplateResponse(
+        request = request,
+        name = "mypage.html"
     )
 
 #ADMINページ
 @app.get("/admin")
-def Admin(request: Request):
-    # if request.session.get("admin_login") != True:
-    #     return RedirectResponse(
-    #         url="/admin/login",
-    #         status_code=303
-    #         )
-    # else:
-    #     return templates.TemplateResponse(
-    #         request = request,
-    #         name = "admin.html"
-    #     )
-    
+async def Admin(request: Request):    
     return templates.TemplateResponse(
         request = request,
         name = "admin.html"
     )
 
 @app.get("/admin/login")
-def Login(request: Request):    
+async def Login(request: Request):    
     return templates.TemplateResponse(
         request = request,
         name = "admin/login.html"
     )
 
 @app.get("/admin/registration")
-def Registration(request: Request):
+async def Registration(request: Request):
+    with open("csv/school.csv", "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        schools = [row[0] for row in reader]
+
     return templates.TemplateResponse(
         request = request,
-        name = "admin/registration.html"
+        name = "admin/registration.html",
+        context = {
+            "request": request,
+            "schools": schools
+        }
     )
 
 #仮 request.sessionをfalseにする
 @app.get("/reset")
-def Reset(request: Request):
+async def Reset(request: Request):
     request.session["admin_login"] = False
     print(request.session.get("admin_login"))
     request.session["user_login"] = False
@@ -201,13 +239,13 @@ def Reset(request: Request):
 
 #仮 sessionの中を確認
 @app.get("/session")
-def Session(request: Request):
+async def Session(request: Request):
     return request.session
 
 
 #post関数
 @app.post("/login")
-def Login(
+async def Login(
     request: Request,
     id: str = Form(...),
     pwd: str = Form(...)
@@ -237,10 +275,11 @@ def Login(
         return {"result": False}
 
 @app.post("/registration")
-def Regisrtation(
+async def Registration(
     request: Request,
     id: str = Form(...),
-    pwd: str = Form(...)
+    pwd: str = Form(...),
+    school: str = Form(...)
 ):
     if (id.isascii() and
         len(id) > 7 and
@@ -248,7 +287,9 @@ def Regisrtation(
         pwd.isascii() and
         len(pwd) > 7 and
         any(i.isalpha() for i in pwd) and
-        any(i.isdigit() for i in pwd)
+        any(i.isdigit() for i in pwd) and
+
+        school != "notselect"
         ):
         #IDがかぶっていないかチェック
         usercursor.execute(
@@ -266,10 +307,10 @@ def Regisrtation(
             ).decode()
             usercursor.execute(
                 """
-                INSERT INTO user (id, pwd)
-                VALUES (?, ?)
+                INSERT INTO user (id, pwd, school)
+                VALUES (?, ?, ?)
                 """,
-                (id, hashed_pwd)
+                (id, hashed_pwd, school)
             )
             userdb.commit()
             
@@ -279,8 +320,8 @@ def Regisrtation(
     else:
         return {"result": 1}
 
-@app.post("/add")
-def Add(
+@app.post("/addform")
+async def Add(
     request: Request,
     name: str = Form(...),
     introduce: str = Form(...),
@@ -289,10 +330,10 @@ def Add(
     #dbに保存
     studycursor.execute(
         """
-        INSERT INTO study (name, introduce, filename, pdfpath, userid)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO study (name, introduce, filename, pdfpath, userid, time)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (name, introduce, pdf.filename, "", request.session.get("user_id"))
+        (name, introduce, pdf.filename, "", request.session.get("user_id"), datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     )
     id = studycursor.lastrowid
     studycursor.execute(
@@ -309,7 +350,7 @@ def Add(
     print("study.dbに情報を追加,ファイルを保存")
 
 @app.post("/admin/login")
-def Login(
+async def Login(
     request: Request,
     id: str = Form(...),
     pwd: str = Form(...)
@@ -339,10 +380,11 @@ def Login(
         return {"result": False}
     
 @app.post("/admin/registration")
-def Regisrtation(
+async def Registration(
     request: Request,
     id: str = Form(...),
-    pwd: str = Form(...)
+    pwd: str = Form(...),
+    school: str = Form(...)
 ):
     if (id.isascii() and
         len(id) > 7 and
@@ -350,7 +392,9 @@ def Regisrtation(
         pwd.isascii() and
         len(pwd) > 7 and
         any(i.isalpha() for i in pwd) and
-        any(i.isdigit() for i in pwd)
+        any(i.isdigit() for i in pwd) and
+
+        school != "notselect"
         ):
         #IDがかぶっていないかチェック
         admincursor.execute(
@@ -368,10 +412,10 @@ def Regisrtation(
             ).decode()
             admincursor.execute(
                 """
-                INSERT INTO admin_user (id, pwd)
-                VALUES (?, ?)
+                INSERT INTO admin_user (id, pwd, school)
+                VALUES (?, ?, ?)
                 """,
-                (id, hashed_pwd)
+                (id, hashed_pwd, school)
             )
             admindb.commit()
             
