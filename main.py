@@ -135,7 +135,6 @@ async def AddForm(request: Request):
 async def StudyList(request: Request):    
     studycursor.execute("SELECT * FROM study")
     studies = studycursor.fetchall()
-    print(type(studies))
 
     return templates.TemplateResponse(
         request = request,
@@ -268,9 +267,7 @@ async def Registration(request: Request):
 @app.get("/reset")
 async def Reset(request: Request):
     request.session["admin_login"] = False
-    print(request.session.get("admin_login"))
     request.session["user_login"] = False
-    print(request.session.get("user_login"))
 
 #仮 sessionの中を確認
 @app.get("/session")
