@@ -1,0 +1,285 @@
+/* =========================
+   プロフィール編集専用CSS
+========================= */
+
+
+/* メイン領域 */
+
+main {
+
+    max-width: 600px;
+
+    margin: 60px auto;
+
+    background-color: white;
+
+    padding: 45px;
+
+    border-radius: 15px;
+
+    box-shadow:
+        0 5px 20px rgba(0,0,0,0.1);
+
+}
+
+
+
+/* タイトル */
+
+main h1 {
+
+    text-align: center;
+
+    color: #1f4e79;
+
+    font-size: 32px;
+
+    margin-bottom: 35px;
+
+}
+
+
+
+/* サブタイトル */
+
+main h2 {
+
+    color: #1f4e79;
+
+    font-size: 22px;
+
+    margin-bottom: 20px;
+
+}
+
+
+
+/* ラベル */
+
+main label {
+
+    display: block;
+
+    font-weight: bold;
+
+    margin-bottom: 8px;
+
+}
+
+
+
+/* 入力欄 */
+
+main input {
+
+    width: 100%;
+
+    padding: 12px;
+
+    font-size: 16px;
+
+    border: 1px solid #ccc;
+
+    border-radius: 8px;
+
+    margin-bottom: 5px;
+
+}
+
+
+
+/* フォーカス */
+
+main input:focus {
+
+    outline: none;
+
+    border-color: #1f4e79;
+
+    box-shadow:
+        0 0 5px rgba(31,78,121,0.3);
+
+}
+
+
+
+/* 説明文 */
+
+main em {
+
+    display: block;
+
+    font-style: normal;
+
+    color: #777;
+
+    font-size: 13px;
+
+    margin-bottom: 20px;
+
+}
+
+
+
+/* =========================
+   タブ
+========================= */
+
+#tab {
+
+    display: flex;
+
+    margin-bottom: 30px;
+
+    border-bottom: 2px solid #ddd;
+
+}
+
+
+/* タブボタン */
+
+#tab button {
+
+    flex: 1;
+
+    padding: 15px;
+
+    border: none;
+
+    background: none;
+
+    font-size: 16px;
+
+    font-weight: bold;
+
+    color: #666;
+
+    cursor: pointer;
+
+    border-bottom: 4px solid transparent;
+
+    transition: 0.25s;
+
+}
+
+
+/* マウスを乗せた時 */
+
+#tab button:hover {
+
+    color: #1f4e79;
+
+}
+
+
+/* 選択中 */
+
+#tab button.active {
+
+    color: #1f4e79;
+
+    border-bottom: 4px solid #1f4e79;
+
+}
+
+
+/* =========================
+   フォーム
+========================= */
+
+#id_form,
+#pwd_form {
+
+    background-color: #fafafa;
+
+    padding: 25px;
+
+    border: 1px solid #ddd;
+
+    border-radius: 10px;
+
+    margin-bottom: 30px;
+
+}
+
+
+
+/* =========================
+   変更ボタン
+========================= */
+
+#id_edit_btn,
+#pwd_edit_btn {
+
+    width: 100%;
+
+    padding: 14px;
+
+    border: none;
+
+    border-radius: 8px;
+
+    background-color: #1f4e79;
+
+    color: white;
+
+    font-size: 16px;
+
+    font-weight: bold;
+
+    cursor: pointer;
+
+    transition: 0.3s;
+
+}
+
+
+
+/* ホバー */
+
+#id_edit_btn:hover,
+#pwd_edit_btn:hover {
+
+    background-color: #163a5c;
+
+}
+
+
+
+/* =========================
+   戻るボタン
+========================= */
+
+main > a {
+
+    display: block;
+
+    width: 220px;
+
+    margin: 0 auto;
+
+    padding: 12px;
+
+    text-align: center;
+
+    text-decoration: none;
+
+    background-color: #555;
+
+    color: white;
+
+    border-radius: 8px;
+
+    transition: 0.3s;
+
+}
+
+
+
+/* ホバー */
+
+main > a:hover {
+
+    background-color: #333;
+
+}

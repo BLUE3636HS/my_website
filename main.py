@@ -166,7 +166,12 @@ async def pdf(id: int):
 async def Login(request: Request):
     return templates.TemplateResponse(
         request = request,
-        name = "login.html"
+        name = "login.html",
+        context = {
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
     )
 
 @app.get("/registration")
@@ -180,7 +185,9 @@ async def Registration(request: Request):
         name = "registration.html",
         context = {
             "request": request,
-            "schools": schools
+            "schools": schools,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
         }
     )
 
@@ -194,9 +201,37 @@ async def Logout(request: Request):
 
 @app.get("/mypage")
 async def Mypage(request: Request):
+    user_id = request.session.get("user_id")
+
+    usercursor.execute("""
+    SELECT *
+    FROM user
+    WHERE id = ?
+    """, (user_id,))
+
+    user_school = usercursor.fetchone()[2]
+
     return templates.TemplateResponse(
         request = request,
-        name = "mypage.html"
+        name = "mypage.html",
+        context = {
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": user_id,
+            "user_school": user_school
+        }
+    )
+
+@app.get("/mypage/edit")
+async def Edit(request: Request):
+    return templates.TemplateResponse(
+        request = request,
+        name = "mypage/edit.html",
+        context = {
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
     )
 
 #ADMINページ
@@ -348,6 +383,102 @@ async def Add(
         shutil.copyfileobj(pdf.file, f)
     
     print("study.dbに情報を追加,ファイルを保存")
+
+@app.post("/mypage/edit/id")
+async def Edit(
+    request: Request,
+    old_id: str = Form(...),
+    old_pwd: str = Form(...),
+    new_id: str= Form(...)
+):
+    #user.dbからチェック
+    usercursor.execute(
+        "SELECT * FROM user WHERE id = ?",
+        (old_id,)
+    )
+    
+    #入力情報と照合
+    hashed_pwd = usercursor.fetchone()
+    if hashed_pwd is None:
+        return {"result": False}
+    else:    
+        pwdcheck = bcrypt.checkpw(
+            old_pwd.encode(),
+            hashed_pwd[1].encode()
+        )
+
+    if pwdcheck:
+        #IDがかぶっていないかチェック
+        usercursor.execute(
+            "SELECT * FROM user WHERE id = ?",
+            (new_id,)
+        )
+
+        if usercursor.fetchone() != None:
+            return {"result": 1}
+        else:
+            if(
+                new_id.isascii() and
+                len(new_id) > 7
+            ):
+                usercursor.execute("""
+                UPDATE user
+                SET id = ?
+                WHERE id = ?
+                """, (new_id, old_id))
+                userdb.commit()
+                return {"result": 3}
+            else:
+                return {"result": 2}
+    else:
+        return {"result": 0}
+
+@app.post("/mypage/edit/pwd")
+async def Edit(
+    request: Request,
+    old_id: str = Form(...),
+    old_pwd: str = Form(...),
+    new_pwd: str= Form(...)
+):
+    #user.dbからチェック
+    usercursor.execute(
+        "SELECT * FROM user WHERE id = ?",
+        (old_id,)
+    )
+    
+    #入力情報と照合
+    hashed_pwd = usercursor.fetchone()
+    if hashed_pwd is None:
+        return {"result": False}
+    else:    
+        pwdcheck = bcrypt.checkpw(
+            old_pwd.encode(),
+            hashed_pwd[1].encode()
+        )
+
+    if pwdcheck:
+        if(
+            new_pwd.isascii() and
+            len(new_pwd) > 7 and
+            any(i.isalpha() for i in new_pwd) and
+            any(i.isdigit() for i in new_pwd)
+        ):
+            new_hashed_pwd = bcrypt.hashpw(
+                new_pwd.encode(),
+                bcrypt.gensalt()
+            ).decode()
+            usercursor.execute("""
+            UPDATE user
+            SET pwd = ?
+            WHERE id = ?
+            """, (new_hashed_pwd, old_id))
+            userdb.commit()
+
+            return {"result": 2}
+        else:
+            return {"result": 1}
+    else:
+        return {"result": 0}
 
 @app.post("/admin/login")
 async def Login(

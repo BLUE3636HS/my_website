@@ -1,0 +1,186 @@
+/* =========================
+   会員登録ページ専用CSS
+========================= */
+
+
+/* メイン領域 */
+
+main {
+
+    max-width: 500px;
+
+    margin: 60px auto;
+
+    background-color: white;
+
+    padding: 40px;
+
+    border-radius: 15px;
+
+    box-shadow:
+        0 5px 20px rgba(0,0,0,0.1);
+
+}
+
+
+
+/* タイトル */
+
+main h1 {
+
+    text-align: center;
+
+    color: #1f4e79;
+
+    font-size: 30px;
+
+    margin-bottom: 35px;
+
+}
+
+
+
+/* ラベル */
+
+main label {
+
+    display: block;
+
+    font-size: 16px;
+
+    font-weight: bold;
+
+    color: #333;
+
+    margin-bottom: 8px;
+
+}
+
+
+
+/* 入力欄・セレクトボックス */
+
+main input,
+main select {
+
+    width: 100%;
+
+    padding: 12px;
+
+    font-size: 16px;
+
+    font-family: inherit;
+
+    border: 1px solid #ccc;
+
+    border-radius: 8px;
+
+    margin-bottom: 5px;
+
+}
+
+
+
+/* フォーカス時 */
+
+main input:focus,
+main select:focus {
+
+    outline: none;
+
+    border-color: #1f4e79;
+
+    box-shadow:
+        0 0 5px rgba(31,78,121,0.3);
+
+}
+
+
+
+/* 説明文 */
+
+main em {
+
+    display: block;
+
+    font-style: normal;
+
+    font-size: 13px;
+
+    color: #777;
+
+    margin-bottom: 20px;
+
+}
+
+
+
+/* 登録ボタン */
+
+main button {
+
+    display: block;
+
+    width: 100%;
+
+    padding: 14px;
+
+    background-color: #1f4e79;
+
+    color: white;
+
+    border: none;
+
+    border-radius: 8px;
+
+    font-size: 17px;
+
+    font-weight: bold;
+
+    cursor: pointer;
+
+    transition: 0.3s;
+
+}
+
+
+
+/* ボタンホバー */
+
+main button:hover {
+
+    background-color: #163a5c;
+
+}
+
+
+
+/* ログインページに戻る */
+
+main > a {
+
+    display: block;
+
+    text-align: center;
+
+    margin-top: 25px;
+
+    color: #1f4e79;
+
+    font-weight: bold;
+
+    text-decoration: none;
+
+    transition: 0.3s;
+
+}
+
+
+
+/* リンクホバー */
+
+main > a:hover {
+
+    text-decoration: underline;
+
+}

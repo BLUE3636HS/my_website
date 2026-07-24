@@ -1,12 +1,25 @@
-<!DOCTYPE html>
-<html>
-    <head>
-        <title>マイページ</title>
-        <meta charset="UTF-8">
-        <link rel="stylesheet" href="/static/style.css">
-        <link rel="icon" href="/static/icon.ico">
-    </head>
-    <body>
-        <h1>マイページ</h1><br>
-    </body>
-</html>
+{% extends "base.html" %}
+{% block title %}マイページ{% endblock %}
+{% block css %}
+    <link rel="stylesheet" href="/static/mypage.css">
+{% endblock %}
+{% block content %}
+    <h1>マイページ</h1><br>
+    <table border="1">
+        <tr>
+            <th>id</th>
+            <td>{{user_id}}</td>
+        </tr>
+        <tr>
+            <th>pwd</th>
+            <td>********</td>
+        </tr>
+        <tr>
+            <th>在籍校</th>
+            <td>{{user_school}}</td>
+        </tr>
+    </table><br><br>
+    <a href="/mypage/edit">プロフィール情報編集</a><br>
+{% endblock %}
+{% block script %}
+{% endblock %}
