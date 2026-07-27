@@ -1,0 +1,65 @@
+/* =========================
+   管理者ページ専用CSS
+========================= */
+
+/* メイン領域 */
+main {
+    max-width: 600px;
+    margin: 60px auto;
+    background-color: white;
+    padding: 40px;
+    border-radius: 15px;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* タイトル */
+main h1 {
+    text-align: center;
+    color: #b85c38;
+    font-size: 30px;
+    margin-bottom: 35px;
+}
+
+/* テーブル */
+main table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 30px;
+}
+
+/* 見出しセル */
+main th {
+    width: 35%;
+    padding: 14px;
+    background-color: #b85c38;
+    color: white;
+    text-align: left;
+    border: 1px solid #ddd;
+}
+
+/* データセル */
+main td {
+    padding: 14px;
+    border: 1px solid #ddd;
+    background-color: #faf8f5;
+    color: #4a3b32;
+}
+
+/* リンク（ボタン風） */
+main > a {
+    display: block;
+    width: fit-content;
+    margin: 0 auto;
+    padding: 12px 24px;
+    background-color: #b85c38;
+    color: white;
+    text-decoration: none;
+    border-radius: 8px;
+    font-weight: bold;
+    transition: 0.3s;
+}
+
+/* ホバー */
+main > a:hover {
+    background-color: #94492c;
+}

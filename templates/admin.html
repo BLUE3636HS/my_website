@@ -1,16 +1,26 @@
-<!DOCTYPE html>
-<html>
-    <head>
-        <title>管理者ページ</title>
-        <meta charset="UTF-8">
-        <link rel="stylesheet" href="/static/style.css">
-        <link rel="icon" href="/static/icon.ico">
-    </head>
-    <body>
-        <form>
-            <h1>管理者ページ</h1><br>
-            <h2>管理者用のぺーじ</h2><br>
-            <h2>まだ実装してない</h2>
-        </form>
-    </body>
-</html>
+{% extends "admin/base.html" %}
+{% block title %}管理者ページ{% endblock %}
+{% block css %}
+    <link rel="stylesheet" href="/static/admin.css">
+{% endblock %}
+{% block content %}
+    <h1>管理者ページ</h1><br>
+    <table border="1">
+        <tr>
+            <th>id</th>
+            <td>{{admin_id}}</td>
+        </tr>
+        <tr>
+            <th>pwd</th>
+            <td>********</td>
+        </tr>
+        <tr>
+            <th>在籍校</th>
+            <td>{{admin_school}}</td>
+        </tr>
+    </table><br><br>
+    <a href="/admin/edit">プロフィール情報編集</a><br>
+    <a href="/admin/studylist">自校の提出物を確認</a><br>
+{% endblock %}
+{% block script %}
+{% endblock %}

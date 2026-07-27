@@ -14,15 +14,29 @@ studydb = sqlite3.connect("database/study.db", check_same_thread=False)
 studycursor = studydb.cursor()
 
 studycursor.execute("""
-CREATE TABLE IF NOT EXISTS study (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    introduce TEXT NOT NULL,
-    filename TEXT NOT NULL,
-    pdfpath TEXT NOT NULL,
-    userid TEXT NOT NULL,
-    time TEXT NOT NULL
-)
+    CREATE TABLE IF NOT EXISTS study (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        introduce TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        pdfpath TEXT NOT NULL,
+        userid TEXT NOT NULL,
+        time TEXT NOT NULL
+    )
+""")
+studycursor.execute("""
+    CREATE TABLE IF NOT EXISTS user (
+        id TEXT NOT NULL,
+        pwd TEXT NOT NULL,
+        school TEXT NOT NULL
+    )
+""")
+studycursor.execute("""
+    CREATE TABLE IF NOT EXISTS admin_user (
+        id TEXT NOT NULL,
+        pwd TEXT NOT NULL,
+        school TEXT NOT NULL
+    )
 """)
 studydb.commit()
 
@@ -102,7 +116,7 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
 app.add_middleware(LoginCheckMiddleware)
 app.add_middleware(
     SessionMiddleware,
-    secret_key="blue"
+    secret_key="TEKNE"
 )
 
 
@@ -192,7 +206,9 @@ async def Registration(request: Request):
 
 @app.get("/logout")
 async def Logout(request: Request):
-    request.session.clear()
+    del request.session["user_login"]
+    del request.session["user_id"]
+    del request.session["user_time"]
     return templates.TemplateResponse(
         request = request,
         name = "logout.html"
@@ -235,17 +251,50 @@ async def Edit(request: Request):
 
 #ADMINページ
 @app.get("/admin")
-async def Admin(request: Request):    
+async def Admin(request: Request):
+    admin_id = request.session.get("admin_id")
+
+    admincursor.execute("""
+    SELECT *
+    FROM admin_user
+    WHERE id = ?
+    """, (admin_id,))
+
+    admin_school = admincursor.fetchone()[2]
+
     return templates.TemplateResponse(
         request = request,
-        name = "admin.html"
+        name = "admin.html",
+        context = {
+            "request": request,
+            "admin_login": request.session.get("admin_login"),
+            "admin_id": admin_id,
+            "admin_school": admin_school
+        }
+    )
+
+@app.get("/admin/edit")
+async def Edit(request: Request):
+    return templates.TemplateResponse(
+        request = request,
+        name = "admin/edit.html",
+        context = {
+            "request": request,
+            "admin_login": request.session.get("admin_login"),
+            "admin_id": request.session.get("admin_id")
+        }
     )
 
 @app.get("/admin/login")
 async def Login(request: Request):    
     return templates.TemplateResponse(
         request = request,
-        name = "admin/login.html"
+        name = "admin/login.html",
+        context = {
+            "request": request,
+            "admin_login": request.session.get("admin_login"),
+            "admin_id": request.session.get("admin_id")
+        }
     )
 
 @app.get("/admin/registration")
@@ -259,8 +308,42 @@ async def Registration(request: Request):
         name = "admin/registration.html",
         context = {
             "request": request,
-            "schools": schools
+            "schools": schools,
+            "admin_login": request.session.get("admin_login"),
+            "admin_id": request.session.get("admin_id")
         }
+    )
+
+@app.get("/admin/studylist", response_class = HTMLResponse)
+async def StudyList(request: Request):    
+    studycursor.execute("SELECT * FROM study")
+    studies = studycursor.fetchall()
+
+    #studiesのうち、admin_userのschoolと一致するものだけを抽出
+    admin_id = request.session.get("admin_id")
+    print(studies)
+    for i in studies:
+        print(i[5])
+    
+    return templates.TemplateResponse(
+        request = request,
+        name = "admin/studylist.html",
+        context = {
+            "request": request,
+            "studies": studies,
+            "admin_login": request.session.get("admin_login"),
+            "admin_id": admin_id
+        }
+    )
+
+@app.get("/admin/logout")
+async def Logout(request: Request):
+    del request.session["admin_login"]
+    del request.session["admin_id"]
+    del request.session["admin_time"]
+    return templates.TemplateResponse(
+        request = request,
+        name = "admin/logout.html"
     )
 
 #仮 request.sessionをfalseにする
@@ -552,3 +635,99 @@ async def Registration(
             return {"result": 0}
     else:
         return {"result": 1}
+
+@app.post("/admin/edit/id")
+async def Edit(
+    request: Request,
+    old_id: str = Form(...),
+    old_pwd: str = Form(...),
+    new_id: str= Form(...)
+):
+    #admin_user.dbからチェック
+    admincursor.execute(
+        "SELECT * FROM admin_user WHERE id = ?",
+        (old_id,)
+    )
+    
+    #入力情報と照合
+    hashed_pwd = admincursor.fetchone()
+    if hashed_pwd is None:
+        return {"result": False}
+    else:    
+        pwdcheck = bcrypt.checkpw(
+            old_pwd.encode(),
+            hashed_pwd[1].encode()
+        )
+
+    if pwdcheck:
+        #IDがかぶっていないかチェック
+        admincursor.execute(
+            "SELECT * FROM admin_user WHERE id = ?",
+            (new_id,)
+        )
+
+        if admincursor.fetchone() != None:
+            return {"result": 1}
+        else:
+            if(
+                new_id.isascii() and
+                len(new_id) > 7
+            ):
+                admincursor.execute("""
+                UPDATE admin_user
+                SET id = ?
+                WHERE id = ?
+                """, (new_id, old_id))
+                admindb.commit()
+                return {"result": 3}
+            else:
+                return {"result": 2}
+    else:
+        return {"result": 0}
+
+@app.post("/admin/edit/pwd")
+async def Edit(
+    request: Request,
+    old_id: str = Form(...),
+    old_pwd: str = Form(...),
+    new_pwd: str= Form(...)
+):
+    #admin_user.dbからチェック
+    admincursor.execute(
+        "SELECT * FROM admin_user WHERE id = ?",
+        (old_id,)
+    )
+    
+    #入力情報と照合
+    hashed_pwd = admincursor.fetchone()
+    if hashed_pwd is None:
+        return {"result": False}
+    else:    
+        pwdcheck = bcrypt.checkpw(
+            old_pwd.encode(),
+            hashed_pwd[1].encode()
+        )
+
+    if pwdcheck:
+        if(
+            new_pwd.isascii() and
+            len(new_pwd) > 7 and
+            any(i.isalpha() for i in new_pwd) and
+            any(i.isdigit() for i in new_pwd)
+        ):
+            new_hashed_pwd = bcrypt.hashpw(
+                new_pwd.encode(),
+                bcrypt.gensalt()
+            ).decode()
+            admincursor.execute("""
+            UPDATE admin_user
+            SET pwd = ?
+            WHERE id = ?
+            """, (new_hashed_pwd, old_id))
+            admindb.commit()
+
+            return {"result": 2}
+        else:
+            return {"result": 1}
+    else:
+        return {"result": 0}
