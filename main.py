@@ -41,17 +41,17 @@ studycursor.execute("""
 studydb.commit()
 
 
-userdb = sqlite3.connect("database/user.db", check_same_thread=False)
-usercursor = userdb.cursor()
+studentdb = sqlite3.connect("database/user.db", check_same_thread=False)
+studentcursor = studentdb.cursor()
 
-usercursor.execute("""
+studentcursor.execute("""
 CREATE TABLE IF NOT EXISTS user (
     id TEXT NOT NULL,
     pwd TEXT NOT NULL,
     school TEXT NOT NULL
 )
 """)
-userdb.commit()
+studentdb.commit()
 
 
 admindb = sqlite3.connect("database/admin_user.db", check_same_thread=False)
@@ -94,25 +94,42 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
                 request.session["user_login"] = False
                 print("userログアウト")
 
-        #loginしていない場合はログインページにリダイレクト
-        if(
-            request.url.path.startswith("/admin") and
-            request.url.path != "/admin/login" and
-            request.url.path != "/admin/registration" and
-            request.session.get("admin_login") != True
+        # ログインなしでもアクセスできるページを定義
+        public_paths = [
+            "/login",
+            "/registration",
+            "/session",
+            "/logout"
+        ]
+
+        # 静的ファイルなどはそのまま通す
+        if (
+            request.url.path.startswith("/static") or
+            request.url.path.startswith("/uploads")
         ):
-            return RedirectResponse("/admin/login", status_code = 303)
-        elif(
-                (
-                request.url.path.startswith("/addform") or
-                request.url.path.startswith("/studylist")
-                ) and
-            request.session.get("user_login") != True
-        ):
-            return RedirectResponse("/login", status_code = 303)
-        
-        response = await call_next(request)
-        return response
+            return await call_next(request)
+
+        # public_paths は誰でもアクセス可能
+        if request.url.path in public_paths:
+            return await call_next(request)
+
+        # 管理者ログイン済みなら admin 配下のみ許可
+        if request.session.get("admin_login") == True:
+            if request.url.path.startswith("/admin"):
+                return await call_next(request)
+            else:
+                return RedirectResponse("/admin", status_code=303)
+
+        # 一般ユーザーログイン済みなら admin 配下以外を許可
+        if request.session.get("user_login") == True:
+            if not request.url.path.startswith("/admin"):
+                return await call_next(request)
+            else:
+                return RedirectResponse("/login", status_code=303)
+
+        # 未ログインはログインページへ
+        return RedirectResponse("/login", status_code=303)
+
 app.add_middleware(LoginCheckMiddleware)
 app.add_middleware(
     SessionMiddleware,
@@ -206,9 +223,7 @@ async def Registration(request: Request):
 
 @app.get("/logout")
 async def Logout(request: Request):
-    del request.session["user_login"]
-    del request.session["user_id"]
-    del request.session["user_time"]
+    request.session.clear()
     return templates.TemplateResponse(
         request = request,
         name = "logout.html"
@@ -218,13 +233,13 @@ async def Logout(request: Request):
 async def Mypage(request: Request):
     user_id = request.session.get("user_id")
 
-    usercursor.execute("""
+    studentcursor.execute("""
     SELECT *
     FROM user
     WHERE id = ?
     """, (user_id,))
 
-    user_school = usercursor.fetchone()[2]
+    user_school = studentcursor.fetchone()[2]
 
     return templates.TemplateResponse(
         request = request,
@@ -315,15 +330,12 @@ async def Registration(request: Request):
     )
 
 @app.get("/admin/studylist", response_class = HTMLResponse)
-async def StudyList(request: Request):    
+async def StudyList(request: Request):
     studycursor.execute("SELECT * FROM study")
     studies = studycursor.fetchall()
 
     #studiesのうち、admin_userのschoolと一致するものだけを抽出
     admin_id = request.session.get("admin_id")
-    print(studies)
-    for i in studies:
-        print(i[5])
     
     return templates.TemplateResponse(
         request = request,
@@ -334,16 +346,6 @@ async def StudyList(request: Request):
             "admin_login": request.session.get("admin_login"),
             "admin_id": admin_id
         }
-    )
-
-@app.get("/admin/logout")
-async def Logout(request: Request):
-    del request.session["admin_login"]
-    del request.session["admin_id"]
-    del request.session["admin_time"]
-    return templates.TemplateResponse(
-        request = request,
-        name = "admin/logout.html"
     )
 
 #仮 request.sessionをfalseにする
@@ -362,32 +364,59 @@ async def Session(request: Request):
 @app.post("/login")
 async def Login(
     request: Request,
+    type: str = Form(...),
     id: str = Form(...),
     pwd: str = Form(...)
 ):
-    #user.dbからチェック
-    usercursor.execute(
-        "SELECT * FROM user WHERE id = ?",
-        (id,)
-    )
-    
-    #入力情報と照合
-    hashed_pwd = usercursor.fetchone()
-    if hashed_pwd is None:
-        return {"result": False}
-    else:    
-        pwdcheck = bcrypt.checkpw(
-            pwd.encode(),
-            hashed_pwd[1].encode()
+    if type == "student":
+        #user.dbからチェック
+        studentcursor.execute(
+            "SELECT * FROM user WHERE id = ?",
+            (id,)
         )
+        
+        #入力情報と照合
+        hashed_pwd = studentcursor.fetchone()
+        if hashed_pwd is None:
+            return {"result": False}
+        else:    
+            pwdcheck = bcrypt.checkpw(
+                pwd.encode(),
+                hashed_pwd[1].encode()
+            )
 
-    if pwdcheck:
-        request.session["user_login"] = True
-        request.session["user_id"] = id
-        request.session["user_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        return {"result": True}
-    else:
-        return {"result": False}
+        if pwdcheck:
+            request.session["user_login"] = True
+            request.session["user_id"] = id
+            request.session["user_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            return {"result": True}
+        else:
+            return {"result": False}
+    
+    elif type == "teacher":
+        #admin_user.dbからチェック
+        admincursor.execute(
+            "SELECT * FROM admin_user WHERE id = ?",
+            (id,)
+        )
+        
+        #入力情報と照合
+        hashed_pwd = admincursor.fetchone()
+        if hashed_pwd is None:
+            return {"result": False}
+        else:    
+            pwdcheck = bcrypt.checkpw(
+                pwd.encode(),
+                hashed_pwd[1].encode()
+            )
+
+        if pwdcheck:
+            request.session["admin_login"] = True
+            request.session["admin_id"] = id
+            request.session["admin_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            return {"result": True}
+        else:
+            return {"result": False}
 
 @app.post("/registration")
 async def Registration(
@@ -407,12 +436,12 @@ async def Registration(
         school != "notselect"
         ):
         #IDがかぶっていないかチェック
-        usercursor.execute(
+        studentcursor.execute(
             "SELECT * FROM user WHERE id = ?",
             (id,)
         )
 
-        if usercursor.fetchone() != None:
+        if studentcursor.fetchone() != None:
             return {"result": 2}
         else: 
             #dbにIDとパスワードに追加
@@ -420,14 +449,14 @@ async def Registration(
                 pwd.encode(),
                 bcrypt.gensalt()
             ).decode()
-            usercursor.execute(
+            studentcursor.execute(
                 """
                 INSERT INTO user (id, pwd, school)
                 VALUES (?, ?, ?)
                 """,
                 (id, hashed_pwd, school)
             )
-            userdb.commit()
+            studentdb.commit()
             
             print("user.dbに情報を追加")
 
@@ -472,13 +501,13 @@ async def Edit(
     new_id: str= Form(...)
 ):
     #user.dbからチェック
-    usercursor.execute(
+    studentcursor.execute(
         "SELECT * FROM user WHERE id = ?",
         (old_id,)
     )
     
     #入力情報と照合
-    hashed_pwd = usercursor.fetchone()
+    hashed_pwd = studentcursor.fetchone()
     if hashed_pwd is None:
         return {"result": False}
     else:    
@@ -489,24 +518,24 @@ async def Edit(
 
     if pwdcheck:
         #IDがかぶっていないかチェック
-        usercursor.execute(
+        studentcursor.execute(
             "SELECT * FROM user WHERE id = ?",
             (new_id,)
         )
 
-        if usercursor.fetchone() != None:
+        if studentcursor.fetchone() != None:
             return {"result": 1}
         else:
             if(
                 new_id.isascii() and
                 len(new_id) > 7
             ):
-                usercursor.execute("""
+                studentcursor.execute("""
                 UPDATE user
                 SET id = ?
                 WHERE id = ?
                 """, (new_id, old_id))
-                userdb.commit()
+                studentdb.commit()
                 return {"result": 3}
             else:
                 return {"result": 2}
@@ -521,13 +550,13 @@ async def Edit(
     new_pwd: str= Form(...)
 ):
     #user.dbからチェック
-    usercursor.execute(
+    studentcursor.execute(
         "SELECT * FROM user WHERE id = ?",
         (old_id,)
     )
     
     #入力情報と照合
-    hashed_pwd = usercursor.fetchone()
+    hashed_pwd = studentcursor.fetchone()
     if hashed_pwd is None:
         return {"result": False}
     else:    
@@ -547,12 +576,12 @@ async def Edit(
                 new_pwd.encode(),
                 bcrypt.gensalt()
             ).decode()
-            usercursor.execute("""
+            studentcursor.execute("""
             UPDATE user
             SET pwd = ?
             WHERE id = ?
             """, (new_hashed_pwd, old_id))
-            userdb.commit()
+            studentdb.commit()
 
             return {"result": 2}
         else:

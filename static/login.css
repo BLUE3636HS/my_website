@@ -2,18 +2,17 @@
    ログインページ専用CSS
 ========================= */
 
-
 /* メイン領域 */
 
 main {
 
-    max-width: 450px;
+    max-width: 600px;
 
     margin: 60px auto;
 
     background-color: white;
 
-    padding: 40px;
+    padding: 45px;
 
     border-radius: 15px;
 
@@ -22,35 +21,137 @@ main {
 
 }
 
+/* =========================
+   ロゴ画像
+========================= */
 
+#login_logo {
 
-/* タイトル */
+    display: block;
 
-main h1 {
+    width: 80%;
+    max-width: 350px;
 
-    text-align: center;
+    height: auto;
 
-    color: #1f4e79;
+    margin: 0 auto 35px;
 
-    font-size: 30px;
+    object-fit: contain;
 
-    margin-bottom: 35px;
+}
+
+/* =========================
+   タブ
+========================= */
+
+#tab {
+
+    display: flex;
+
+    margin-bottom: 30px;
+
+    border-bottom: 2px solid #ddd;
 
 }
 
 
 
-/* ラベル */
+/* タブボタン */
 
-main label {
+#tab button {
 
-    display: block;
+    flex: 1;
+
+    padding: 15px;
+
+    border: none;
+
+    background: none;
 
     font-size: 16px;
 
     font-weight: bold;
 
-    color: #333;
+    color: #666;
+
+    cursor: pointer;
+
+    border-bottom: 4px solid transparent;
+
+    transition: 0.25s;
+
+}
+
+
+
+/* 生徒タブ */
+
+#student_form_btn:hover,
+#student_form_btn.active {
+
+    color: #1f4e79;
+
+    border-bottom: 4px solid #1f4e79;
+
+}
+
+
+
+/* 先生タブ */
+
+#teacher_form_btn:hover,
+#teacher_form_btn.active {
+
+    color: #b85c38;
+
+    border-bottom: 4px solid #b85c38;
+
+}
+
+
+
+/* =========================
+   共通フォーム
+========================= */
+
+#student_form,
+#teacher_form {
+
+    padding: 25px;
+
+    border: 1px solid #ddd;
+
+    border-radius: 10px;
+
+    background-color: #fafafa;
+
+}
+
+
+
+/* =========================
+   生徒用
+========================= */
+
+#student_form h2 {
+
+    text-align: center;
+
+    color: #1f4e79;
+
+    font-size: 28px;
+
+    margin-bottom: 30px;
+
+}
+
+
+
+#student_form label {
+
+    display: block;
+
+    font-weight: bold;
 
     margin-bottom: 8px;
 
@@ -58,9 +159,7 @@ main label {
 
 
 
-/* 入力欄 */
-
-main input {
+#student_form input {
 
     width: 100%;
 
@@ -68,21 +167,19 @@ main input {
 
     font-size: 16px;
 
-    font-family: inherit;
-
     border: 1px solid #ccc;
 
     border-radius: 8px;
 
     margin-bottom: 20px;
 
+    box-sizing: border-box;
+
 }
 
 
 
-/* フォーカス時 */
-
-main input:focus {
+#student_form input:focus {
 
     outline: none;
 
@@ -95,25 +192,21 @@ main input:focus {
 
 
 
-/* ログインボタン */
-
-main button {
-
-    display: block;
+#student_login_btn {
 
     width: 100%;
 
     padding: 14px;
 
-    background-color: #1f4e79;
-
-    color: white;
-
     border: none;
 
     border-radius: 8px;
 
-    font-size: 17px;
+    background-color: #1f4e79;
+
+    color: white;
+
+    font-size: 16px;
 
     font-weight: bold;
 
@@ -125,9 +218,7 @@ main button {
 
 
 
-/* ボタンホバー */
-
-main button:hover {
+#student_login_btn:hover {
 
     background-color: #163a5c;
 
@@ -135,21 +226,88 @@ main button:hover {
 
 
 
-/* 新規会員登録リンク */
+/* =========================
+   先生用
+========================= */
 
-main > a {
-
-    display: block;
+#teacher_form h2 {
 
     text-align: center;
 
-    margin-top: 25px;
+    color: #b85c38;
 
-    color: #1f4e79;
+    font-size: 28px;
+
+    margin-bottom: 30px;
+
+}
+
+
+
+#teacher_form label {
+
+    display: block;
 
     font-weight: bold;
 
-    text-decoration: none;
+    margin-bottom: 8px;
+
+}
+
+
+
+#teacher_form input {
+
+    width: 100%;
+
+    padding: 12px;
+
+    font-size: 16px;
+
+    border: 1px solid #ccc;
+
+    border-radius: 8px;
+
+    margin-bottom: 20px;
+
+    box-sizing: border-box;
+
+}
+
+
+
+#teacher_form input:focus {
+
+    outline: none;
+
+    border-color: #b85c38;
+
+    box-shadow:
+        0 0 5px rgba(184,92,56,0.3);
+
+}
+
+
+
+#teacher_login_btn {
+
+    width: 100%;
+
+    padding: 14px;
+
+    border: none;
+
+    border-radius: 8px;
+
+    background-color: #b85c38;
+
+    color: white;
+
+    font-size: 16px;
+
+    font-weight: bold;
+
+    cursor: pointer;
 
     transition: 0.3s;
 
@@ -157,10 +315,18 @@ main > a {
 
 
 
-/* リンクホバー */
+#teacher_login_btn:hover {
 
-main > a:hover {
+    background-color: #94492c;
 
-    text-decoration: underline;
+}
+
+
+
+/* 初期状態では先生用を非表示 */
+
+#teacher_form {
+
+    display: none;
 
 }

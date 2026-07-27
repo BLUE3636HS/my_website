@@ -19,13 +19,8 @@
                 </a>
             </div>
             <div class="header_right">
-                {%if user_login != true%}
-                <a href="/login">ログイン</a>
-                <a href="/registration">会員登録</a>
-                {%else%}
                 <a href="/mypage">{{user_id}}さん マイページ</a>
                 <a href="/logout">ログアウト</a>
-                {%endif%}
             </div>
         </header>
         <main>
