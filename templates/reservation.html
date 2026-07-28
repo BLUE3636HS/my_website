@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}TEKNE工作室予約{% endblock %}
+{% block css %}
+    <link rel="stylesheet" href="/static/reservation.css">
+{% endblock %}
+{% block content %}
+    <h1>TEKNE工作室予約</h1>
+    <h2>下のカレンダーから日付を選択してください</h2><br>
+    <button id="dec_month_btn"><</button>
+    <span id="year"></span>
+    <span>年</span>
+    <span id="month"></span>
+    <span>月</span>
+    <button id="inc_month_btn">></button>
+    <div id="calendar"></div>
+{% endblock %}
+{% block script %}
+    <script src="/static/reservation.js"></script>
+{% endblock %}

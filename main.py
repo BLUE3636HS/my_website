@@ -172,6 +172,33 @@ async def pdf(id: int):
         media_type = "application/pdf"
     )
 
+@app.get("/reservation", response_class = HTMLResponse)
+async def Reservation(request: Request):
+    return templates.TemplateResponse(
+        request = request,
+        name = "reservation.html",
+        context = {
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
+    )
+
+@app.get("/reservation/{year}/{month}/{day}", response_class = HTMLResponse)
+async def Reservation(request: Request, year: int, month: int, day: int):
+    return templates.TemplateResponse(
+        request = request,
+        name = "reservation/date.html",
+        context = {
+            "request": request,
+            "year": year,
+            "month": month,
+            "day": day,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
+    )
+
 @app.get("/login")
 async def Login(request: Request):
     return templates.TemplateResponse(
