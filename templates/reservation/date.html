@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}TEKNE工作室予約-時間指定{% endblock %}
+{% block css %}
+    <link rel="stylesheet" href="/static/reservation/date.css">
+{% endblock %}
+{% block content %}
+    <h1>TEKNE工作室予約</h1>
+    <h2>{{year}}年{{month}}月{{day}}日</h2>
+    <label for="time">時間を選択してください</label>
+    <input type="time" id="time" min="09:00" max="21:00" required>
+{% endblock %}
+{% block script %}
+{% endblock %}
