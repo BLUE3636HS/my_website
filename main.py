@@ -37,6 +37,13 @@ cursor.execute("""
         school TEXT NOT NULL
     )
 """)
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS reservation (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userid TEXT NOT NULL,
+        time TEXT NOT NULL
+    )
+""")
 conn.commit()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
