@@ -1,26 +1,56 @@
-{% extends "base.html" %}
-{% block title %}会員登録ページ{% endblock %}
-{% block css %}
-    <link rel="stylesheet" href="/static/registration.css">
-{% endblock %}
-{% block content %}
-    <h1>会員登録</h1><br>
-    <label for="id">ID</label><br>
-    <input type="text" id="id"><br>
-    <em>8文字以上の半角英数字、記号も可</em><br><br>
-    <label for="pwd">パスワード</label><br>
-    <input type="password" id="pwd"><br>
-    <em>8文字以上の半角英数字どちらむ含む、記号も可</em><br><br>
-    <label for="pwd">学校</label><br>
-    <select id="school">
-        <option value="notselect" selected disabled>学校を選択してください</option>
-        {% for school in schools %}
-        <option value="{{ school }}">{{ school }}</option>
-        {% endfor %}
-    </select><br><br>
-    <button type="button" id="reg_btn">登録</button><br><br>
-    <a href="/login">ログインページに戻る</a>
-{% endblock %}
-{% block script %}
-    <script src="/static/registration.js"></script>
-{% endblock %}
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>
+            新規会員登録ページ
+        </title>
+        <meta charset="UTF-8">
+        <link rel="stylesheet" href="/static/base.css">
+        <link rel="icon" href="/static/icon.ico">
+        <link rel="stylesheet" href="/static/registration.css">
+    </head>
+    <body>
+        <main>
+            <div id="tab">
+                <button id="student_form_btn" class="active">生徒用</button>
+                <button id="teacher_form_btn">先生用</button>
+            </div><br>
+            <div id="student_form">
+                <h2>生徒用会員登録</h2><br>
+                <label for="student_id">ID</label><br>
+                <input type="text" id="student_id"><br>
+                <em>8文字以上の半角英数字、記号も可</em><br><br>
+                <label for="student_pwd">パスワード</label><br>
+                <input type="password" id="student_pwd"><br>
+                <em>8文字以上の半角英数字どちらむ含む、記号も可</em><br><br>
+                <label for="student_school">学校</label><br>
+                <select id="student_school">
+                    <option value="notselect" selected disabled>学校を選択してください</option>
+                    {% for school in schools %}
+                    <option value="{{ school }}">{{ school }}</option>
+                    {% endfor %}
+                </select><br><br>
+                <button type="button" id="student_reg_btn">生徒登録</button><br><br>
+            </div>
+            <div id="teacher_form">
+                <h2>先生用会員登録</h2><br>
+                <label for="teacher_id">ID</label><br>
+                <input type="text" id="teacher_id"><br>
+                <em>8文字以上の半角英数字、記号も可</em><br><br>
+                <label for="teacher_pwd">パスワード</label><br>
+                <input type="password" id="teacher_pwd"><br>
+                <em>8文字以上の半角英数字どちらむ含む、記号も可</em><br><br>
+                <label for="teacher_school">学校</label><br>
+                <select id="teacher_school">
+                    <option value="notselect" selected disabled>学校を選択してください</option>
+                    {% for school in schools %}
+                    <option value="{{ school }}">{{ school }}</option>
+                    {% endfor %}
+                </select><br><br>
+                <button type="button" id="teacher_reg_btn">先生登録</button><br><br>
+            </div>
+            <a href="/login">ログインに戻る</a>
+        </main>
+        <script src="/static/registration.js"></script>
+    </body>
+</html>

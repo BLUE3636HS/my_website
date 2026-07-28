@@ -1,7 +1,7 @@
-{% extends "admin/base.html" %}
+{% extends "teacher/base.html" %}
 {% block title %}研究成果{% endblock %}
 {% block css %}
-    <link rel="stylesheet" href="/static/admin/studylist.css">
+    <link rel="stylesheet" href="/static/teacher/studylist.css">
 {% endblock %}
 {% block content %}
     <h1>研究成果一覧</h1>
@@ -19,7 +19,7 @@
         </tr>
         {% endfor %}
     </table><br>
-    <a href="/admin">管理者ページへ戻る</a>
+    <a href="/teacher">管理者ページへ戻る</a>
 {% endblock %}
 {% block script %}
 {% endblock %}

@@ -37,7 +37,7 @@ id_edit_btn.addEventListener("click", () => {
     form_data.append("old_pwd", old_pwd.value);
     form_data.append("new_id", new_id.value);
 
-    fetch("/admin/edit/id", {
+    fetch("/teacher/edit/id", {
         method: "POST",
         body: form_data
     })
@@ -66,7 +66,7 @@ pwd_edit_btn.addEventListener("click", () => {
     form_data.append("old_pwd", old_pwd.value);
     form_data.append("new_pwd", new_pwd.value);
 
-    fetch("/admin/edit/pwd", {
+    fetch("/teacher/edit/pwd", {
         method: "POST",
         body: form_data
     })

@@ -3,22 +3,13 @@
 ========================= */
 
 /* メイン領域 */
-
 main {
-
     max-width: 600px;
-
     margin: 60px auto;
-
-    background-color: white;
-
+    background-color: #fff;
     padding: 45px;
-
     border-radius: 15px;
-
-    box-shadow:
-        0 5px 20px rgba(0,0,0,0.1);
-
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
 }
 
 /* =========================
@@ -26,18 +17,12 @@ main {
 ========================= */
 
 #login_logo {
-
     display: block;
-
     width: 80%;
     max-width: 350px;
-
     height: auto;
-
     margin: 0 auto 35px;
-
     object-fit: contain;
-
 }
 
 /* =========================
@@ -45,70 +30,39 @@ main {
 ========================= */
 
 #tab {
-
     display: flex;
-
-    margin-bottom: 30px;
-
     border-bottom: 2px solid #ddd;
-
+    margin-bottom: 30px;
 }
-
-
-
-/* タブボタン */
 
 #tab button {
-
     flex: 1;
-
     padding: 15px;
-
     border: none;
-
     background: none;
-
     font-size: 16px;
-
     font-weight: bold;
-
     color: #666;
-
     cursor: pointer;
-
     border-bottom: 4px solid transparent;
-
-    transition: 0.25s;
-
+    transition: 0.3s;
 }
-
-
 
 /* 生徒タブ */
 
 #student_form_btn:hover,
 #student_form_btn.active {
-
     color: #1f4e79;
-
-    border-bottom: 4px solid #1f4e79;
-
+    border-bottom-color: #1f4e79;
 }
-
-
 
 /* 先生タブ */
 
 #teacher_form_btn:hover,
 #teacher_form_btn.active {
-
     color: #b85c38;
-
-    border-bottom: 4px solid #b85c38;
-
+    border-bottom-color: #b85c38;
 }
-
-
 
 /* =========================
    共通フォーム
@@ -116,217 +70,130 @@ main {
 
 #student_form,
 #teacher_form {
-
-    padding: 25px;
-
+    padding: 30px;
     border: 1px solid #ddd;
-
     border-radius: 10px;
-
     background-color: #fafafa;
-
 }
 
-
-
-/* =========================
-   生徒用
-========================= */
+#student_form h2,
+#teacher_form h2 {
+    text-align: center;
+    font-size: 28px;
+    margin-bottom: 30px;
+}
 
 #student_form h2 {
-
-    text-align: center;
-
     color: #1f4e79;
-
-    font-size: 28px;
-
-    margin-bottom: 30px;
-
 }
-
-
-
-#student_form label {
-
-    display: block;
-
-    font-weight: bold;
-
-    margin-bottom: 8px;
-
-}
-
-
-
-#student_form input {
-
-    width: 100%;
-
-    padding: 12px;
-
-    font-size: 16px;
-
-    border: 1px solid #ccc;
-
-    border-radius: 8px;
-
-    margin-bottom: 20px;
-
-    box-sizing: border-box;
-
-}
-
-
-
-#student_form input:focus {
-
-    outline: none;
-
-    border-color: #1f4e79;
-
-    box-shadow:
-        0 0 5px rgba(31,78,121,0.3);
-
-}
-
-
-
-#student_login_btn {
-
-    width: 100%;
-
-    padding: 14px;
-
-    border: none;
-
-    border-radius: 8px;
-
-    background-color: #1f4e79;
-
-    color: white;
-
-    font-size: 16px;
-
-    font-weight: bold;
-
-    cursor: pointer;
-
-    transition: 0.3s;
-
-}
-
-
-
-#student_login_btn:hover {
-
-    background-color: #163a5c;
-
-}
-
-
-
-/* =========================
-   先生用
-========================= */
 
 #teacher_form h2 {
-
-    text-align: center;
-
     color: #b85c38;
-
-    font-size: 28px;
-
-    margin-bottom: 30px;
-
 }
 
-
-
+#student_form label,
 #teacher_form label {
-
     display: block;
-
     font-weight: bold;
-
     margin-bottom: 8px;
-
 }
 
-
-
+#student_form input,
 #teacher_form input {
-
     width: 100%;
-
     padding: 12px;
-
-    font-size: 16px;
-
-    border: 1px solid #ccc;
-
-    border-radius: 8px;
-
     margin-bottom: 20px;
-
     box-sizing: border-box;
-
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 16px;
 }
 
+/* フォーカス */
 
+#student_form input:focus {
+    outline: none;
+    border-color: #1f4e79;
+    box-shadow: 0 0 5px rgba(31, 78, 121, 0.3);
+}
 
 #teacher_form input:focus {
-
     outline: none;
-
     border-color: #b85c38;
-
-    box-shadow:
-        0 0 5px rgba(184,92,56,0.3);
-
+    box-shadow: 0 0 5px rgba(184, 92, 56, 0.3);
 }
 
+/* =========================
+   ログインボタン
+========================= */
 
+#student_login_btn,
+#teacher_login_btn {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+#student_login_btn {
+    background-color: #1f4e79;
+}
+
+#student_login_btn:hover {
+    background-color: #163a5c;
+}
 
 #teacher_login_btn {
-
-    width: 100%;
-
-    padding: 14px;
-
-    border: none;
-
-    border-radius: 8px;
-
     background-color: #b85c38;
-
-    color: white;
-
-    font-size: 16px;
-
-    font-weight: bold;
-
-    cursor: pointer;
-
-    transition: 0.3s;
-
 }
-
-
 
 #teacher_login_btn:hover {
-
     background-color: #94492c;
-
 }
 
+/* =========================
+   新規登録ボタン
+========================= */
 
+main > a {
+    display: block;
+    width: 100%;
+    margin-top: 25px;
+    padding: 14px;
+    box-sizing: border-box;
 
-/* 初期状態では先生用を非表示 */
+    background-color: #555555;
+    color: #ffffff;
+
+    text-align: center;
+    text-decoration: none;
+    font-size: 16px;
+    font-weight: bold;
+
+    border: 1px solid #444444;
+    border-radius: 8px;
+
+    transition: 0.3s;
+}
+
+main > a:hover {
+    background-color: #444444;
+    border-color: #333333;
+}
+
+main > a:active {
+    background-color: #333333;
+}
+
+/* =========================
+   初期状態
+========================= */
 
 #teacher_form {
-
     display: none;
-
 }

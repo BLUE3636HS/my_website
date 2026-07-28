@@ -1,14 +1,14 @@
-{% extends "admin/base.html" %}
+{% extends "teacher/base.html" %}
 {% block title %}管理者ページ{% endblock %}
 {% block css %}
-    <link rel="stylesheet" href="/static/admin.css">
+    <link rel="stylesheet" href="/static/teacher.css">
 {% endblock %}
 {% block content %}
     <h1>管理者ページ</h1><br>
     <table border="1">
         <tr>
             <th>id</th>
-            <td>{{admin_id}}</td>
+            <td>{{teacher_id}}</td>
         </tr>
         <tr>
             <th>pwd</th>
@@ -16,11 +16,11 @@
         </tr>
         <tr>
             <th>在籍校</th>
-            <td>{{admin_school}}</td>
+            <td>{{teacher_school}}</td>
         </tr>
     </table><br><br>
-    <a href="/admin/edit">プロフィール情報編集</a><br>
-    <a href="/admin/studylist">自校の提出物を確認</a><br>
+    <a href="/teacher/edit">プロフィール情報編集</a><br>
+    <a href="/teacher/studylist">自校の提出物を確認</a><br>
 {% endblock %}
 {% block script %}
 {% endblock %}

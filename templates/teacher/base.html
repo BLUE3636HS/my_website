@@ -6,7 +6,7 @@
             {% endblock %}
         </title>
         <meta charset="UTF-8">
-        <link rel="stylesheet" href="/static/admin/base.css">
+        <link rel="stylesheet" href="/static/teacher/base.css">
         <link rel="icon" href="/static/icon.ico">
         {% block css %}
         {% endblock %}
@@ -14,16 +14,16 @@
     <body>
         <header>
             <div class="header_left">
-                <a href="/admin">
+                <a href="/teacher">
                     <img src="/static/top.png" alt="TEKNE工作室">
                 </a>
             </div>
             <div class="header_right">
-                {%if admin_login != true%}
-                <a href="/admin/login">ログイン</a>
-                <a href="/admin/registration">会員登録</a>
+                {%if teacher_login != true%}
+                <a href="/teacher/login">ログイン</a>
+                <a href="/teacher/registration">会員登録</a>
                 {%else%}
-                <a href="/admin">{{admin_id}}さん 管理者ページ</a>
+                <a href="/teacher">{{teacher_id}}さん 管理者ページ</a>
                 <a href="/logout">ログアウト</a>
                 {%endif%}
             </div>
