@@ -1,0 +1,316 @@
+/* =========================
+   予約時間指定ページ
+========================= */
+
+/* メイン領域 */
+
+main {
+    max-width: 650px;
+
+    margin: 50px auto;
+
+    padding: 40px;
+
+    background-color: white;
+
+    border-radius: 15px;
+
+    box-shadow:
+        0 5px 20px rgba(0, 0, 0, 0.1);
+
+    text-align: center;
+
+    box-sizing: border-box;
+}
+
+
+/* =========================
+   タイトル
+========================= */
+
+h1 {
+    margin-bottom: 15px;
+
+    font-size: 32px;
+}
+
+h2 {
+    margin-bottom: 35px;
+
+    font-size: 22px;
+
+    font-weight: normal;
+
+    color: #555;
+}
+
+
+/* =========================
+   ラベル
+========================= */
+
+label {
+    display: inline-block;
+
+    margin-bottom: 8px;
+
+    font-size: 17px;
+
+    font-weight: bold;
+}
+
+
+/* =========================
+   時間選択
+========================= */
+
+#time {
+    width: 250px;
+
+    padding: 12px 15px;
+
+    margin-bottom: 12px;
+
+    border: 1px solid #ccc;
+
+    border-radius: 8px;
+
+    background-color: white;
+
+    font-size: 16px;
+
+    cursor: pointer;
+
+    box-sizing: border-box;
+}
+
+#time:focus {
+    outline: none;
+
+    border-color: #555;
+
+    box-shadow:
+        0 0 5px rgba(0, 0, 0, 0.2);
+}
+
+
+/* =========================
+   注意事項
+========================= */
+
+main > span:not(#day) {
+    display: inline-block;
+
+    margin-top: 4px;
+
+    color: #666;
+
+    font-size: 13px;
+
+    line-height: 1.6;
+}
+
+
+/* =========================
+   機材リスト
+========================= */
+
+#equipment_list {
+    width: 100%;
+
+    max-width: 500px;
+
+    max-height: 220px;
+
+    margin: 10px auto 0;
+
+    padding: 15px;
+
+    box-sizing: border-box;
+
+    overflow-y: auto;
+
+    text-align: left;
+
+    border: 1px solid #ccc;
+
+    border-radius: 8px;
+
+    background-color: #fafafa;
+}
+
+
+/* =========================
+   機材チェックボックス
+========================= */
+
+#equipment_list .equipment {
+    width: 17px;
+
+    height: 17px;
+
+    margin-right: 8px;
+
+    vertical-align: middle;
+
+    cursor: pointer;
+}
+
+#equipment_list label {
+    font-weight: normal;
+}
+
+
+/* =========================
+   使用目的・備考
+========================= */
+
+#purpose {
+    width: 100%;
+
+    max-width: 500px;
+
+    min-height: 120px;
+
+    margin-top: 5px;
+
+    padding: 12px;
+
+    box-sizing: border-box;
+
+    border: 1px solid #ccc;
+
+    border-radius: 8px;
+
+    background-color: white;
+
+    font-size: 16px;
+
+    line-height: 1.5;
+
+    resize: vertical;
+}
+
+#purpose:focus {
+    outline: none;
+
+    border-color: #555;
+
+    box-shadow:
+        0 0 5px rgba(0, 0, 0, 0.2);
+}
+
+
+/* =========================
+   予約ボタン
+========================= */
+
+#btn {
+    width: 250px;
+
+    padding: 14px;
+
+    border: none;
+
+    border-radius: 8px;
+
+    background-color: #444;
+
+    color: white;
+
+    font-size: 17px;
+
+    font-weight: bold;
+
+    cursor: pointer;
+
+    transition: 0.2s;
+}
+
+#btn:hover {
+    background-color: #222;
+}
+
+#btn:active {
+    transform: scale(0.98);
+}
+
+
+/* =========================
+   スクロールバー
+========================= */
+
+#equipment_list::-webkit-scrollbar {
+    width: 8px;
+}
+
+#equipment_list::-webkit-scrollbar-track {
+    background-color: #eeeeee;
+
+    border-radius: 8px;
+}
+
+#equipment_list::-webkit-scrollbar-thumb {
+    background-color: #999;
+
+    border-radius: 8px;
+}
+
+#equipment_list::-webkit-scrollbar-thumb:hover {
+    background-color: #777;
+}
+
+
+/* =========================
+   スマホ対応
+========================= */
+
+@media (max-width: 600px) {
+
+    main {
+        margin: 20px 10px;
+
+        padding: 30px 20px;
+    }
+
+
+    h1 {
+        font-size: 26px;
+    }
+
+
+    h2 {
+        font-size: 19px;
+
+        margin-bottom: 30px;
+    }
+
+
+    #time {
+        width: 100%;
+
+        max-width: 300px;
+    }
+
+
+    main > span:not(#day) {
+        font-size: 12px;
+    }
+
+
+    #equipment_list {
+        max-height: 200px;
+    }
+
+
+    #purpose {
+        min-height: 100px;
+    }
+
+
+    #btn {
+        width: 100%;
+
+        max-width: 300px;
+    }
+}

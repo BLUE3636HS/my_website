@@ -4,10 +4,30 @@
     <link rel="stylesheet" href="/static/reservation/date.css">
 {% endblock %}
 {% block content %}
+    <!-- jsに送るため値を保持する非表示のspan -->
+    <span id="day" hidden>{{year}}-{{ month }}-{{ day }}</span>
+
     <h1>TEKNE工作室予約</h1>
     <h2>{{year}}年{{month}}月{{day}}日</h2>
-    <label for="time">時間を選択してください</label>
-    <input type="time" id="time" min="09:00" max="21:00" required>
+    <label for="time">開始時間を選択</label><br>
+    <select id="time">
+        <option value="" disabled selected>選択してください</option>
+        {% for time in times %}
+            <option value="{{ time }}">{{ time }}</option>
+        {% endfor %}
+    </select><br>
+    <span>※予約は基本30分単位となります。延長が必要な場合は備考欄にご記入ください。</span><br>
+    <span>※すでに予約されている時間は選択肢から除外されています。</span><br><br>
+    <label for="equipment">機材を選択</label><br>
+    <div id="equipment_list">
+        {% for equipment in equipments %}
+            <input type="checkbox" class="equipment" value = "{{ equipment }}">{{ equipment }}<br>
+        {% endfor %}
+    </div><br>
+    <label for="purpose">使用目的、備考欄</label><br>
+    <textarea id="purpose"></textarea><br><br>
+    <button type="butto" id="btn">予約する</button><br><br>
 {% endblock %}
 {% block script %}
+    <script src="/static/reservation/date.js"></script>
 {% endblock %}

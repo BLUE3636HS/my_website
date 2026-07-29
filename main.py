@@ -41,7 +41,10 @@ cursor.execute("""
     CREATE TABLE IF NOT EXISTS reservation (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         userid TEXT NOT NULL,
-        time TEXT NOT NULL
+        day TEXT NOT NULL,
+        time TEXT NOT NULL,
+        equipment TEXT NOT NULL,
+        purpose TEXT NOT NULL
     )
 """)
 conn.commit()
@@ -186,6 +189,30 @@ async def Reservation(request: Request):
 
 @app.get("/reservation/{year}/{month}/{day}", response_class = HTMLResponse)
 async def Reservation(request: Request, year: int, month: int, day: int):
+    times = []
+    for hour in range(9, 22):
+        for minute in [0, 30]:
+            time_str = f"{hour:02d}:{minute:02d}"
+            times.append(time_str)
+
+    #timeのうち、すでに予約されている時間を除外する
+    cursor.execute(
+        """
+        SELECT time FROM reservation WHERE day = ?
+        """,
+        (f"{year}-{month}-{day}",)
+    )
+    reservated_times = [row[0] for row in cursor.fetchall()]
+    print(reservated_times)
+
+    for i in times:
+        if i in reservated_times:
+            times.remove(i)
+
+    with open("csv/equipment.csv", "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        equipments = [row[0] for row in reader]
+    
     return templates.TemplateResponse(
         request = request,
         name = "reservation/date.html",
@@ -194,6 +221,8 @@ async def Reservation(request: Request, year: int, month: int, day: int):
             "year": year,
             "month": month,
             "day": day,
+            "times": times,
+            "equipments": equipments,
             "user_login": request.session.get("user_login"),
             "user_id": request.session.get("user_id")
         }
@@ -510,6 +539,26 @@ async def Add(
         shutil.copyfileobj(pdf.file, f)
     
     print("dbに情報を追加,ファイルを保存")
+
+@app.post("/reservation/date")
+async def ReservationDate(
+    request: Request,
+    day: str = Form(...),
+    time: str = Form(...),
+    equipment: str = Form(...),
+    purpose: str = Form(...)
+):
+    # 予約情報をDBに保存
+    print(time, equipment, purpose)
+
+    cursor.execute(
+        """
+        INSERT INTO reservation (userid, day, time, equipment, purpose)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (request.session.get("user_id"), day, time, equipment, purpose)
+    )
+    conn.commit()
 
 @app.post("/mypage/edit/id")
 async def Edit(
