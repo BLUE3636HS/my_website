@@ -77,7 +77,18 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
                 request.session["user_login"] = False
                 print("userログアウト")
 
-        # ログインなしでもアクセスできるページを定義
+        #dbのreservationのうち、過去の予約を削除
+        cursor.execute(
+            """
+            DELETE FROM reservation
+            WHERE day < ?
+            """,
+            (datetime.datetime.now().strftime("%Y-%m-%d"),)
+        )
+        conn.commit()
+
+        #ログインが必要なページにアクセスした場合、ログインページにリダイレクト
+        #ログインなしでもアクセスできるページを定義
         public_paths = [
             "/login",
             "/registration",
@@ -200,15 +211,13 @@ async def Reservation(request: Request, year: int, month: int, day: int):
         """
         SELECT time FROM reservation WHERE day = ?
         """,
-        (f"{year}-{month}-{day}",)
+        (f"{year}-{month:02d}-{day:02d}",)
     )
     reservated_times = [row[0] for row in cursor.fetchall()]
-    print(reservated_times)
 
-    for i in times:
-        if i in reservated_times:
-            times.remove(i)
+    times = [x for x in times if x not in reservated_times]
 
+    #equipmentのリストをcsvから取得
     with open("csv/equipment.csv", "r", encoding="utf-8") as f:
         reader = csv.reader(f)
         equipments = [row[0] for row in reader]
@@ -219,8 +228,8 @@ async def Reservation(request: Request, year: int, month: int, day: int):
         context = {
             "request": request,
             "year": year,
-            "month": month,
-            "day": day,
+            "month": f"{month:02d}",
+            "day": f"{day:02d}",
             "times": times,
             "equipments": equipments,
             "user_login": request.session.get("user_login"),
@@ -267,13 +276,28 @@ async def Logout(request: Request):
 async def Mypage(request: Request):
     user_id = request.session.get("user_id")
 
-    cursor.execute("""
-    SELECT *
-    FROM student
-    WHERE id = ?
-    """, (user_id,))
+    cursor.execute(
+        """
+        SELECT *
+        FROM student
+        WHERE id = ?
+        """,
+        (user_id,)
+    )
 
     user_school = cursor.fetchone()[2]
+
+    #userの予約した情報を取得
+    cursor.execute(
+        """
+        SELECT *
+        FROM reservation
+        WHERE userid = ?
+        """,
+        (user_id,)
+    )
+
+    reservations = [i[2:4] for i in cursor.fetchall()]
 
     return templates.TemplateResponse(
         request = request,
@@ -282,7 +306,8 @@ async def Mypage(request: Request):
             "request": request,
             "user_login": request.session.get("user_login"),
             "user_id": user_id,
-            "user_school": user_school
+            "user_school": user_school,
+            "reservations": reservations
         }
     )
 
@@ -297,6 +322,21 @@ async def Edit(request: Request):
             "user_id": request.session.get("user_id")
         }
     )
+
+@app.get("/mypage/del_reservation/{day}_{time}")
+async def DelReservation(request: Request, day: str, time: str):
+    user_id = request.session.get("user_id")
+    cursor.execute(
+        """
+        DELETE FROM reservation
+        WHERE userid = ?
+        AND day = ?
+        AND time = ?
+        """,
+        (user_id, day, time)
+    )
+    conn.commit()
+    return RedirectResponse("/mypage", status_code=303)
 
 #teacherページ
 @app.get("/teacher")
@@ -549,8 +589,6 @@ async def ReservationDate(
     purpose: str = Form(...)
 ):
     # 予約情報をDBに保存
-    print(time, equipment, purpose)
-
     cursor.execute(
         """
         INSERT INTO reservation (userid, day, time, equipment, purpose)

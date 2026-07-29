@@ -5,6 +5,7 @@
 {% endblock %}
 {% block content %}
     <h1>マイページ</h1><br>
+    <h2>プロフィール情報</h2>
     <table border="1">
         <tr>
             <th>id</th>
@@ -19,7 +20,25 @@
             <td>{{user_school}}</td>
         </tr>
     </table><br><br>
+    <h2>TEKNE工作室 予約一覧</h2>
+    <table border="1">
+        <tr>
+            <th>予約日</th>
+            <th>予約時間</th>
+            <th>削除</th>
+        </tr>
+        {% for reservation in reservations %}
+        <tr>
+            <td>{{ reservation[0] }}</td>
+            <td>{{ reservation[1] }}</td>
+            <td>
+                <a class="del_reservation" href="mypage/del_reservation/{{reservation[0]}}_{{reservation[1]}}">X</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </table><br><br>
     <a href="/mypage/edit">プロフィール情報編集</a><br>
 {% endblock %}
 {% block script %}
+<script src="/static/mypage.js"></script>
 {% endblock %}

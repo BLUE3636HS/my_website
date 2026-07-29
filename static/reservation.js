@@ -19,7 +19,20 @@ function createCalendar() {
             html += "<td></td>";
         }
         else if(i <= len_day + first_day){
-            html += "<td><a href='/reservation/" + year.textContent + "/" + month.textContent + "/" + (i - first_day) + "' id = " + (i - first_day) + ">" + (i - first_day) + "</a></td>";
+            const month_text = String(month.textContent).padStart(2, "0");
+            const day_text = String(i - first_day).padStart(2, "0");
+
+            html += "<td><a href='/reservation/"
+                + year.textContent
+                + "/"
+                + month_text
+                + "/"
+                + day_text
+                + "' id = "
+                + (i - first_day)
+                + ">"
+                + (i - first_day)
+                + "</a></td>";
         }
         else{
             html += "<td></td>";

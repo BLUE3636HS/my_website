@@ -42,7 +42,8 @@ btn.addEventListener("click", () => {
                 body: form_data
             })
 
-            alert("予約が完了しました");
+            alert("予約が完了しました\nマイページで予約の確認ができます");
+            location.reload();
         }
     }
 });
