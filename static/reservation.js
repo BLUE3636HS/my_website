@@ -19,20 +19,33 @@ function createCalendar() {
             html += "<td></td>";
         }
         else if(i <= len_day + first_day){
+            const day = i - first_day;
             const month_text = String(month.textContent).padStart(2, "0");
-            const day_text = String(i - first_day).padStart(2, "0");
+            const day_text = String(day).padStart(2, "0");
+            const target_date = new Date(
+                Number(year.textContent),
+                Number(month.textContent) - 1,
+                day
+            );
 
-            html += "<td><a href='/reservation/"
-                + year.textContent
-                + "/"
-                + month_text
-                + "/"
-                + day_text
-                + "' id = "
-                + (i - first_day)
-                + ">"
-                + (i - first_day)
-                + "</a></td>";
+            if (target_date < today) {
+                html += "<td class='past_day'><span class='disabled_day'>"
+                    + day
+                    + "</span></td>";
+            }
+            else {
+                html += "<td><a href='/reservation/"
+                    + year.textContent
+                    + "/"
+                    + month_text
+                    + "/"
+                    + day_text
+                    + "' id = "
+                    + day
+                    + ">"
+                    + day
+                    + "</a></td>";
+            }
         }
         else{
             html += "<td></td>";
@@ -48,11 +61,25 @@ function createCalendar() {
     calendar.innerHTML = html;
 }
 
+function updateDecMonthButtonState() {
+    const display_year = Number(year.textContent);
+    const display_month = Number(month.textContent);
+
+    dec_month_btn.disabled =
+        display_year < today.getFullYear() ||
+        (
+            display_year === today.getFullYear() &&
+            display_month <= today.getMonth() + 1
+        );
+}
+
 let calendar = document.getElementById("calendar");
 let year = document.getElementById("year");
 let month = document.getElementById("month");
 let dec_month_btn = document.getElementById("dec_month_btn");
 let inc_month_btn = document.getElementById("inc_month_btn");
+let today = new Date();
+today = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
 year.textContent = new Date().getFullYear();
 month.textContent = new Date().getMonth() + 1;
@@ -71,14 +98,20 @@ html = `
 `;
 
 createCalendar();
+updateDecMonthButtonState();
 
 dec_month_btn.addEventListener("click", () => {
+    if (dec_month_btn.disabled) {
+        return;
+    }
+
     month.textContent = Number(month.textContent) - 1;
     if(Number(month.textContent) == 0){
         month.textContent = 12;
         year.textContent = Number(year.textContent) - 1;
     }
     createCalendar();
+    updateDecMonthButtonState();
 });
 
 inc_month_btn.addEventListener("click", () => {
@@ -88,4 +121,5 @@ inc_month_btn.addEventListener("click", () => {
         year.textContent = Number(year.textContent) + 1;
     }
     createCalendar();
+    updateDecMonthButtonState();
 });

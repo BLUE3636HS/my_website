@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, UploadFile, File, Form
+from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -201,6 +201,14 @@ async def Reservation(request: Request):
 
 @app.get("/reservation/{year}/{month}/{day}", response_class = HTMLResponse)
 async def Reservation(request: Request, year: int, month: int, day: int):
+    try:
+        target_date = datetime.date(year, month, day)
+    except ValueError:
+        raise HTTPException(status_code = 404, detail = "Not Found")
+
+    if target_date < datetime.date.today():
+        raise HTTPException(status_code = 404, detail = "Not Found")
+
     #start_timeのリストを作成
     start_times = []
     for hour in range(9, 22):
@@ -610,6 +618,23 @@ async def ReservationDate(
     equipment: str = Form(...),
     purpose: str = Form(...)
 ):
+    try:
+        reservation_start = datetime.datetime.strptime(
+            f"{day} {start_time}",
+            "%Y-%m-%d %H:%M"
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code = 400,
+            detail = "Invalid reservation datetime."
+        )
+
+    if reservation_start < datetime.datetime.now():
+        raise HTTPException(
+            status_code = 400,
+            detail = "Past reservation datetime is not allowed."
+        )
+
     # 予約情報をDBに保存
     cursor.execute(
         """
