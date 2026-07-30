@@ -1,0 +1,5 @@
+name,image,content,count
+マイクロピペット,/static/equipment/pipette.svg,少量の液体を正確に分注する器具,6
+3Dプリンター,/static/equipment/printer.svg,立体モデルを造形する3Dプリンター,2
+レーザーカッター,/static/equipment/laser.svg,木材やアクリルを加工するレーザーカッター,1
+顕微鏡,/static/equipment/microscope.svg,微小な試料を観察する顕微鏡,3

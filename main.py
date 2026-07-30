@@ -48,11 +48,41 @@ cursor.execute("""
         purpose TEXT NOT NULL
     )
 """)
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS equipment_reservation (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userid TEXT NOT NULL, equipment TEXT NOT NULL,
+        start_day TEXT NOT NULL, end_day TEXT NOT NULL,
+        quantity INTEGER NOT NULL, purpose TEXT NOT NULL,
+        note TEXT NOT NULL DEFAULT ''
+    )
+""")
 conn.commit()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="templates")
+
+def load_equipment_catalog():
+    catalog = []
+    with open("csv/equipment-reservation.csv", "r", encoding="utf-8-sig", newline="") as f:
+        for row in csv.DictReader(f):
+            try:
+                count = int(row.get("count", ""))
+            except ValueError:
+                continue
+            if row.get("name") and count > 0:
+                catalog.append({"name": row["name"].strip(), "image": row.get("image", "").strip(), "content": row.get("content", "").strip(), "count": count})
+    return catalog
+
+def equipment_availability(equipment, start_day, end_day, catalog):
+    item = next((item for item in catalog if item["name"] == equipment), None)
+    if item is None:
+        return None
+    cursor.execute("""SELECT COALESCE(SUM(quantity), 0) FROM equipment_reservation
+        WHERE equipment = ? AND start_day <= ? AND end_day >= ?""", (equipment, end_day, start_day))
+    reserved = cursor.fetchone()[0]
+    return {**item, "reserved": reserved, "available": max(item["count"] - reserved, 0)}
 
 
 #classの定義
@@ -209,47 +239,18 @@ async def Reservation(request: Request, year: int, month: int, day: int):
     if target_date < datetime.date.today():
         raise HTTPException(status_code = 404, detail = "Not Found")
 
-    #start_timeのリストを作成
-    start_times = []
-    for hour in range(9, 22):
-        for minute in [0, 30]:
-            start_time_str = f"{hour:02d}:{minute:02d}"
-            start_times.append(start_time_str)
-
-    #start_timeのうち、すでに予約されている時間を除外する
-    cursor.execute(
-        """
-        SELECT start_time, end_time FROM reservation WHERE day = ?
-        """,
-        (f"{year}-{month:02d}-{day:02d}",)
-    )
+    cursor.execute("SELECT start_time, end_time FROM reservation WHERE day = ?", (target_date.isoformat(),))
     reserved_times = []
-    rows = cursor.fetchall()
-    if rows != []:
-        for i in rows:
-            start_time, end_time = i
-            start_hour, start_minute = map(int, start_time.split(":"))
-            end_hour, end_minute = map(int, end_time.split(":"))
+    for start_time, end_time in cursor.fetchall():
+        start_total = sum(value * factor for value, factor in zip(map(int, start_time.split(":")), (60, 1)))
+        end_total = sum(value * factor for value, factor in zip(map(int, end_time.split(":")), (60, 1)))
+        while start_total < end_total:
+            reserved_times.append(f"{start_total // 60:02d}:{start_total % 60:02d}")
+            start_total += 30
 
-            start_total = start_hour * 60 + start_minute
-            end_total = end_hour * 60 + end_minute
-
-            # 30分ごとに追加
-            while start_total < end_total:
-                hour = start_total // 60
-                minute = start_total % 60
-
-                reserved_times.append(f"{hour:02}:{minute:02}")
-
-                start_total += 30
-    
-    start_times = [x for x in start_times if x not in reserved_times]
-
-    #equipmentのリストをcsvから取得
     with open("csv/equipment.csv", "r", encoding="utf-8") as f:
-        reader = csv.reader(f)
-        equipments = [row[0] for row in reader]
-    
+        equipments = [row[0] for row in csv.reader(f) if row]
+
     return templates.TemplateResponse(
         request = request,
         name = "reservation/date.html",
@@ -272,6 +273,21 @@ async def Login(request: Request):
         name = "login.html",
         context = {
             "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
+    )
+
+@app.get("/equipment-reservation", response_class=HTMLResponse)
+async def EquipmentReservationPage(request: Request):
+    today = datetime.date.today().isoformat()
+    return templates.TemplateResponse(
+        request=request,
+        name="equipment_reservation.html",
+        context={
+            "request": request,
+            "catalog": load_equipment_catalog(),
+            "selected_day": today,
             "user_login": request.session.get("user_login"),
             "user_id": request.session.get("user_id")
         }
@@ -328,6 +344,10 @@ async def Mypage(request: Request):
     reservations = [i[2:4] for i in cursor.fetchall()]
     reservations.sort()
 
+    cursor.execute("""SELECT id, equipment, start_day, end_day, quantity, purpose, note
+        FROM equipment_reservation WHERE userid = ? ORDER BY start_day, end_day, id""", (user_id,))
+    equipment_reservations = cursor.fetchall()
+
     return templates.TemplateResponse(
         request = request,
         name = "mypage.html",
@@ -336,7 +356,8 @@ async def Mypage(request: Request):
             "user_login": request.session.get("user_login"),
             "user_id": user_id,
             "user_school": user_school,
-            "reservations": reservations
+            "reservations": reservations,
+            "equipment_reservations": equipment_reservations
         }
     )
 
@@ -366,6 +387,50 @@ async def DelReservation(request: Request, day: str, time: str):
     )
     conn.commit()
     return RedirectResponse("/mypage", status_code=303)
+
+@app.post("/equipment-reservation")
+async def CreateEquipmentReservation(request: Request, equipment: str = Form(...), start_day: str = Form(...), end_day: str = Form(...), quantity: int = Form(...), purpose: str = Form(...), note: str = Form("")):
+    try:
+        start = datetime.date.fromisoformat(start_day)
+        end = datetime.date.fromisoformat(end_day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付の形式が正しくありません。")
+    if start < datetime.date.today() or end < start:
+        raise HTTPException(status_code=400, detail="利用日を正しく指定してください。")
+    if (end - start).days + 1 > 7:
+        raise HTTPException(status_code=400, detail="貸出期間は最長7日間です。")
+    if quantity < 1 or not purpose.strip():
+        raise HTTPException(status_code=400, detail="数量と使用目的を入力してください。")
+    item = equipment_availability(equipment, start.isoformat(), end.isoformat(), load_equipment_catalog())
+    if item is None:
+        raise HTTPException(status_code=400, detail="選択した器具は利用できません。")
+    if quantity > item["available"]:
+        raise HTTPException(status_code=409, detail=f"在庫が不足しています。利用可能数: {item['available']}")
+    cursor.execute("""INSERT INTO equipment_reservation
+        (userid, equipment, start_day, end_day, quantity, purpose, note)
+        VALUES (?, ?, ?, ?, ?, ?, ?)""", (request.session.get("user_id"), equipment, start.isoformat(), end.isoformat(), quantity, purpose.strip(), note.strip()))
+    conn.commit()
+    return {"result": True}
+
+@app.get("/mypage/equipment-reservation/{reservation_id}/cancel")
+async def CancelEquipmentReservation(request: Request, reservation_id: int):
+    cursor.execute("DELETE FROM equipment_reservation WHERE id = ? AND userid = ?", (reservation_id, request.session.get("user_id")))
+    conn.commit()
+    return RedirectResponse("/mypage", status_code=303)
+
+@app.get("/equipment-availability")
+async def EquipmentAvailability(equipment: str, start_day: str, end_day: str):
+    try:
+        start = datetime.date.fromisoformat(start_day)
+        end = datetime.date.fromisoformat(end_day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付の形式が正しくありません。")
+    if end < start or (end - start).days + 1 > 7:
+        raise HTTPException(status_code=400, detail="利用期間は最長7日間で指定してください。")
+    item = equipment_availability(equipment, start.isoformat(), end.isoformat(), load_equipment_catalog())
+    if item is None:
+        raise HTTPException(status_code=404, detail="器具が見つかりません。")
+    return {"count": item["count"], "available": item["available"]}
 
 #teacherページ
 @app.get("/teacher")

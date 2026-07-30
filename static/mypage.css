@@ -219,3 +219,15 @@ main > a:hover {
     background-color: #163a5c;
 
 }
+
+/* 実験器具予約の取消列も、TEKNE工作室予約と同じ最小幅にする */
+.equipment-reservation-table th:last-child,
+.equipment-reservation-table td:last-child {
+
+    width: 1%;
+
+    white-space: nowrap;
+
+    text-align: center;
+
+}
