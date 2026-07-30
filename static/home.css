@@ -44,9 +44,9 @@ main h2 {
 
     text-align: center;
 
-    font-size: 18px;
+    font-size: 28px;
 
-    font-weight: normal;
+    font-weight: bold;
 
     color: #555;
 
@@ -110,5 +110,43 @@ main a:last-child {
 main a:last-child:hover {
 
     background-color: #333;
+
+}
+
+
+/* 追加した説明文 */
+
+main > p {
+
+    margin: 0 auto 24px;
+
+    color: #555;
+
+    font-size: 18px;
+
+    line-height: 1.8;
+
+    text-align: center;
+
+}
+
+
+/* 「TEKNE工作室とは？」の説明文 */
+
+main > h2 + p {
+
+    max-width: 700px;
+
+    margin-bottom: 32px;
+
+    padding: 18px 24px;
+
+    border-left: 4px solid #1f4e79;
+
+    background-color: #f4f7fb;
+
+    text-align: left;
+
+    white-space: pre-line;
 
 }
