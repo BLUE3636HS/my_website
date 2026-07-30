@@ -360,7 +360,7 @@ async def DelReservation(request: Request, day: str, time: str):
         DELETE FROM reservation
         WHERE userid = ?
         AND day = ?
-        AND time = ?
+        AND start_time = ?
         """,
         (user_id, day, time)
     )
