@@ -2,10 +2,9 @@
    予約時間指定ページ
 ========================= */
 
-/* メイン領域 */
-
 main {
-    max-width: 650px;
+
+    max-width: 950px;
 
     margin: 50px auto;
 
@@ -29,12 +28,14 @@ main {
 ========================= */
 
 h1 {
+
     margin-bottom: 15px;
 
     font-size: 32px;
 }
 
 h2 {
+
     margin-bottom: 35px;
 
     font-size: 22px;
@@ -46,10 +47,232 @@ h2 {
 
 
 /* =========================
+   予約状況・入力欄
+========================= */
+
+#reservation_container {
+
+    display: flex;
+
+    justify-content: center;
+
+    align-items: flex-start;
+
+    gap: 70px;
+
+    width: 100%;
+
+    margin: 20px auto;
+}
+
+
+/* =========================
+   予約状況
+========================= */
+
+#reservation_area {
+
+    width: 300px;
+
+    flex-shrink: 0;
+}
+
+
+#reservation_area h3 {
+
+    margin-top: 0;
+
+    margin-bottom: 10px;
+
+    font-size: 20px;
+}
+
+
+#time_message {
+
+    margin: 0 0 15px;
+
+    color: #666;
+
+    font-size: 14px;
+}
+
+
+/* =========================
+   時間一覧
+========================= */
+
+#reservation_status {
+
+    width: 100%;
+
+    max-height: 500px;
+
+    overflow-y: auto;
+
+    padding: 5px;
+
+    box-sizing: border-box;
+
+    border: 1px solid #ddd;
+
+    border-radius: 10px;
+
+    background-color: #fafafa;
+}
+
+
+/* =========================
+   時間ボタン
+========================= */
+
+.reservation_time {
+
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    width: 100%;
+
+    padding: 10px 15px;
+
+    margin-bottom: 4px;
+
+    border: none;
+
+    border-radius: 6px;
+
+    box-sizing: border-box;
+
+    font-size: 15px;
+
+    font-weight: bold;
+
+    cursor: pointer;
+
+    transition: 0.15s;
+}
+
+
+/* =========================
+   空き
+========================= */
+
+.reservation_time.available {
+
+    background-color: #d9ead3;
+
+    color: #2e6b2e;
+}
+
+
+.reservation_time.available:hover {
+
+    background-color: #b6d7a8;
+
+    transform: scale(1.01);
+}
+
+
+/* =========================
+   予約済み
+========================= */
+
+.reservation_time.reserved {
+
+    background-color: #f4cccc;
+
+    color: #a33a3a;
+
+    cursor: not-allowed;
+}
+
+
+/* =========================
+   開始時間
+========================= */
+
+.reservation_time.selected_start {
+
+    background-color: #6fa8dc;
+
+    color: white;
+}
+
+
+/* =========================
+   選択された時間帯
+========================= */
+
+.reservation_time.selected {
+
+    background-color: #9fc5e8;
+
+    color: #1c4587;
+}
+
+
+/* =========================
+   予約入力欄
+========================= */
+
+#reservation_form {
+
+    width: 450px;
+
+    flex-shrink: 0;
+}
+
+
+/* =========================
+   選択した時間
+========================= */
+
+#selected_time {
+
+    width: 100%;
+
+    max-width: 400px;
+
+    margin: 0 auto 20px;
+
+    padding: 15px;
+
+    box-sizing: border-box;
+
+    border: 1px solid #ccc;
+
+    border-radius: 8px;
+
+    background-color: #f8fafc;
+}
+
+
+#selected_time p {
+
+    margin: 8px 0;
+
+    font-size: 16px;
+}
+
+
+#selected_start,
+#selected_end {
+
+    font-weight: bold;
+
+    color: #1f4e79;
+}
+
+
+/* =========================
    ラベル
 ========================= */
 
 label {
+
     display: inline-block;
 
     margin-bottom: 8px;
@@ -61,44 +284,11 @@ label {
 
 
 /* =========================
-   時間選択
-========================= */
-
-#time {
-    width: 250px;
-
-    padding: 12px 15px;
-
-    margin-bottom: 12px;
-
-    border: 1px solid #ccc;
-
-    border-radius: 8px;
-
-    background-color: white;
-
-    font-size: 16px;
-
-    cursor: pointer;
-
-    box-sizing: border-box;
-}
-
-#time:focus {
-    outline: none;
-
-    border-color: #555;
-
-    box-shadow:
-        0 0 5px rgba(0, 0, 0, 0.2);
-}
-
-
-/* =========================
    注意事項
 ========================= */
 
-main > span:not(#day) {
+#reservation_form > span {
+
     display: inline-block;
 
     margin-top: 4px;
@@ -116,6 +306,7 @@ main > span:not(#day) {
 ========================= */
 
 #equipment_list {
+
     width: 100%;
 
     max-width: 500px;
@@ -141,10 +332,11 @@ main > span:not(#day) {
 
 
 /* =========================
-   機材チェックボックス
+   チェックボックス
 ========================= */
 
 #equipment_list .equipment {
+
     width: 17px;
 
     height: 17px;
@@ -156,16 +348,13 @@ main > span:not(#day) {
     cursor: pointer;
 }
 
-#equipment_list label {
-    font-weight: normal;
-}
-
 
 /* =========================
-   使用目的・備考
+   使用目的
 ========================= */
 
 #purpose {
+
     width: 100%;
 
     max-width: 500px;
@@ -191,7 +380,9 @@ main > span:not(#day) {
     resize: vertical;
 }
 
+
 #purpose:focus {
+
     outline: none;
 
     border-color: #555;
@@ -206,6 +397,7 @@ main > span:not(#day) {
 ========================= */
 
 #btn {
+
     width: 250px;
 
     padding: 14px;
@@ -227,11 +419,15 @@ main > span:not(#day) {
     transition: 0.2s;
 }
 
+
 #btn:hover {
+
     background-color: #222;
 }
 
+
 #btn:active {
+
     transform: scale(0.98);
 }
 
@@ -240,24 +436,53 @@ main > span:not(#day) {
    スクロールバー
 ========================= */
 
-#equipment_list::-webkit-scrollbar {
+#reservation_status::-webkit-scrollbar {
+
     width: 8px;
 }
 
-#equipment_list::-webkit-scrollbar-track {
+
+#reservation_status::-webkit-scrollbar-track {
+
     background-color: #eeeeee;
 
     border-radius: 8px;
 }
 
-#equipment_list::-webkit-scrollbar-thumb {
+
+#reservation_status::-webkit-scrollbar-thumb {
+
     background-color: #999;
 
     border-radius: 8px;
 }
 
-#equipment_list::-webkit-scrollbar-thumb:hover {
+
+#reservation_status::-webkit-scrollbar-thumb:hover {
+
     background-color: #777;
+}
+
+
+#equipment_list::-webkit-scrollbar {
+
+    width: 8px;
+}
+
+
+#equipment_list::-webkit-scrollbar-track {
+
+    background-color: #eeeeee;
+
+    border-radius: 8px;
+}
+
+
+#equipment_list::-webkit-scrollbar-thumb {
+
+    background-color: #999;
+
+    border-radius: 8px;
 }
 
 
@@ -265,9 +490,10 @@ main > span:not(#day) {
    スマホ対応
 ========================= */
 
-@media (max-width: 600px) {
+@media (max-width: 800px) {
 
     main {
+
         margin: 20px 10px;
 
         padding: 30px 20px;
@@ -275,42 +501,158 @@ main > span:not(#day) {
 
 
     h1 {
+
         font-size: 26px;
     }
 
 
     h2 {
+
         font-size: 19px;
 
         margin-bottom: 30px;
     }
 
 
-    #time {
-        width: 100%;
+    #reservation_container {
 
-        max-width: 300px;
+        flex-direction: column;
+
+        align-items: center;
+
+        gap: 30px;
     }
 
 
-    main > span:not(#day) {
-        font-size: 12px;
+    #reservation_area,
+    #reservation_form {
+
+        width: 100%;
+
+        max-width: 450px;
+    }
+
+
+    #reservation_status {
+
+        max-height: 400px;
     }
 
 
     #equipment_list {
+
         max-height: 200px;
     }
 
 
     #purpose {
+
         min-height: 100px;
     }
 
 
     #btn {
+
         width: 100%;
 
         max-width: 300px;
     }
+}
+
+#reservation_status {
+    width: 100%;
+
+    max-height: 500px;
+
+    overflow-y: auto;
+
+    padding: 5px;
+
+    box-sizing: border-box;
+
+    border: 1px solid #ddd;
+
+    border-radius: 10px;
+
+    background-color: #fafafa;
+
+    user-select: none;
+}
+
+
+.reservation_time {
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    width: 100%;
+
+    height: 42px;
+
+    padding: 10px 15px;
+
+    margin-bottom: 4px;
+
+    border: none;
+
+    border-radius: 6px;
+
+    box-sizing: border-box;
+
+    font-size: 15px;
+
+    font-weight: bold;
+
+    cursor: pointer;
+
+    user-select: none;
+
+    transition: background-color 0.1s;
+}
+
+
+/* 空き */
+
+.reservation_time.available {
+    background-color: #d9ead3;
+
+    color: #2e6b2e;
+}
+
+
+/* マウスを乗せたとき */
+
+.reservation_time.available:hover {
+    background-color: #b6d7a8;
+}
+
+
+/* 予約済み */
+
+.reservation_time.reserved {
+    background-color: #f4cccc;
+
+    color: #a33a3a;
+
+    cursor: not-allowed;
+}
+
+
+/* ドラッグ中の選択範囲 */
+
+.reservation_time.selected {
+    background-color: #9fc5e8;
+
+    color: #1c4587;
+}
+
+
+/* 開始時間 */
+
+.reservation_time.drag_start {
+    background-color: #3d85c6;
+
+    color: white;
 }

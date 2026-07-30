@@ -1,37 +1,142 @@
 {% extends "base.html" %}
+
 {% block title %}TEKNE工作室予約-時間指定{% endblock %}
+
 {% block css %}
     <link rel="stylesheet" href="/static/reservation/date.css">
 {% endblock %}
+
 {% block content %}
-    <!-- jsに送るため値を保持する非表示のspan -->
+
+    <!-- JSに送るため値を保持する非表示のspan -->
     <span id="day" hidden>{{year}}-{{ month }}-{{ day }}</span>
 
     <h1>TEKNE工作室予約</h1>
+
     <h2>{{year}}年{{month}}月{{day}}日</h2>
-    <label for="start_time">開始時間を選択</label><br>
-    <select id="start_time">
-        <option value="" disabled selected>選択してください</option>
-        {% for start_time in start_times %}
-            <option value="{{ start_time }}">{{ start_time }}</option>
-        {% endfor %}
-    </select><br><br>
-    <label for="end_time">終了時間を選択</label><br>
-    <select id="end_time">
-        <option value="" disabled selected>終了時間を選択してください</option>
-    </select><br>
-    <span>※予約は基本30分単位、3時間までとなります。</span><br>
-    <span>※すでに予約されている時間は選択肢から除外されています。</span><br><br>
-    <label for="equipment">機材を選択</label><br>
-    <div id="equipment_list">
-        {% for equipment in equipments %}
-            <input type="checkbox" class="equipment" value = "{{ equipment }}">{{ equipment }}<br>
-        {% endfor %}
-    </div><br>
-    <label for="purpose">使用目的、備考欄</label><br>
-    <textarea id="purpose"></textarea><br><br>
-    <button type="butto" id="btn">予約する</button><br><br>
+
+    <div id="reservation_container">
+
+        <!-- =========================
+             予約状況
+        ========================= -->
+
+        <div id="reservation_area">
+
+            <h3>予約状況</h3>
+
+            <p id="time_message">
+                空いている時間をクリックしてください
+            </p>
+
+            <div id="reservation_status"></div>
+
+        </div>
+
+
+        <!-- =========================
+             予約入力欄
+        ========================= -->
+
+        <div id="reservation_form">
+
+            <div id="selected_time">
+
+                <p>
+                    開始時間：
+                    <span id="selected_start">未選択</span>
+                </p>
+
+                <p>
+                    終了時間：
+                    <span id="selected_end">未選択</span>
+                </p>
+
+            </div>
+
+
+            <span>
+                ※予約は基本30分単位、3時間までとなります。
+            </span>
+
+            <br>
+
+            <span>
+                ※すでに予約されている時間は選択できません。
+            </span>
+
+            <br><br>
+
+
+            <!-- =========================
+                 機材
+            ========================= -->
+
+            <label for="equipment">
+                機材を選択
+            </label>
+
+            <br>
+
+            <div id="equipment_list">
+
+                {% for equipment in equipments %}
+
+                    <input
+                        type="checkbox"
+                        class="equipment"
+                        value="{{ equipment }}"
+                    >
+
+                    {{ equipment }}
+
+                    <br>
+
+                {% endfor %}
+
+            </div>
+
+
+            <br>
+
+
+            <!-- =========================
+                 使用目的
+            ========================= -->
+
+            <label for="purpose">
+                使用目的、備考欄
+            </label>
+
+            <br>
+
+            <textarea id="purpose"></textarea>
+
+
+            <br><br>
+
+
+            <!-- =========================
+                 予約ボタン
+            ========================= -->
+
+            <button type="button" id="btn">
+                予約する
+            </button>
+
+        </div>
+
+    </div>
+
 {% endblock %}
+
+
 {% block script %}
+
+    <script>
+        const reserved_times = {{ reserved_times | tojson }};
+    </script>
+
     <script src="/static/reservation/date.js"></script>
+
 {% endblock %}

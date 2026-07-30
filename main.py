@@ -215,17 +215,13 @@ async def Reservation(request: Request, year: int, month: int, day: int):
         """,
         (f"{year}-{month:02d}-{day:02d}",)
     )
-    reservated_times = []
+    reserved_times = []
     rows = cursor.fetchall()
-    print(rows)
     if rows != []:
         for i in rows:
-            print(i)
             start_time, end_time = i
             start_hour, start_minute = map(int, start_time.split(":"))
             end_hour, end_minute = map(int, end_time.split(":"))
-
-            print(end_hour, end_minute)
 
             start_total = start_hour * 60 + start_minute
             end_total = end_hour * 60 + end_minute
@@ -235,11 +231,11 @@ async def Reservation(request: Request, year: int, month: int, day: int):
                 hour = start_total // 60
                 minute = start_total % 60
 
-                reservated_times.append(f"{hour:02}:{minute:02}")
+                reserved_times.append(f"{hour:02}:{minute:02}")
 
                 start_total += 30
     
-    start_times = [x for x in start_times if x not in reservated_times]
+    start_times = [x for x in start_times if x not in reserved_times]
 
     #equipmentのリストをcsvから取得
     with open("csv/equipment.csv", "r", encoding="utf-8") as f:
@@ -254,7 +250,7 @@ async def Reservation(request: Request, year: int, month: int, day: int):
             "year": year,
             "month": f"{month:02d}",
             "day": f"{day:02d}",
-            "start_times": start_times,
+            "reserved_times": reserved_times,
             "equipments": equipments,
             "user_login": request.session.get("user_login"),
             "user_id": request.session.get("user_id")
