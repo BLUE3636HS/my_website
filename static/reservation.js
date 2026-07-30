@@ -29,9 +29,9 @@ function createCalendar() {
             );
 
             if (target_date < today) {
-                html += "<td class='past_day'><span class='disabled_day'>"
+                html += "<td class='past_day'><p class='disabled_day'>"
                     + day
-                    + "</span></td>";
+                    + "</p></td>";
             }
             else {
                 html += "<td><a href='/reservation/"
