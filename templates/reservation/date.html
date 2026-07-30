@@ -9,14 +9,18 @@
 
     <h1>TEKNE工作室予約</h1>
     <h2>{{year}}年{{month}}月{{day}}日</h2>
-    <label for="time">開始時間を選択</label><br>
-    <select id="time">
+    <label for="start_time">開始時間を選択</label><br>
+    <select id="start_time">
         <option value="" disabled selected>選択してください</option>
-        {% for time in times %}
-            <option value="{{ time }}">{{ time }}</option>
+        {% for start_time in start_times %}
+            <option value="{{ start_time }}">{{ start_time }}</option>
         {% endfor %}
+    </select><br><br>
+    <label for="end_time">終了時間を選択</label><br>
+    <select id="end_time">
+        <option value="" disabled selected>終了時間を選択してください</option>
     </select><br>
-    <span>※予約は基本30分単位となります。延長が必要な場合は備考欄にご記入ください。</span><br>
+    <span>※予約は基本30分単位、3時間までとなります。</span><br>
     <span>※すでに予約されている時間は選択肢から除外されています。</span><br><br>
     <label for="equipment">機材を選択</label><br>
     <div id="equipment_list">

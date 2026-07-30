@@ -23,7 +23,6 @@ main {
 }
 
 
-
 /* タイトル */
 
 main h1 {
@@ -39,6 +38,22 @@ main h1 {
 }
 
 
+/* 小見出し */
+
+main h2 {
+
+    color: #1f4e79;
+
+    font-size: 24px;
+
+    margin-bottom: 15px;
+
+    padding-bottom: 8px;
+
+    border-bottom: 2px solid #1f4e79;
+
+}
+
 
 /* =========================
    テーブル
@@ -50,8 +65,9 @@ main table {
 
     border-collapse: collapse;
 
-}
+    margin-bottom: 35px;
 
+}
 
 
 /* 見出し */
@@ -70,8 +86,9 @@ main th {
 
     font-size: 16px;
 
-}
+    border: 1px solid #ddd;
 
+}
 
 
 /* データ */
@@ -89,7 +106,6 @@ main td {
 }
 
 
-
 /* 偶数行 */
 
 main tr:nth-child(even) td {
@@ -98,6 +114,71 @@ main tr:nth-child(even) td {
 
 }
 
+/* 削除列（3列目） */
+main table:nth-of-type(2) th:nth-child(3),
+main table:nth-of-type(2) td:nth-child(3) {
+
+    width: 1%;
+
+    white-space: nowrap;
+
+    text-align: center;
+
+}
+
+
+/* =========================
+   予約一覧テーブル
+========================= */
+
+main table:nth-of-type(2) th {
+
+    text-align: center;
+
+}
+
+main table:nth-of-type(2) td {
+
+    text-align: center;
+
+}
+
+
+/* =========================
+   削除ボタン
+========================= */
+
+.del_reservation {
+
+    display: inline-block;
+
+    width: 30px;
+
+    height: 30px;
+
+    line-height: 30px;
+
+    text-align: center;
+
+    text-decoration: none;
+
+    background-color: #d9534f;
+
+    color: white;
+
+    font-weight: bold;
+
+    border-radius: 50%;
+
+    transition: 0.3s;
+
+}
+
+.del_reservation:hover {
+
+    background-color: #b52b27;
+
+}
 
 
 /* =========================
@@ -129,7 +210,6 @@ main > a {
     transition: 0.3s;
 
 }
-
 
 
 /* ホバー */

@@ -42,7 +42,8 @@ cursor.execute("""
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         userid TEXT NOT NULL,
         day TEXT NOT NULL,
-        time TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
         equipment TEXT NOT NULL,
         purpose TEXT NOT NULL
     )
@@ -200,22 +201,45 @@ async def Reservation(request: Request):
 
 @app.get("/reservation/{year}/{month}/{day}", response_class = HTMLResponse)
 async def Reservation(request: Request, year: int, month: int, day: int):
-    times = []
+    #start_timeのリストを作成
+    start_times = []
     for hour in range(9, 22):
         for minute in [0, 30]:
-            time_str = f"{hour:02d}:{minute:02d}"
-            times.append(time_str)
+            start_time_str = f"{hour:02d}:{minute:02d}"
+            start_times.append(start_time_str)
 
-    #timeのうち、すでに予約されている時間を除外する
+    #start_timeのうち、すでに予約されている時間を除外する
     cursor.execute(
         """
-        SELECT time FROM reservation WHERE day = ?
+        SELECT start_time, end_time FROM reservation WHERE day = ?
         """,
         (f"{year}-{month:02d}-{day:02d}",)
     )
-    reservated_times = [row[0] for row in cursor.fetchall()]
+    reservated_times = []
+    rows = cursor.fetchall()
+    print(rows)
+    if rows != []:
+        for i in rows:
+            print(i)
+            start_time, end_time = i
+            start_hour, start_minute = map(int, start_time.split(":"))
+            end_hour, end_minute = map(int, end_time.split(":"))
 
-    times = [x for x in times if x not in reservated_times]
+            print(end_hour, end_minute)
+
+            start_total = start_hour * 60 + start_minute
+            end_total = end_hour * 60 + end_minute
+
+            # 30分ごとに追加
+            while start_total < end_total:
+                hour = start_total // 60
+                minute = start_total % 60
+
+                reservated_times.append(f"{hour:02}:{minute:02}")
+
+                start_total += 30
+    
+    start_times = [x for x in start_times if x not in reservated_times]
 
     #equipmentのリストをcsvから取得
     with open("csv/equipment.csv", "r", encoding="utf-8") as f:
@@ -230,7 +254,7 @@ async def Reservation(request: Request, year: int, month: int, day: int):
             "year": year,
             "month": f"{month:02d}",
             "day": f"{day:02d}",
-            "times": times,
+            "start_times": start_times,
             "equipments": equipments,
             "user_login": request.session.get("user_login"),
             "user_id": request.session.get("user_id")
@@ -298,6 +322,7 @@ async def Mypage(request: Request):
     )
 
     reservations = [i[2:4] for i in cursor.fetchall()]
+    reservations.sort()
 
     return templates.TemplateResponse(
         request = request,
@@ -584,17 +609,18 @@ async def Add(
 async def ReservationDate(
     request: Request,
     day: str = Form(...),
-    time: str = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(...),
     equipment: str = Form(...),
     purpose: str = Form(...)
 ):
     # 予約情報をDBに保存
     cursor.execute(
         """
-        INSERT INTO reservation (userid, day, time, equipment, purpose)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO reservation (userid, day, start_time, end_time, equipment, purpose)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (request.session.get("user_id"), day, time, equipment, purpose)
+        (request.session.get("user_id"), day, start_time, end_time, equipment, purpose)
     )
     conn.commit()
 
