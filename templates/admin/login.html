@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>管理者ログイン</title>
+        <link rel="icon" href="/static/icon.ico">
+        <link rel="stylesheet" href="/static/admin/admin.css">
+    </head>
+    <body class="login-page">
+        <main class="login-card">
+            <p class="login-eyebrow">TEKNE</p>
+            <h1>管理者ログイン</h1>
+            <p class="login-description">サーバー管理者専用のログイン画面です。</p>
+            {% if error %}
+            <p class="login-error" role="alert">{{ error }}</p>
+            {% endif %}
+            <form action="/admin/login" method="post">
+                <label for="id">管理者ID</label>
+                <input id="id" name="id" type="text" autocomplete="username" required autofocus>
+                <label for="pwd">パスワード</label>
+                <input id="pwd" name="pwd" type="password" autocomplete="current-password" required>
+                <button type="submit">ログイン</button>
+            </form>
+        </main>
+    </body>
+</html>

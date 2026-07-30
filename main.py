@@ -38,6 +38,12 @@ cursor.execute("""
     )
 """)
 cursor.execute("""
+    CREATE TABLE IF NOT EXISTS admin (
+        id TEXT PRIMARY KEY NOT NULL,
+        pwd TEXT NOT NULL
+    )
+""")
+cursor.execute("""
     CREATE TABLE IF NOT EXISTS reservation (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         userid TEXT NOT NULL,
@@ -108,6 +114,17 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
                 request.session["user_login"] = False
                 print("userログアウト")
 
+        if request.session.get("admin_login") == True:
+            login_time = datetime.datetime.strptime(
+                request.session.get("admin_time"),
+                "%Y-%m-%d %H:%M:%S"
+            )
+            if (datetime.datetime.now() - login_time).days >= 1:
+                request.session.pop("admin_login", None)
+                request.session.pop("admin_id", None)
+                request.session.pop("admin_time", None)
+                print("adminログアウト")
+
         #dbのreservationのうち、過去の予約を削除
         cursor.execute(
             """
@@ -124,7 +141,8 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
             "/login",
             "/registration",
             "/session",
-            "/logout"
+            "/logout",
+            "/admin/login"
         ]
 
         # 静的ファイルなどはそのまま通す
@@ -137,6 +155,20 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
         # public_paths は誰でもアクセス可能
         if request.url.path in public_paths:
             return await call_next(request)
+
+        # admin 配下は admin 用セッションだけを許可する
+        if request.url.path.startswith("/admin"):
+            if request.session.get("admin_login") == True:
+                return await call_next(request)
+            if request.session.get("teacher_login") == True:
+                return RedirectResponse("/teacher", status_code=303)
+            if request.session.get("user_login") == True:
+                return RedirectResponse("/", status_code=303)
+            return RedirectResponse("/admin/login", status_code=303)
+
+        # admin は既存の student / teacher 画面へ入れない
+        if request.session.get("admin_login") == True:
+            return RedirectResponse("/admin", status_code=303)
 
         # 管理者ログイン済みなら teacher 配下のみ許可
         if request.session.get("teacher_login") == True:
@@ -277,6 +309,54 @@ async def Login(request: Request):
             "user_id": request.session.get("user_id")
         }
     )
+
+@app.get("/admin/login", response_class=HTMLResponse)
+async def AdminLoginPage(request: Request):
+    if request.session.get("admin_login") == True:
+        return RedirectResponse("/admin", status_code=303)
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/login.html",
+        context={"request": request}
+    )
+
+@app.post("/admin/login")
+async def AdminLogin(
+    request: Request,
+    id: str = Form(...),
+    pwd: str = Form(...)
+):
+    cursor.execute("SELECT pwd FROM admin WHERE id = ?", (id,))
+    admin = cursor.fetchone()
+
+    if admin is None or not bcrypt.checkpw(pwd.encode(), admin[0].encode()):
+        return templates.TemplateResponse(
+            request=request,
+            name="admin/login.html",
+            context={"request": request, "error": "ID またはパスワードが正しくありません。"},
+            status_code=401
+        )
+
+    request.session.clear()
+    request.session["admin_login"] = True
+    request.session["admin_id"] = id
+    request.session["admin_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return RedirectResponse("/admin", status_code=303)
+
+@app.get("/admin", response_class=HTMLResponse)
+async def AdminHome(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/index.html",
+        context={"request": request, "admin_id": request.session.get("admin_id")}
+    )
+
+@app.get("/admin/logout")
+async def AdminLogout(request: Request):
+    request.session.pop("admin_login", None)
+    request.session.pop("admin_id", None)
+    request.session.pop("admin_time", None)
+    return RedirectResponse("/admin/login", status_code=303)
 
 @app.get("/equipment-reservation", response_class=HTMLResponse)
 async def EquipmentReservationPage(request: Request):

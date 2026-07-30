@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{% block title %}管理者画面{% endblock %}</title>
+        <link rel="icon" href="/static/icon.ico">
+        <link rel="stylesheet" href="/static/admin/admin.css">
+    </head>
+    <body>
+        <div class="admin-layout">
+            <aside class="sidebar">
+                <a class="brand" href="/admin">Admin</a>
+                <nav class="nav-menu" aria-label="管理者メニュー">
+                    <a class="nav-link" href="/admin">Dashboard</a>
+                </nav>
+                <a class="logout-link" href="/admin/logout">Logout</a>
+            </aside>
+            <main class="admin-main">
+                <header class="admin-header">
+                    <p>管理者画面</p>
+                    <span>{{ admin_id }}</span>
+                </header>
+                <section class="admin-content">
+                    {% block content %}{% endblock %}
+                </section>
+            </main>
+        </div>
+    </body>
+</html>
