@@ -358,6 +358,72 @@ async def AdminLogout(request: Request):
     request.session.pop("admin_time", None)
     return RedirectResponse("/admin/login", status_code=303)
 
+
+@app.get("/admin/reservation", response_class=HTMLResponse)
+async def AdminReservationPage(request: Request, start_day: str = None, end_day: str = None):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    if start_day and end_day:
+        cursor.execute("""
+            SELECT id, userid, day, start_time, end_time, equipment, purpose
+            FROM reservation
+            WHERE day >= ? AND day <= ?
+            ORDER BY day DESC, start_time DESC
+        """, (start_day, end_day))
+    else:
+        cursor.execute("""
+            SELECT id, userid, day, start_time, end_time, equipment, purpose
+            FROM reservation
+            ORDER BY day DESC, start_time DESC
+        """)
+    reservations = cursor.fetchall()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/reservation.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "reservations": reservations,
+            "start_day": start_day,
+            "end_day": end_day
+        }
+    )
+
+
+@app.get("/admin/equipment-reservation", response_class=HTMLResponse)
+async def AdminEquipmentReservationPage(request: Request, start_day: str = None, end_day: str = None):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    if start_day and end_day:
+        cursor.execute("""
+            SELECT id, userid, equipment, start_day, end_day, quantity, purpose, note
+            FROM equipment_reservation
+            WHERE start_day <= ? AND end_day >= ?
+            ORDER BY start_day DESC, id DESC
+        """, (end_day, start_day))
+    else:
+        cursor.execute("""
+            SELECT id, userid, equipment, start_day, end_day, quantity, purpose, note
+            FROM equipment_reservation
+            ORDER BY start_day DESC, id DESC
+        """)
+    equipment_reservations = cursor.fetchall()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/equipment_reservation.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "equipment_reservations": equipment_reservations,
+            "start_day": start_day,
+            "end_day": end_day
+        }
+    )
+
 @app.get("/equipment-reservation", response_class=HTMLResponse)
 async def EquipmentReservationPage(request: Request):
     today = datetime.date.today().isoformat()

@@ -1,0 +1,62 @@
+{% extends "admin/base.html" %}
+
+{% block title %}実験器具予約確認{% endblock %}
+
+{% block content %}
+<div class="dashboard-card-wide">
+    <p class="dashboard-eyebrow">Equipment Reservation Management</p>
+    <h1>実験器具予約確認</h1>
+    
+    <form method="get" action="/admin/equipment-reservation" class="filter-form">
+        <div class="filter-group">
+            <label for="start_day">開始日</label>
+            <input type="date" id="start_day" name="start_day" value="{{ start_day or '' }}">
+        </div>
+        <div class="filter-group">
+            <label for="end_day">終了日</label>
+            <input type="date" id="end_day" name="end_day" value="{{ end_day or '' }}">
+        </div>
+        <div class="filter-btn-group">
+            <button type="submit" class="btn-search">検索</button>
+            <a href="/admin/equipment-reservation" class="btn-clear">クリア</a>
+        </div>
+    </form>
+
+    <div class="table-container">
+        {% if equipment_reservations %}
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>ユーザーID</th>
+                    <th>器具名</th>
+                    <th>貸出開始日</th>
+                    <th>返却期日</th>
+                    <th>数量</th>
+                    <th>使用目的</th>
+                    <th>備考</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in equipment_reservations %}
+                <tr>
+                    <td>{{ r[0] }}</td>
+                    <td>{{ r[1] }}</td>
+                    <td>{{ r[2] }}</td>
+                    <td>{{ r[3] }}</td>
+                    <td>{{ r[4] }}</td>
+                    <td>{{ r[5] }}</td>
+                    <td>{{ r[6] }}</td>
+                    <td>{{ r[7] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="no-data">
+            <p>予約情報が見つかりません。</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

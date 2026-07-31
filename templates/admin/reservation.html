@@ -1,0 +1,60 @@
+{% extends "admin/base.html" %}
+
+{% block title %}TEKNE工作室予約確認{% endblock %}
+
+{% block content %}
+<div class="dashboard-card-wide">
+    <p class="dashboard-eyebrow">Reservation Management</p>
+    <h1>TEKNE工作室予約確認</h1>
+    
+    <form method="get" action="/admin/reservation" class="filter-form">
+        <div class="filter-group">
+            <label for="start_day">開始日</label>
+            <input type="date" id="start_day" name="start_day" value="{{ start_day or '' }}">
+        </div>
+        <div class="filter-group">
+            <label for="end_day">終了日</label>
+            <input type="date" id="end_day" name="end_day" value="{{ end_day or '' }}">
+        </div>
+        <div class="filter-btn-group">
+            <button type="submit" class="btn-search">検索</button>
+            <a href="/admin/reservation" class="btn-clear">クリア</a>
+        </div>
+    </form>
+
+    <div class="table-container">
+        {% if reservations %}
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>ユーザーID</th>
+                    <th>利用日</th>
+                    <th>開始時刻</th>
+                    <th>終了時刻</th>
+                    <th>予約対象</th>
+                    <th>利用目的</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in reservations %}
+                <tr>
+                    <td>{{ r[0] }}</td>
+                    <td>{{ r[1] }}</td>
+                    <td>{{ r[2] }}</td>
+                    <td>{{ r[3] }}</td>
+                    <td>{{ r[4] }}</td>
+                    <td>{{ r[5] }}</td>
+                    <td>{{ r[6] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="no-data">
+            <p>予約情報が見つかりません。</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
