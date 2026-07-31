@@ -1,0 +1,330 @@
+
+/* ========================================
+   実験器具予約確認
+======================================== */
+
+.equipment-reservation-page {
+    width: 100%;
+    padding: 30px;
+    box-sizing: border-box;
+}
+
+
+/* ========================================
+   メインカード
+======================================== */
+
+.equipment-reservation-page .dashboard-card-wide {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+
+/* ========================================
+   タイトル
+======================================== */
+
+.equipment-reservation-page .dashboard-eyebrow {
+    margin-bottom: 8px;
+}
+
+.equipment-reservation-page h1 {
+    margin-top: 0;
+    margin-bottom: 30px;
+}
+
+
+/* ========================================
+   検索フォーム
+======================================== */
+
+.equipment-filter-form {
+    display: flex;
+    align-items: flex-end;
+    gap: 20px;
+
+    padding: 20px;
+    margin-bottom: 30px;
+
+    background: #f7f7f7;
+    border: 1px solid #e2e2e2;
+    border-radius: 10px;
+
+    box-sizing: border-box;
+}
+
+
+/* ========================================
+   日付入力
+======================================== */
+
+.equipment-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.equipment-filter-group label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #444;
+}
+
+.equipment-filter-group input[type="date"] {
+    width: 180px;
+    height: 42px;
+
+    padding: 0 12px;
+
+    font-size: 14px;
+    color: #333;
+
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+
+    box-sizing: border-box;
+}
+
+.equipment-filter-group input[type="date"]:focus {
+    outline: none;
+    border-color: #555;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.08);
+}
+
+
+/* ========================================
+   ボタン
+======================================== */
+
+.equipment-filter-btn-group {
+    display: flex;
+    gap: 10px;
+}
+
+
+/* 共通 */
+.equipment-btn-search,
+.equipment-btn-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    height: 42px;
+    padding: 0 22px;
+
+    border-radius: 6px;
+
+    font-size: 14px;
+    font-weight: 600;
+
+    text-decoration: none;
+    cursor: pointer;
+
+    box-sizing: border-box;
+}
+
+
+/* 検索ボタン */
+.equipment-btn-search {
+    color: #fff;
+    background: #333;
+    border: 1px solid #333;
+}
+
+.equipment-btn-search:hover {
+    background: #222;
+}
+
+
+/* クリアボタン */
+.equipment-btn-clear {
+    color: #444;
+    background: #fff;
+    border: 1px solid #ccc;
+}
+
+.equipment-btn-clear:hover {
+    background: #f0f0f0;
+}
+
+
+/* ========================================
+   テーブル外側
+======================================== */
+
+.equipment-table-container {
+    width: 100%;
+    overflow-x: auto;
+
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+
+/* ========================================
+   テーブル
+======================================== */
+
+.equipment-admin-table {
+    width: 100%;
+    min-width: 900px;
+
+    border-collapse: collapse;
+
+    background: #fff;
+
+    font-size: 14px;
+}
+
+
+/* ========================================
+   ヘッダー
+======================================== */
+
+.equipment-admin-table thead th {
+    padding: 14px 12px;
+
+    background: #f2f2f2;
+    color: #333;
+
+    border-bottom: 2px solid #d5d5d5;
+
+    font-weight: 600;
+    text-align: left;
+
+    white-space: nowrap;
+}
+
+
+/* ========================================
+   セル
+======================================== */
+
+.equipment-admin-table tbody td {
+    padding: 13px 12px;
+
+    color: #444;
+
+    border-bottom: 1px solid #e5e5e5;
+
+    vertical-align: middle;
+}
+
+
+/* ========================================
+   行
+======================================== */
+
+.equipment-admin-table tbody tr {
+    transition: background-color 0.15s ease;
+}
+
+.equipment-admin-table tbody tr:hover {
+    background: #f8f8f8;
+}
+
+
+/* 最後の行の線を消す */
+.equipment-admin-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+
+/* ========================================
+   ID・ユーザーID・数量
+======================================== */
+
+.equipment-admin-table th:nth-child(1),
+.equipment-admin-table td:nth-child(1),
+.equipment-admin-table th:nth-child(2),
+.equipment-admin-table td:nth-child(2),
+.equipment-admin-table th:nth-child(6),
+.equipment-admin-table td:nth-child(6) {
+    text-align: center;
+}
+
+
+/* ========================================
+   使用目的・備考
+======================================== */
+
+.equipment-admin-table th:nth-child(7),
+.equipment-admin-table td:nth-child(7) {
+    min-width: 180px;
+}
+
+.equipment-admin-table th:nth-child(8),
+.equipment-admin-table td:nth-child(8) {
+    min-width: 180px;
+}
+
+
+/* ========================================
+   データなし
+======================================== */
+
+.equipment-no-data {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    min-height: 180px;
+
+    background: #fafafa;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+
+    color: #777;
+}
+
+.equipment-no-data p {
+    margin: 0;
+    font-size: 14px;
+}
+
+
+/* ========================================
+   レスポンシブ
+======================================== */
+
+@media (max-width: 900px) {
+
+    .equipment-reservation-page {
+        padding: 20px;
+    }
+
+    .equipment-filter-form {
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+
+}
+
+
+@media (max-width: 600px) {
+
+    .equipment-reservation-page {
+        padding: 15px;
+    }
+
+    .equipment-filter-form {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 15px;
+    }
+
+    .equipment-filter-group input[type="date"] {
+        width: 100%;
+    }
+
+    .equipment-filter-btn-group {
+        width: 100%;
+    }
+
+    .equipment-btn-search,
+    .equipment-btn-clear {
+        flex: 1;
+    }
+
+}

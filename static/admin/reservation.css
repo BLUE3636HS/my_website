@@ -1,0 +1,337 @@
+
+/* ========================================
+   TEKNE工作室予約確認
+======================================== */
+
+.reservation-page {
+    width: 100%;
+    padding: 30px;
+    box-sizing: border-box;
+}
+
+
+/* ========================================
+   メインカード
+======================================== */
+
+.reservation-page .dashboard-card-wide {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+
+/* ========================================
+   タイトル
+======================================== */
+
+.reservation-page .dashboard-eyebrow {
+    margin-bottom: 8px;
+}
+
+.reservation-page h1 {
+    margin-top: 0;
+    margin-bottom: 30px;
+}
+
+
+/* ========================================
+   検索フォーム
+======================================== */
+
+.reservation-filter-form {
+    display: flex;
+    align-items: flex-end;
+    gap: 20px;
+
+    padding: 20px;
+    margin-bottom: 30px;
+
+    background: #f7f7f7;
+    border: 1px solid #e2e2e2;
+    border-radius: 10px;
+
+    box-sizing: border-box;
+}
+
+
+/* ========================================
+   日付入力
+======================================== */
+
+.reservation-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.reservation-filter-group label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #444;
+}
+
+.reservation-filter-group input[type="date"] {
+    width: 180px;
+    height: 42px;
+
+    padding: 0 12px;
+
+    font-size: 14px;
+    color: #333;
+
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+
+    box-sizing: border-box;
+}
+
+.reservation-filter-group input[type="date"]:focus {
+    outline: none;
+    border-color: #555;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.08);
+}
+
+
+/* ========================================
+   ボタン
+======================================== */
+
+.reservation-filter-btn-group {
+    display: flex;
+    gap: 10px;
+}
+
+
+/* 共通 */
+.reservation-btn-search,
+.reservation-btn-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    height: 42px;
+    padding: 0 22px;
+
+    border-radius: 6px;
+
+    font-size: 14px;
+    font-weight: 600;
+
+    text-decoration: none;
+    cursor: pointer;
+
+    box-sizing: border-box;
+}
+
+
+/* 検索 */
+.reservation-btn-search {
+    color: #fff;
+    background: #333;
+    border: 1px solid #333;
+}
+
+.reservation-btn-search:hover {
+    background: #222;
+}
+
+
+/* クリア */
+.reservation-btn-clear {
+    color: #444;
+    background: #fff;
+    border: 1px solid #ccc;
+}
+
+.reservation-btn-clear:hover {
+    background: #f0f0f0;
+}
+
+
+/* ========================================
+   テーブル外側
+======================================== */
+
+.reservation-table-container {
+    width: 100%;
+    overflow-x: auto;
+
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+
+/* ========================================
+   テーブル
+======================================== */
+
+.reservation-admin-table {
+    width: 100%;
+    min-width: 800px;
+
+    border-collapse: collapse;
+
+    background: #fff;
+
+    font-size: 14px;
+}
+
+
+/* ========================================
+   ヘッダー
+======================================== */
+
+.reservation-admin-table thead th {
+    padding: 14px 12px;
+
+    background: #f2f2f2;
+    color: #333;
+
+    border-bottom: 2px solid #d5d5d5;
+
+    font-weight: 600;
+    text-align: left;
+
+    white-space: nowrap;
+}
+
+
+/* ========================================
+   セル
+======================================== */
+
+.reservation-admin-table tbody td {
+    padding: 13px 12px;
+
+    color: #444;
+
+    border-bottom: 1px solid #e5e5e5;
+
+    vertical-align: middle;
+}
+
+
+/* ========================================
+   行
+======================================== */
+
+.reservation-admin-table tbody tr {
+    transition: background-color 0.15s ease;
+}
+
+.reservation-admin-table tbody tr:hover {
+    background: #f8f8f8;
+}
+
+
+/* 最後の行の線を消す */
+.reservation-admin-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+
+/* ========================================
+   ID・ユーザーID
+======================================== */
+
+.reservation-admin-table th:nth-child(1),
+.reservation-admin-table td:nth-child(1),
+.reservation-admin-table th:nth-child(2),
+.reservation-admin-table td:nth-child(2) {
+    text-align: center;
+}
+
+
+/* ========================================
+   日付・時刻
+======================================== */
+
+.reservation-admin-table th:nth-child(3),
+.reservation-admin-table td:nth-child(3),
+.reservation-admin-table th:nth-child(4),
+.reservation-admin-table td:nth-child(4),
+.reservation-admin-table th:nth-child(5),
+.reservation-admin-table td:nth-child(5) {
+    white-space: nowrap;
+}
+
+
+/* ========================================
+   利用目的
+======================================== */
+
+.reservation-admin-table th:nth-child(7),
+.reservation-admin-table td:nth-child(7) {
+    min-width: 220px;
+}
+
+
+/* ========================================
+   データなし
+======================================== */
+
+.reservation-no-data {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    min-height: 180px;
+
+    background: #fafafa;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+
+    color: #777;
+}
+
+.reservation-no-data p {
+    margin: 0;
+    font-size: 14px;
+}
+
+
+/* ========================================
+   レスポンシブ
+======================================== */
+
+@media (max-width: 900px) {
+
+    .reservation-page {
+        padding: 20px;
+    }
+
+    .reservation-filter-form {
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+
+}
+
+
+@media (max-width: 600px) {
+
+    .reservation-page {
+        padding: 15px;
+    }
+
+    .reservation-filter-form {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 15px;
+    }
+
+    .reservation-filter-group input[type="date"] {
+        width: 100%;
+    }
+
+    .reservation-filter-btn-group {
+        width: 100%;
+    }
+
+    .reservation-btn-search,
+    .reservation-btn-clear {
+        flex: 1;
+    }
+
+}

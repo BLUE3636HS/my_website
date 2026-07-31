@@ -2,29 +2,61 @@
 
 {% block title %}TEKNE工作室予約確認{% endblock %}
 
+{% block css %} <link rel="stylesheet" href="/static/admin/reservation.css">
+{% endblock %}
+
 {% block content %}
+
+<div class="reservation-page">
+
+
 <div class="dashboard-card-wide">
     <p class="dashboard-eyebrow">Reservation Management</p>
     <h1>TEKNE工作室予約確認</h1>
-    
-    <form method="get" action="/admin/reservation" class="filter-form">
-        <div class="filter-group">
+
+    <form method="get" action="/admin/reservation" class="reservation-filter-form">
+
+        <div class="reservation-filter-group">
             <label for="start_day">開始日</label>
-            <input type="date" id="start_day" name="start_day" value="{{ start_day or '' }}">
+            <input
+                type="date"
+                id="start_day"
+                name="start_day"
+                value="{{ start_day or '' }}"
+            >
         </div>
-        <div class="filter-group">
+
+        <div class="reservation-filter-group">
             <label for="end_day">終了日</label>
-            <input type="date" id="end_day" name="end_day" value="{{ end_day or '' }}">
+            <input
+                type="date"
+                id="end_day"
+                name="end_day"
+                value="{{ end_day or '' }}"
+            >
         </div>
-        <div class="filter-btn-group">
-            <button type="submit" class="btn-search">検索</button>
-            <a href="/admin/reservation" class="btn-clear">クリア</a>
+
+        <div class="reservation-filter-btn-group">
+            <button type="submit" class="reservation-btn-search">
+                検索
+            </button>
+
+            <a
+                href="/admin/reservation"
+                class="reservation-btn-clear"
+            >
+                クリア
+            </a>
         </div>
+
     </form>
 
-    <div class="table-container">
+    <div class="reservation-table-container">
+
         {% if reservations %}
-        <table class="admin-table">
+
+        <table class="reservation-admin-table">
+
             <thead>
                 <tr>
                     <th>ID</th>
@@ -36,6 +68,7 @@
                     <th>利用目的</th>
                 </tr>
             </thead>
+
             <tbody>
                 {% for r in reservations %}
                 <tr>
@@ -49,12 +82,21 @@
                 </tr>
                 {% endfor %}
             </tbody>
+
         </table>
+
         {% else %}
-        <div class="no-data">
+
+        <div class="reservation-no-data">
             <p>予約情報が見つかりません。</p>
         </div>
+
         {% endif %}
+
     </div>
+
+</div>
+
+
 </div>
 {% endblock %}
