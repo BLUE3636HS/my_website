@@ -17,6 +17,7 @@
 .reservation-page .dashboard-card-wide {
     width: 100%;
     box-sizing: border-box;
+    container-type: inline-size;
 }
 
 
@@ -39,7 +40,8 @@
 ======================================== */
 
 .reservation-filter-form {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
     align-items: flex-end;
     gap: 20px;
 
@@ -62,6 +64,7 @@
     display: flex;
     flex-direction: column;
     gap: 7px;
+    min-width: 0;
 }
 
 .reservation-filter-group label {
@@ -71,7 +74,9 @@
 }
 
 .reservation-filter-group input[type="date"] {
-    width: 180px;
+    width: min(100%, 180px);
+    max-width: 100%;
+    min-width: 0;
     height: 42px;
 
     padding: 0 12px;
@@ -98,8 +103,10 @@
 ======================================== */
 
 .reservation-filter-btn-group {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+    min-width: 0;
 }
 
 
@@ -122,6 +129,7 @@
     cursor: pointer;
 
     box-sizing: border-box;
+    min-width: 0;
 }
 
 
@@ -295,29 +303,11 @@
    レスポンシブ
 ======================================== */
 
-@media (max-width: 900px) {
-
-    .reservation-page {
-        padding: 20px;
-    }
+/* カード自体の幅で切り替えるため、サイドバー表示時もはみ出さない */
+@container (max-width: 640px) {
 
     .reservation-filter-form {
-        flex-wrap: wrap;
-        align-items: flex-end;
-    }
-
-}
-
-
-@media (max-width: 600px) {
-
-    .reservation-page {
-        padding: 15px;
-    }
-
-    .reservation-filter-form {
-        flex-direction: column;
-        align-items: stretch;
+        grid-template-columns: 1fr;
         gap: 15px;
     }
 
@@ -331,7 +321,24 @@
 
     .reservation-btn-search,
     .reservation-btn-clear {
-        flex: 1;
+        width: 100%;
+    }
+
+}
+
+@media (max-width: 900px) {
+
+    .reservation-page {
+        padding: 20px;
+    }
+
+}
+
+
+@media (max-width: 600px) {
+
+    .reservation-page {
+        padding: 15px;
     }
 
 }
