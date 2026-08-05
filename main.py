@@ -7,7 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import closing
 from pathlib import Path
 
-import sqlite3, shutil, bcrypt, datetime, csv
+import sqlite3, shutil, bcrypt, datetime, csv, json
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "database" / "database.db"
@@ -95,6 +95,18 @@ def equipment_availability(equipment, start_day, end_day, catalog):
         WHERE equipment = ? AND start_day <= ? AND end_day >= ?""", (equipment, end_day, start_day))
     reserved = cursor.fetchone()[0]
     return {**item, "reserved": reserved, "available": max(item["count"] - reserved, 0)}
+
+
+def format_reserved_equipment(value):
+    try:
+        equipment = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return value
+
+    if not isinstance(equipment, list):
+        return value
+
+    return ", ".join(str(item) for item in equipment)
 
 
 #classの定義
@@ -383,7 +395,10 @@ async def AdminReservationPage(request: Request, start_day: str = None, end_day:
             FROM reservation
             ORDER BY day ASC, start_time ASC, id ASC
         """)
-    reservations = cursor.fetchall()
+    reservations = [
+        (*reservation[:5], format_reserved_equipment(reservation[5]), *reservation[6:])
+        for reservation in cursor.fetchall()
+    ]
 
     return templates.TemplateResponse(
         request=request,
