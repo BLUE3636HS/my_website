@@ -7,7 +7,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import closing
 from pathlib import Path
 
-import sqlite3, shutil, bcrypt, datetime, csv, json
+import sqlite3, shutil, bcrypt, datetime, csv, json, secrets
+from urllib.parse import urlencode
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "database" / "database.db"
@@ -86,6 +87,11 @@ def load_equipment_catalog():
             if row.get("name") and count > 0:
                 catalog.append({"name": row["name"].strip(), "image": row.get("image", "").strip(), "content": row.get("content", "").strip(), "count": count})
     return catalog
+
+
+def load_schools():
+    with open(BASE_DIR / "csv" / "school.csv", "r", encoding="utf-8", newline="") as f:
+        return [row[0].strip() for row in csv.reader(f) if row and row[0].strip()]
 
 def equipment_availability(equipment, start_day, end_day, catalog):
     item = next((item for item in catalog if item["name"] == equipment), None)
@@ -516,6 +522,144 @@ async def AdminDeleteStudy(request: Request, study_id: int):
 
     return RedirectResponse("/admin/studies", status_code=303)
 
+
+@app.get("/admin/accounts", response_class=HTMLResponse)
+async def AdminAccountsPage(request: Request, type: str = "student", school: str = None):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    account_type = type if type in ("student", "teacher") else "student"
+    schools = load_schools()
+    selected_school = school if school in schools else None
+    table_name = "student" if account_type == "student" else "teacher"
+
+    query = f"SELECT rowid, id, school FROM {table_name}"
+    params = ()
+    if selected_school:
+        query += " WHERE school = ?"
+        params = (selected_school,)
+    query += " ORDER BY id ASC, rowid ASC"
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        accounts = db.execute(query, params).fetchall()
+
+    csrf_token = request.session.get("account_csrf_token")
+    if not csrf_token:
+        csrf_token = secrets.token_urlsafe(32)
+        request.session["account_csrf_token"] = csrf_token
+
+    school_query = urlencode({"school": selected_school}) if selected_school else ""
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/accounts.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "account_type": account_type,
+            "accounts": accounts,
+            "schools": schools,
+            "selected_school": selected_school,
+            "school_query": school_query,
+            "csrf_token": csrf_token,
+            "notice": request.session.pop("account_notice", None)
+        }
+    )
+
+
+@app.post("/admin/accounts/delete")
+async def AdminDeleteAccount(
+    request: Request,
+    account_type: str = Form(...),
+    account_rowid: int = Form(...),
+    account_id: str = Form(...),
+    admin_id: str = Form(...),
+    admin_password: str = Form(...),
+    csrf_token: str = Form(...),
+    return_school: str = Form("")
+):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    safe_type = account_type if account_type in ("student", "teacher") else "student"
+    schools = load_schools()
+    safe_school = return_school if return_school in schools else None
+    redirect_params = {"type": safe_type}
+    if safe_school:
+        redirect_params["school"] = safe_school
+    redirect_url = "/admin/accounts?" + urlencode(redirect_params)
+
+    session_token = request.session.get("account_csrf_token", "")
+    if not session_token or not secrets.compare_digest(csrf_token, session_token):
+        request.session["account_notice"] = {
+            "type": "error",
+            "message": "セッションを確認できませんでした。もう一度お試しください。"
+        }
+        return RedirectResponse(redirect_url, status_code=303)
+
+    if account_type not in ("student", "teacher"):
+        request.session["account_notice"] = {
+            "type": "error",
+            "message": "削除対象の種類が正しくありません。"
+        }
+        return RedirectResponse(redirect_url, status_code=303)
+
+    session_admin_id = request.session.get("admin_id")
+    authenticated = False
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        try:
+            admin = db.execute(
+                "SELECT pwd FROM admin WHERE id = ?",
+                (session_admin_id,)
+            ).fetchone()
+
+            if admin_id == session_admin_id and admin is not None:
+                try:
+                    authenticated = bcrypt.checkpw(
+                        admin_password.encode(),
+                        admin[0].encode()
+                    )
+                except ValueError:
+                    authenticated = False
+
+            if not authenticated:
+                request.session["account_notice"] = {
+                    "type": "error",
+                    "message": "管理者IDまたはパスワードが正しくありません。"
+                }
+                return RedirectResponse(redirect_url, status_code=303)
+
+            table_name = "student" if account_type == "student" else "teacher"
+            target = db.execute(
+                f"SELECT id FROM {table_name} WHERE rowid = ? AND id = ?",
+                (account_rowid, account_id)
+            ).fetchone()
+
+            if target is None:
+                request.session["account_notice"] = {
+                    "type": "error",
+                    "message": "削除対象のアカウントが見つかりませんでした。"
+                }
+                return RedirectResponse(redirect_url, status_code=303)
+
+            db.execute(
+                f"DELETE FROM {table_name} WHERE rowid = ? AND id = ?",
+                (account_rowid, account_id)
+            )
+            db.commit()
+        except sqlite3.Error:
+            db.rollback()
+            raise
+
+    account_label = "生徒" if account_type == "student" else "先生"
+    request.session["account_notice"] = {
+        "type": "success",
+        "message": f"{account_label}アカウント「{account_id}」を削除しました。"
+    }
+    request.session["account_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse(redirect_url, status_code=303)
+
 @app.get("/equipment-reservation", response_class=HTMLResponse)
 async def EquipmentReservationPage(request: Request):
     today = datetime.date.today().isoformat()
@@ -533,9 +677,7 @@ async def EquipmentReservationPage(request: Request):
 
 @app.get("/registration")
 async def Registration(request: Request):
-    with open("csv/school.csv", "r", encoding="utf-8") as f:
-        reader = csv.reader(f)
-        schools = [row[0] for row in reader]
+    schools = load_schools()
 
     return templates.TemplateResponse(
         request = request,
