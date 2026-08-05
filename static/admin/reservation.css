@@ -208,9 +208,11 @@
 .reservation-table-container {
     width: 100%;
     overflow-x: auto;
-
-    border: 1px solid #ddd;
-    border-radius: 8px;
+    background: #fff;
+    border: 1px solid #dce4eb;
+    border-radius: 10px;
+    scrollbar-color: #aebdca #f3f6f8;
+    scrollbar-width: thin;
 }
 
 
@@ -220,12 +222,10 @@
 
 .reservation-admin-table {
     width: 100%;
-    min-width: 800px;
-
+    min-width: 900px;
     border-collapse: collapse;
-
+    table-layout: auto;
     background: #fff;
-
     font-size: 14px;
 }
 
@@ -235,16 +235,14 @@
 ======================================== */
 
 .reservation-admin-table thead th {
-    padding: 14px 12px;
-
-    background: #f2f2f2;
-    color: #333;
-
-    border-bottom: 2px solid #d5d5d5;
-
-    font-weight: 600;
+    padding: 13px 14px;
+    color: #40566b;
+    background: #f3f7fa;
+    border-bottom: 1px solid #cfdbe5;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .02em;
     text-align: left;
-
     white-space: nowrap;
 }
 
@@ -254,13 +252,11 @@
 ======================================== */
 
 .reservation-admin-table tbody td {
-    padding: 13px 12px;
-
-    color: #444;
-
-    border-bottom: 1px solid #e5e5e5;
-
-    vertical-align: middle;
+    padding: 16px 14px;
+    color: #35495c;
+    border-bottom: 1px solid #e6edf2;
+    line-height: 1.65;
+    vertical-align: top;
 }
 
 
@@ -269,11 +265,15 @@
 ======================================== */
 
 .reservation-admin-table tbody tr {
-    transition: background-color 0.15s ease;
+    transition: background-color .15s ease;
+}
+
+.reservation-admin-table tbody tr:nth-child(even) {
+    background: #fbfcfd;
 }
 
 .reservation-admin-table tbody tr:hover {
-    background: #f8f8f8;
+    background: #f4f8fb;
 }
 
 
@@ -292,6 +292,13 @@
 .reservation-admin-table th:nth-child(2),
 .reservation-admin-table td:nth-child(2) {
     text-align: center;
+}
+
+.reservation-admin-table th:nth-child(1),
+.reservation-admin-table td:nth-child(1) {
+    width: 1%;
+    color: #748596;
+    white-space: nowrap;
 }
 
 
@@ -315,7 +322,10 @@
 
 .reservation-admin-table th:nth-child(7),
 .reservation-admin-table td:nth-child(7) {
-    min-width: 220px;
+    min-width: 260px;
+    max-width: 360px;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 
@@ -330,11 +340,10 @@
 
     min-height: 180px;
 
-    background: #fafafa;
-    border: 1px solid #e5e5e5;
-    border-radius: 8px;
-
-    color: #777;
+    padding: 24px;
+    background: #fafcfd;
+    color: #748596;
+    text-align: center;
 }
 
 .reservation-no-data p {
