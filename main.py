@@ -369,13 +369,13 @@ async def AdminReservationPage(request: Request, start_day: str = None, end_day:
             SELECT id, userid, day, start_time, end_time, equipment, purpose
             FROM reservation
             WHERE day >= ? AND day <= ?
-            ORDER BY day DESC, start_time DESC
+            ORDER BY day ASC, start_time ASC, id ASC
         """, (start_day, end_day))
     else:
         cursor.execute("""
             SELECT id, userid, day, start_time, end_time, equipment, purpose
             FROM reservation
-            ORDER BY day DESC, start_time DESC
+            ORDER BY day ASC, start_time ASC, id ASC
         """)
     reservations = cursor.fetchall()
 
