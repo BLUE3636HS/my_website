@@ -4,8 +4,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from contextlib import closing
+from pathlib import Path
 
 import sqlite3, shutil, bcrypt, datetime, csv
+
+BASE_DIR = Path(__file__).resolve().parent
+DATABASE_PATH = BASE_DIR / "database" / "database.db"
+UPLOADS_DIR = (BASE_DIR / "uploads").resolve()
 
 app = FastAPI()
 
@@ -423,6 +429,77 @@ async def AdminEquipmentReservationPage(request: Request, start_day: str = None,
             "end_day": end_day
         }
     )
+
+
+@app.get("/admin/studies", response_class=HTMLResponse)
+async def AdminStudiesPage(request: Request):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        studies = db.execute("""
+            SELECT
+                study.id,
+                study.name,
+                study.introduce,
+                study.filename,
+                study.pdfpath,
+                study.userid,
+                study.time,
+                student.id,
+                student.school
+            FROM study
+            LEFT JOIN student ON study.userid = student.id
+            ORDER BY study.id ASC
+        """).fetchall()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/studies.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "studies": studies
+        }
+    )
+
+
+@app.post("/admin/studies/{study_id}/delete")
+async def AdminDeleteStudy(request: Request, study_id: int):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        try:
+            study = db.execute(
+                "SELECT pdfpath FROM study WHERE id = ?",
+                (study_id,)
+            ).fetchone()
+
+            if study is None:
+                return RedirectResponse("/admin/studies", status_code=303)
+
+            db.execute("DELETE FROM study WHERE id = ?", (study_id,))
+            db.commit()
+        except sqlite3.Error:
+            db.rollback()
+            raise
+
+    pdfpath = study[0]
+    if pdfpath:
+        target_path = (UPLOADS_DIR / pdfpath).resolve()
+        try:
+            target_path.relative_to(UPLOADS_DIR)
+        except ValueError:
+            pass
+        else:
+            try:
+                target_path.unlink(missing_ok=True)
+            except OSError:
+                # DB deletion has completed; leave an undeleted file for manual cleanup.
+                pass
+
+    return RedirectResponse("/admin/studies", status_code=303)
 
 @app.get("/equipment-reservation", response_class=HTMLResponse)
 async def EquipmentReservationPage(request: Request):
