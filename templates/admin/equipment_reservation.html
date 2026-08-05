@@ -14,6 +14,9 @@
     <p class="dashboard-eyebrow">Equipment Reservation Management</p>
     <h1>実験器具予約確認</h1>
 
+    <details class="equipment-filter" {% if start_day or end_day %}open{% endif %}>
+        <summary class="equipment-filter-toggle">絞り込み</summary>
+
     <form method="get" action="/admin/equipment-reservation" class="equipment-filter-form">
 
         <div class="equipment-filter-group">
@@ -50,6 +53,7 @@
         </div>
 
     </form>
+    </details>
 
     <div class="equipment-table-container">
 

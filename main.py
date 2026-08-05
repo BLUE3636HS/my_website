@@ -402,13 +402,13 @@ async def AdminEquipmentReservationPage(request: Request, start_day: str = None,
             SELECT id, userid, equipment, start_day, end_day, quantity, purpose, note
             FROM equipment_reservation
             WHERE start_day <= ? AND end_day >= ?
-            ORDER BY start_day DESC, id DESC
+            ORDER BY start_day ASC, id ASC
         """, (end_day, start_day))
     else:
         cursor.execute("""
             SELECT id, userid, equipment, start_day, end_day, quantity, purpose, note
             FROM equipment_reservation
-            ORDER BY start_day DESC, id DESC
+            ORDER BY start_day ASC, id ASC
         """)
     equipment_reservations = cursor.fetchall()
 
