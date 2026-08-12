@@ -4,7 +4,13 @@
     <link rel="stylesheet" href="/static/mypage.css">
 {% endblock %}
 {% block content %}
-    <h1>マイページ</h1><br>
+<div class="student-page mypage-page">
+    <section class="student-page-hero">
+        <p class="student-page-eyebrow">MY PAGE</p>
+        <h1>マイページ</h1>
+        <p>プロフィール情報と現在の予約内容を確認できます。</p>
+    </section>
+    <section class="student-panel">
     <h2>プロフィール情報</h2>
     <table border="1">
         <tr>
@@ -19,7 +25,9 @@
             <th>在籍校</th>
             <td>{{user_school}}</td>
         </tr>
-    </table><br><br>
+    </table>
+    </section>
+    <section class="student-panel">
     <h2>TEKNE工作室 予約一覧</h2>
     <div class="mypage-table-scroll">
     <table class="reservation-table" border="1">
@@ -38,7 +46,9 @@
         </tr>
         {% endfor %}
     </table>
-    </div><br><br>
+    </div>
+    </section>
+    <section class="student-panel">
     <h2>実験器具 貸出予約一覧</h2>
     <div class="mypage-table-scroll">
     <table class="equipment-reservation-table" border="1">
@@ -53,8 +63,12 @@
         <tr><td colspan="7">実験器具の予約はありません。</td></tr>
         {% endfor %}
     </table>
-    </div><br><br>
-    <a href="/mypage/edit">プロフィール情報編集</a><br>
+    </div>
+    </section>
+    <div class="mypage-actions">
+        <a href="/mypage/edit" class="student-primary-button">プロフィール情報編集</a>
+    </div>
+</div>
 {% endblock %}
 {% block script %}
 <script src="/static/mypage.js"></script>

@@ -4,15 +4,25 @@
     <link rel="stylesheet" href="/static/addform.css">
 {% endblock %}
 {% block content %}
-    <h1>研究成果追加フォーム</h1>
-    <label for="name">名前</label><br>
-    <input type="text" id="name" maxlength="50"><br><br>
-    <label for="introduce">紹介文</label><br>
-    <textarea id="introduce" maxlength="100"></textarea><br><br>
-    <label for="pdf_file">研究成果ファイル</label><br>
-    <input type="file" id="pdf_file" accept=".pdf"><br><br>
-    <button type="button" id="add_btn">追加</button><br><br>
-    <a href="/">ホームへ戻る</a>
+<div class="student-page student-page-narrow addform-page">
+    <section class="student-page-hero">
+        <p class="student-page-eyebrow">RESEARCH SUBMISSION</p>
+        <h1>研究成果追加フォーム</h1>
+        <p>研究成果の題名と紹介文を入力し、PDFファイルを登録してください。</p>
+    </section>
+    <section class="addform-panel">
+        <label for="name">名前</label>
+        <input type="text" id="name" maxlength="50">
+        <label for="introduce">紹介文</label>
+        <textarea id="introduce" maxlength="100"></textarea>
+        <label for="pdf_file">研究成果ファイル</label>
+        <input type="file" id="pdf_file" accept=".pdf">
+        <div class="addform-actions">
+            <button type="button" id="add_btn" class="student-primary-button">追加</button>
+            <a href="/" class="student-secondary-link">ホームへ戻る</a>
+        </div>
+    </section>
+</div>
 {% endblock %}
 {% block script %}
     <script src="/static/addform.js"></script>

@@ -4,7 +4,13 @@
     <link rel="stylesheet" href="/static/studylist.css">
 {% endblock %}
 {% block content %}
-    <h1>研究成果一覧</h1>
+<div class="student-page studylist-page">
+    <section class="student-page-hero">
+        <p class="student-page-eyebrow">RESEARCH ARCHIVE</p>
+        <h1>研究成果一覧</h1>
+        <p>登録された研究成果の概要を確認し、PDFを閲覧できます。</p>
+    </section>
+    <section class="student-panel studylist-panel">
     <div class="study-table-scroll">
     <table border="1">
         <tr>
@@ -20,8 +26,12 @@
         </tr>
         {% endfor %}
     </table>
-    </div><br>
-    <a href="/">ホームへ戻る</a>
+    </div>
+    <div class="studylist-actions">
+        <a href="/" class="student-secondary-link">ホームへ戻る</a>
+    </div>
+    </section>
+</div>
 {% endblock %}
 {% block script %}
 {% endblock %}

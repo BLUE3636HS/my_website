@@ -2,22 +2,25 @@
 {% block title %}実験器具の貸出予約{% endblock %}
 {% block css %}<link rel="stylesheet" href="/static/equipment_reservation.css">{% endblock %}
 {% block content %}
-<section class="equipment-reservation" data-selected-day="{{ selected_day }}">
-    <h1>実験器具の貸出予約</h1>
-    <p class="lead">利用する器具、期間、数量を選んで予約してください。貸出期間は最長7日間です。</p>
+<div class="student-page equipment-reservation" data-selected-day="{{ selected_day }}">
+    <section class="student-page-hero">
+        <p class="student-page-eyebrow">EQUIPMENT RESERVATION</p>
+        <h1>実験器具の貸出予約</h1>
+        <p>利用する器具、期間、数量を選んで予約してください。貸出期間は最長7日間です。</p>
+    </section>
     <form id="equipment-reservation-form">
-        <fieldset><legend>1. 器具を選択</legend><div class="equipment-grid">
+        <fieldset class="student-panel"><legend>1. 器具を選択</legend><div class="equipment-grid">
             {% for item in catalog %}<label class="equipment-card"><input type="radio" name="equipment" value="{{ item.name }}" required><img src="{{ item.image }}" alt="{{ item.name }}"><span class="equipment-name">{{ item.name }}</span><span>{{ item.content }}</span><strong class="equipment-stock">残りを確認してください</strong></label>{% endfor %}
         </div></fieldset>
-        <fieldset class="date-fields"><legend>2. 利用期間と数量</legend>
+        <fieldset class="student-panel date-fields"><legend>2. 利用期間と数量</legend>
             <label>借りる日<input id="start_day" name="start_day" type="date" value="{{ selected_day }}" min="{{ selected_day }}" required></label>
             <label>返却日<input id="end_day" name="end_day" type="date" value="{{ selected_day }}" min="{{ selected_day }}" required></label>
             <label>数量<select id="quantity" name="quantity" required><option value="">器具を選択してください</option></select></label>
             <p id="availability" aria-live="polite">器具と期間を選択すると利用可能数を表示します。</p>
         </fieldset>
-        <fieldset><legend>3. 使用目的・備考</legend><label>使用目的<textarea name="purpose" required maxlength="500"></textarea></label><label>備考（任意）<textarea name="note" maxlength="500"></textarea></label></fieldset>
-        <button type="submit">予約を確定する</button><br><br>
+        <fieldset class="student-panel equipment-purpose"><legend>3. 使用目的・備考</legend><label>使用目的<textarea name="purpose" required maxlength="500"></textarea></label><label>備考（任意）<textarea name="note" maxlength="500"></textarea></label></fieldset>
+        <button type="submit" class="student-primary-button">予約を確定する</button>
     </form>
-</section>
+</div>
 {% endblock %}
 {% block script %}<script src="/static/equipment_reservation.js"></script>{% endblock %}

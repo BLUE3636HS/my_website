@@ -98,7 +98,94 @@ body {
     min-width: 0;
 }
 
+.student-page {
+    width: min(100%, 1120px);
+    margin: 0 auto;
+    padding: 42px 30px 72px;
+}
+
+.student-page-narrow {
+    max-width: 760px;
+}
+
+.student-page-hero {
+    margin-bottom: 28px;
+}
+
+.student-page-eyebrow {
+    margin: 0 0 6px;
+    color: #1f4e79;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .14em;
+}
+
+.student-page-hero h1 {
+    margin: 0;
+    color: #243447;
+    font-size: clamp(28px, 4vw, 42px);
+}
+
+.student-page-hero > p:last-child {
+    margin: 7px 0 0;
+    color: #64748b;
+}
+
+.student-panel {
+    min-width: 0;
+    padding: 26px;
+    border: 1px solid #d6e0ea;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 8px 26px rgba(31, 78, 121, .08);
+}
+
+.student-panel + .student-panel {
+    margin-top: 22px;
+}
+
+.student-panel h2 {
+    margin: 0 0 20px;
+    color: #243447;
+    font-size: 21px;
+}
+
+.student-primary-button,
+.student-secondary-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 220px;
+    padding: 13px 24px;
+    border: 0;
+    border-radius: 8px;
+    font: inherit;
+    font-weight: 800;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.student-primary-button {
+    background: #1f4e79;
+    color: #fff;
+}
+
+.student-primary-button:hover {
+    background: #163a5c;
+}
+
+.student-secondary-link {
+    background: #e8edf2;
+    color: #334155;
+}
+
+.student-secondary-link:hover {
+    background: #d9e1e8;
+}
+
 @media (max-width: 700px) {
     .student-sidebar { flex-basis: 184px; }
     .student-header { padding: 0 20px; }
+    .student-page { padding: 25px 16px 50px; }
+    .student-panel { padding: 19px; }
 }
