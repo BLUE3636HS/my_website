@@ -424,19 +424,24 @@ async def AdminEquipmentReservationPage(request: Request, start_day: str = None,
     if request.session.get("admin_login") != True:
         return RedirectResponse("/admin/login", status_code=303)
 
+    today = datetime.datetime.now(
+        datetime.timezone(datetime.timedelta(hours=9))
+    ).date().isoformat()
+
     if start_day and end_day:
         cursor.execute("""
             SELECT id, userid, equipment, start_day, end_day, quantity, purpose, note
             FROM equipment_reservation
-            WHERE start_day <= ? AND end_day >= ?
+            WHERE end_day >= ? AND start_day <= ? AND end_day >= ?
             ORDER BY start_day ASC, id ASC
-        """, (end_day, start_day))
+        """, (today, end_day, start_day))
     else:
         cursor.execute("""
             SELECT id, userid, equipment, start_day, end_day, quantity, purpose, note
             FROM equipment_reservation
+            WHERE end_day >= ?
             ORDER BY start_day ASC, id ASC
-        """)
+        """, (today,))
     equipment_reservations = cursor.fetchall()
 
     return templates.TemplateResponse(
