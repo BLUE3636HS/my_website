@@ -149,16 +149,6 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
                 request.session.pop("admin_time", None)
                 print("adminログアウト")
 
-        #dbのreservationのうち、過去の予約を削除
-        cursor.execute(
-            """
-            DELETE FROM reservation
-            WHERE day < ?
-            """,
-            (datetime.datetime.now().strftime("%Y-%m-%d"),)
-        )
-        conn.commit()
-
         #ログインが必要なページにアクセスした場合、ログインページにリダイレクト
         #ログインなしでもアクセスできるページを定義
         public_paths = [
@@ -388,19 +378,24 @@ async def AdminReservationPage(request: Request, start_day: str = None, end_day:
     if request.session.get("admin_login") != True:
         return RedirectResponse("/admin/login", status_code=303)
 
+    today = datetime.datetime.now(
+        datetime.timezone(datetime.timedelta(hours=9))
+    ).date().isoformat()
+
     if start_day and end_day:
         cursor.execute("""
             SELECT id, userid, day, start_time, end_time, equipment, purpose
             FROM reservation
-            WHERE day >= ? AND day <= ?
+            WHERE day >= ? AND day >= ? AND day <= ?
             ORDER BY day ASC, start_time ASC, id ASC
-        """, (start_day, end_day))
+        """, (today, start_day, end_day))
     else:
         cursor.execute("""
             SELECT id, userid, day, start_time, end_time, equipment, purpose
             FROM reservation
+            WHERE day >= ?
             ORDER BY day ASC, start_time ASC, id ASC
-        """)
+        """, (today,))
     reservations = [
         (*reservation[:5], format_reserved_equipment(reservation[5]), *reservation[6:])
         for reservation in cursor.fetchall()
@@ -721,9 +716,14 @@ async def Mypage(request: Request):
         """
         SELECT *
         FROM reservation
-        WHERE userid = ?
+        WHERE userid = ? AND day >= ?
         """,
-        (user_id,)
+        (
+            user_id,
+            datetime.datetime.now(
+                datetime.timezone(datetime.timedelta(hours=9))
+            ).date().isoformat()
+        )
     )
 
     reservations = [i[2:4] for i in cursor.fetchall()]
