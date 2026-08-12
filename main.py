@@ -126,7 +126,9 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
                 "%Y-%m-%d %H:%M:%S"
             )
             if (datetime.datetime.now() - login_time).days >= 1:
-                request.session["teacher_login"] = False
+                request.session.pop("teacher_login", None)
+                request.session.pop("teacher_id", None)
+                request.session.pop("teacher_time", None)
                 print("teacherログアウト")
         
         if request.session.get("user_login") == True:
@@ -135,7 +137,9 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
                 "%Y-%m-%d %H:%M:%S"
             )
             if (datetime.datetime.now() - login_time).days >= 1:
-                request.session["user_login"] = False
+                request.session.pop("user_login", None)
+                request.session.pop("user_id", None)
+                request.session.pop("user_time", None)
                 print("userログアウト")
 
         if request.session.get("admin_login") == True:
@@ -174,17 +178,9 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
         if request.url.path.startswith("/admin"):
             if request.session.get("admin_login") == True:
                 return await call_next(request)
-            if request.session.get("teacher_login") == True:
-                return RedirectResponse("/teacher", status_code=303)
-            if request.session.get("user_login") == True:
-                return RedirectResponse("/", status_code=303)
             return RedirectResponse("/admin/login", status_code=303)
 
-        # admin は既存の student / teacher 画面へ入れない
-        if request.session.get("admin_login") == True:
-            return RedirectResponse("/admin", status_code=303)
-
-        # 管理者ログイン済みなら teacher 配下のみ許可
+        # teacher ログイン済みなら teacher 配下のみ許可
         if request.session.get("teacher_login") == True:
             if request.url.path.startswith("/teacher"):
                 return await call_next(request)
@@ -351,7 +347,6 @@ async def AdminLogin(
             status_code=401
         )
 
-    request.session.clear()
     request.session["admin_login"] = True
     request.session["admin_id"] = id
     request.session["admin_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -690,7 +685,12 @@ async def Registration(request: Request):
 
 @app.get("/logout")
 async def Logout(request: Request):
-    request.session.clear()
+    request.session.pop("user_login", None)
+    request.session.pop("user_id", None)
+    request.session.pop("user_time", None)
+    request.session.pop("teacher_login", None)
+    request.session.pop("teacher_id", None)
+    request.session.pop("teacher_time", None)
     return templates.TemplateResponse(
         request = request,
         name = "logout.html"
@@ -910,6 +910,9 @@ async def Login(
             )
 
         if pwdcheck:
+            request.session.pop("teacher_login", None)
+            request.session.pop("teacher_id", None)
+            request.session.pop("teacher_time", None)
             request.session["user_login"] = True
             request.session["user_id"] = id
             request.session["user_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -935,6 +938,9 @@ async def Login(
             )
 
         if pwdcheck:
+            request.session.pop("user_login", None)
+            request.session.pop("user_id", None)
+            request.session.pop("user_time", None)
             request.session["teacher_login"] = True
             request.session["teacher_id"] = id
             request.session["teacher_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
