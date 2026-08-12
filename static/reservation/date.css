@@ -656,3 +656,27 @@ label {
 
     color: white;
 }
+
+/* サイドバーを除いたコンテンツ幅に応じて横並びを解除する */
+@container (max-width: 1000px) {
+    #reservation_container {
+        flex-direction: column;
+        align-items: center;
+        gap: 30px;
+    }
+
+    #reservation_area,
+    #reservation_form {
+        width: 100%;
+        max-width: 450px;
+    }
+
+    #reservation_status {
+        max-height: 400px;
+    }
+
+    #btn {
+        width: 100%;
+        max-width: 300px;
+    }
+}

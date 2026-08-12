@@ -1,32 +1,44 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
     <head>
         <title>
             {% block title %}
             {% endblock %}
         </title>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link rel="stylesheet" href="/static/base.css">
         <link rel="icon" href="/static/icon.ico">
         {% block css %}
         {% endblock %}
     </head>
     <body>
-        <header>
-            <div class="header_left">
-                <a href="/">
+        <div class="student-layout">
+            <aside class="student-sidebar">
+                <a class="student-brand" href="/">
                     <img src="/static/top.png" alt="TEKNE工作室">
                 </a>
+                <nav class="student-nav" aria-label="生徒用メニュー">
+                    <a class="student-nav-link" href="/addform">研究成果追加フォーム</a>
+                    <a class="student-nav-link" href="/studylist">研究成果一覧</a>
+                    <a class="student-nav-link" href="/reservation">TEKNE工作室予約</a>
+                    <a class="student-nav-link" href="/equipment-reservation">実験器具の貸し出し予約</a>
+                    <a class="student-nav-link" href="/mypage">マイページ</a>
+                </nav>
+                <a class="student-logout-link" href="/logout">Logout</a>
+            </aside>
+
+            <div class="student-main">
+                <header class="student-header">
+                    <p>{% block page_title %}{{ self.title() }}{% endblock %}</p>
+                    <span>{{ user_id }}</span>
+                </header>
+                <main class="student-content">
+                    {% block content %}
+                    {% endblock %}
+                </main>
             </div>
-            <div class="header_right">
-                <a href="/mypage">{{user_id}}さん マイページ</a>
-                <a href="/logout">ログアウト</a>
-            </div>
-        </header>
-        <main>
-            {% block content %}
-            {% endblock %}
-        </main>
+        </div>
         {% block script %}
         {% endblock %}
     </body>

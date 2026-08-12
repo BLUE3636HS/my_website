@@ -59,6 +59,11 @@ main h2 {
    テーブル
 ========================= */
 
+.mypage-table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
 main table {
 
     width: 100%;
@@ -115,8 +120,8 @@ main tr:nth-child(even) td {
 }
 
 /* 削除列（3列目） */
-main table:nth-of-type(2) th:nth-child(3),
-main table:nth-of-type(2) td:nth-child(3) {
+.reservation-table th:nth-child(3),
+.reservation-table td:nth-child(3) {
 
     width: 1%;
 
@@ -131,13 +136,13 @@ main table:nth-of-type(2) td:nth-child(3) {
    予約一覧テーブル
 ========================= */
 
-main table:nth-of-type(2) th {
+.reservation-table th {
 
     text-align: center;
 
 }
 
-main table:nth-of-type(2) td {
+.reservation-table td {
 
     text-align: center;
 
@@ -230,4 +235,8 @@ main > a:hover {
 
     text-align: center;
 
+}
+
+.equipment-reservation-table {
+    min-width: 760px;
 }

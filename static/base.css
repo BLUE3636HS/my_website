@@ -1,189 +1,104 @@
-/* =====================
-   全ページ共通CSS
-===================== */
-
-
-/* 全要素 */
-* {
-
-    box-sizing: border-box;
-
-}
-
-
-
-/* ページ全体 */
+* { box-sizing: border-box; }
 
 body {
-
     margin: 0;
-
-
-    font-family:
-        "Segoe UI",
-        "Noto Sans JP",
-        sans-serif;
-
-
-    background-color: #f4f7fb;
-
-
+    min-height: 100vh;
+    font-family: "Segoe UI", "Noto Sans JP", sans-serif;
+    background: #f4f7fb;
     color: #333;
-
 }
 
-
-
-/* =====================
-   header
-===================== */
-
-
-header {
-
-    height: 70px;
-
-
-    background-color: #1f4e79;
-
-
+.student-layout {
     display: flex;
-
-
-    align-items: center;
-
-
-    justify-content: space-between;
-
-
-    padding: 0 40px;
-
-
-    box-shadow:
-        0 2px 8px rgba(0,0,0,0.15);
-
+    min-height: 100vh;
 }
 
-
-
-/* =====================
-   左側（ロゴ）
-===================== */
-
-
-.header_left {
-
+.student-sidebar {
+    position: sticky;
+    top: 0;
     display: flex;
-
-    align-items: center;
-
+    flex: 0 0 240px;
+    flex-direction: column;
+    height: 100vh;
+    padding: 28px 16px 20px;
+    background: #1f4e79;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, .12);
+    overflow-y: auto;
 }
 
-
-
-/* ロゴリンク */
-
-.header_left a {
-
+.student-brand {
     display: flex;
-
     align-items: center;
-
-
-    padding: 0;
-
-
-    border-radius: 0;
-
+    padding: 0 12px 28px;
 }
 
-
-
-/* ロゴ画像 */
-
-.header_left img {
-
+.student-brand img {
+    display: block;
     width: 140px;
-
-
+    max-width: 100%;
     object-fit: contain;
-
 }
 
-
-
-/* ロゴにhoverした時 */
-
-.header_left a:hover {
-
-    background-color: transparent;
-
+.student-nav {
+    border-top: 1px solid rgba(255, 255, 255, .25);
+    padding-top: 16px;
 }
 
-
-
-/* =====================
-   右側（ログイン関連）
-===================== */
-
-
-.header_right {
-
-    display: flex;
-
-
-    align-items: center;
-
-
-    gap: 20px;
-
-}
-
-
-
-/* headerリンク */
-
-.header_right a {
-
-    color: white;
-
-
+.student-nav-link,
+.student-logout-link {
+    display: block;
+    border-radius: 7px;
+    padding: 12px;
+    color: #fff;
+    font-weight: 600;
+    line-height: 1.5;
     text-decoration: none;
-
-
-    padding: 8px 14px;
-
-
-    border-radius: 6px;
-
-
-    transition: 0.3s;
-
 }
 
-
-
-/* hover */
-
-.header_right a:hover {
-
-    background-color:
-        rgba(255,255,255,0.2);
-
+.student-nav-link:hover,
+.student-logout-link:hover {
+    background: rgba(255, 255, 255, .16);
 }
 
+.student-logout-link {
+    margin-top: auto;
+    border-top: 1px solid rgba(255, 255, 255, .25);
+    border-radius: 0;
+    padding-top: 20px;
+}
 
+.student-main {
+    flex: 1;
+    min-width: 0;
+    container-type: inline-size;
+}
 
-/* ユーザー名 */
+.student-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 70px;
+    padding: 0 36px;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .07);
+}
 
-.header_right em {
+.student-header p {
+    margin: 0;
+    color: #1f4e79;
+    font-weight: 700;
+}
 
-    color: white;
+.student-header span {
+    color: #5b6976;
+    font-size: 14px;
+}
 
+.student-content {
+    min-width: 0;
+}
 
-    font-style: normal;
-
-
-    font-weight: bold;
-
+@media (max-width: 700px) {
+    .student-sidebar { flex-basis: 184px; }
+    .student-header { padding: 0 20px; }
 }

@@ -42,12 +42,19 @@ main h1 {
    表
 ========================= */
 
+.study-table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
 
 main table {
 
     width: 100%;
 
     border-collapse: collapse;
+
+    min-width: 700px;
 
 }
 

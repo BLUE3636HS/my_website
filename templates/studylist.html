@@ -5,6 +5,7 @@
 {% endblock %}
 {% block content %}
     <h1>研究成果一覧</h1>
+    <div class="study-table-scroll">
     <table border="1">
         <tr>
             <th>題名</th>
@@ -18,7 +19,8 @@
             <td><a href="/uploads/{{study[4]}}">{{study[3]}}</a></td>
         </tr>
         {% endfor %}
-    </table><br>
+    </table>
+    </div><br>
     <a href="/">ホームへ戻る</a>
 {% endblock %}
 {% block script %}
