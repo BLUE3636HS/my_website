@@ -18,13 +18,13 @@
 
 .accounts-page h1 {
     margin: 0;
-    color: #243447;
+    color: #263b2f;
     font-size: clamp(24px, 3vw, 30px);
 }
 
 .accounts-description {
     margin: 10px 0 0;
-    color: #66788a;
+    color: #667c6d;
     font-size: 14px;
     line-height: 1.7;
 }
@@ -32,9 +32,9 @@
 .accounts-count {
     flex: 0 0 auto;
     padding: 8px 13px;
-    color: #1f4e79;
-    background: #eaf2f9;
-    border: 1px solid #d3e2ef;
+    color: #25613e;
+    background: #eaf5ed;
+    border: 1px solid #d2e6d8;
     border-radius: 999px;
     font-size: 13px;
     font-weight: 700;
@@ -65,26 +65,26 @@
     display: flex;
     gap: 6px;
     margin-bottom: 18px;
-    border-bottom: 1px solid #dce4eb;
+    border-bottom: 1px solid #dbe8df;
 }
 
 .accounts-tab {
     position: relative;
     min-width: 90px;
     padding: 11px 18px;
-    color: #66788a;
+    color: #667c6d;
     font-weight: 700;
     text-align: center;
     text-decoration: none;
 }
 
 .accounts-tab:hover {
-    color: #1f4e79;
-    background: #f6f9fb;
+    color: #25613e;
+    background: #f5faf6;
 }
 
 .accounts-tab.is-active {
-    color: #1f4e79;
+    color: #25613e;
 }
 
 .accounts-tab.is-active::after {
@@ -94,7 +94,7 @@
     bottom: -1px;
     left: 10px;
     height: 3px;
-    background: #1f4e79;
+    background: #25613e;
     border-radius: 3px 3px 0 0;
 }
 
@@ -105,14 +105,14 @@
     gap: 10px;
     margin-bottom: 22px;
     padding: 16px;
-    background: #f7f9fb;
-    border: 1px solid #e0e7ed;
+    background: #f6faf7;
+    border: 1px solid #dfeae2;
     border-radius: 8px;
 }
 
 .accounts-filter-form label {
     align-self: center;
-    color: #526779;
+    color: #526b5a;
     font-size: 14px;
     font-weight: 700;
 }
@@ -121,9 +121,9 @@
     min-width: 220px;
     height: 40px;
     padding: 0 34px 0 11px;
-    color: #35495c;
+    color: #354f3e;
     background: #fff;
-    border: 1px solid #cbd7e1;
+    border: 1px solid #cadbcf;
     border-radius: 6px;
     font: inherit;
 }
@@ -144,21 +144,21 @@
 
 .accounts-filter-form button {
     color: #fff;
-    background: #1f4e79;
-    border: 1px solid #1f4e79;
+    background: #25613e;
+    border: 1px solid #25613e;
 }
 
 .accounts-filter-form a {
-    color: #526779;
+    color: #526b5a;
     background: #fff;
-    border: 1px solid #cbd7e1;
+    border: 1px solid #cadbcf;
 }
 
 .accounts-table-container {
     width: 100%;
     overflow-x: auto;
     background: #fff;
-    border: 1px solid #dce4eb;
+    border: 1px solid #dbe8df;
     border-radius: 10px;
 }
 
@@ -171,9 +171,9 @@
 
 .accounts-table th {
     padding: 13px 14px;
-    color: #40566b;
-    background: #f3f7fa;
-    border-bottom: 1px solid #cfdbe5;
+    color: #405b49;
+    background: #f2f8f4;
+    border-bottom: 1px solid #cedfd3;
     font-size: 12px;
     font-weight: 700;
     text-align: left;
@@ -182,16 +182,16 @@
 
 .accounts-table td {
     padding: 15px 14px;
-    color: #35495c;
-    border-bottom: 1px solid #e6edf2;
+    color: #354f3e;
+    border-bottom: 1px solid #e5eee8;
 }
 
 .accounts-table tbody tr:nth-child(even) {
-    background: #fbfcfd;
+    background: #fafcfb;
 }
 
 .accounts-table tbody tr:hover {
-    background: #f4f8fb;
+    background: #f3f9f5;
 }
 
 .accounts-table tbody tr:last-child td {
@@ -199,7 +199,7 @@
 }
 
 .accounts-table td:first-child {
-    color: #243447;
+    color: #263b2f;
     font-weight: 650;
 }
 
@@ -234,8 +234,8 @@
     align-items: center;
     justify-content: center;
     padding: 24px;
-    color: #748596;
-    background: #fafcfd;
+    color: #748b7b;
+    background: #fafcfb;
 }
 
 .account-auth-modal[hidden] {
@@ -267,9 +267,9 @@
     overflow-y: auto;
     padding: 26px;
     background: #fff;
-    border: 1px solid #dce4eb;
+    border: 1px solid #dbe8df;
     border-radius: 12px;
-    box-shadow: 0 24px 64px rgba(20, 43, 64, .28);
+    box-shadow: 0 24px 64px rgba(28, 67, 42, .28);
 }
 
 .account-auth-header {
@@ -281,7 +281,7 @@
 
 .account-auth-eyebrow {
     margin: 0 0 5px;
-    color: #1f4e79;
+    color: #25613e;
     font-size: 11px;
     font-weight: 700;
     letter-spacing: .08em;
@@ -290,7 +290,7 @@
 
 .account-auth-header h2 {
     margin: 0;
-    color: #243447;
+    color: #263b2f;
     font-size: 21px;
 }
 
@@ -298,9 +298,9 @@
     width: 34px;
     height: 34px;
     padding: 0;
-    color: #526779;
-    background: #f3f6f8;
-    border: 1px solid #dce4eb;
+    color: #526b5a;
+    background: #f2f7f3;
+    border: 1px solid #dbe8df;
     border-radius: 50%;
     font-size: 22px;
     cursor: pointer;
@@ -308,7 +308,7 @@
 
 .account-auth-description {
     margin: 18px 0 20px;
-    color: #66788a;
+    color: #667c6d;
     font-size: 14px;
     line-height: 1.7;
 }
@@ -316,7 +316,7 @@
 .account-auth-dialog label {
     display: block;
     margin: 14px 0 6px;
-    color: #40566b;
+    color: #405b49;
     font-size: 14px;
     font-weight: 700;
 }
@@ -326,8 +326,8 @@
     width: 100%;
     height: 42px;
     padding: 0 11px;
-    color: #243447;
-    border: 1px solid #cbd7e1;
+    color: #263b2f;
+    border: 1px solid #cadbcf;
     border-radius: 6px;
     font: inherit;
 }
@@ -336,7 +336,7 @@
 .accounts-filter-form select:focus,
 .accounts-tab:focus-visible,
 .account-delete-button:focus-visible {
-    outline: 2px solid #1f4e79;
+    outline: 2px solid #25613e;
     outline-offset: 2px;
 }
 
@@ -356,9 +356,9 @@
 }
 
 .account-auth-cancel {
-    color: #526779;
+    color: #526b5a;
     background: #fff;
-    border: 1px solid #cbd7e1;
+    border: 1px solid #cadbcf;
 }
 
 .account-auth-submit {

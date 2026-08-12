@@ -209,9 +209,9 @@
     width: 100%;
     overflow-x: auto;
     background: #fff;
-    border: 1px solid #dce4eb;
+    border: 1px solid #dbe8df;
     border-radius: 10px;
-    scrollbar-color: #aebdca #f3f6f8;
+    scrollbar-color: #adbfB2 #f2f7f3;
     scrollbar-width: thin;
 }
 
@@ -236,9 +236,9 @@
 
 .reservation-admin-table thead th {
     padding: 13px 14px;
-    color: #40566b;
-    background: #f3f7fa;
-    border-bottom: 1px solid #cfdbe5;
+    color: #405b49;
+    background: #f2f8f4;
+    border-bottom: 1px solid #cedfd3;
     font-size: 12px;
     font-weight: 700;
     letter-spacing: .02em;
@@ -253,8 +253,8 @@
 
 .reservation-admin-table tbody td {
     padding: 16px 14px;
-    color: #35495c;
-    border-bottom: 1px solid #e6edf2;
+    color: #354f3e;
+    border-bottom: 1px solid #e5eee8;
     line-height: 1.65;
     vertical-align: top;
 }
@@ -269,11 +269,11 @@
 }
 
 .reservation-admin-table tbody tr:nth-child(even) {
-    background: #fbfcfd;
+    background: #fafcfb;
 }
 
 .reservation-admin-table tbody tr:hover {
-    background: #f4f8fb;
+    background: #f3f9f5;
 }
 
 
@@ -297,7 +297,7 @@
 .reservation-admin-table th:nth-child(1),
 .reservation-admin-table td:nth-child(1) {
     width: 1%;
-    color: #748596;
+    color: #748b7b;
     white-space: nowrap;
 }
 
@@ -341,8 +341,8 @@
     min-height: 180px;
 
     padding: 24px;
-    background: #fafcfd;
-    color: #748596;
+    background: #fafcfb;
+    color: #748b7b;
     text-align: center;
 }
 

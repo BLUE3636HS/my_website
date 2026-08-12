@@ -25,14 +25,14 @@
 
 .studies-page h1 {
     margin: 0;
-    color: #243447;
+    color: #263b2f;
     font-size: clamp(24px, 3vw, 30px);
     line-height: 1.25;
 }
 
 .studies-page-description {
     margin: 10px 0 0;
-    color: #66788a;
+    color: #667c6d;
     font-size: 14px;
     line-height: 1.7;
 }
@@ -43,9 +43,9 @@
     align-items: center;
     min-height: 34px;
     padding: 0 13px;
-    color: #1f4e79;
-    background: #eaf2f9;
-    border: 1px solid #d3e2ef;
+    color: #25613e;
+    background: #eaf5ed;
+    border: 1px solid #d2e6d8;
     border-radius: 999px;
     font-size: 13px;
     font-weight: 700;
@@ -56,9 +56,9 @@
     width: 100%;
     overflow-x: auto;
     background: #fff;
-    border: 1px solid #dce4eb;
+    border: 1px solid #dbe8df;
     border-radius: 10px;
-    scrollbar-color: #aebdca #f3f6f8;
+    scrollbar-color: #adbfB2 #f2f7f3;
     scrollbar-width: thin;
 }
 
@@ -73,9 +73,9 @@
 
 .studies-admin-table th {
     padding: 13px 14px;
-    color: #40566b;
-    background: #f3f7fa;
-    border-bottom: 1px solid #cfdbe5;
+    color: #405b49;
+    background: #f2f8f4;
+    border-bottom: 1px solid #cedfd3;
     font-size: 12px;
     font-weight: 700;
     letter-spacing: .02em;
@@ -85,8 +85,8 @@
 
 .studies-admin-table td {
     padding: 16px 14px;
-    color: #35495c;
-    border-bottom: 1px solid #e6edf2;
+    color: #354f3e;
+    border-bottom: 1px solid #e5eee8;
     line-height: 1.65;
     vertical-align: top;
 }
@@ -96,11 +96,11 @@
 }
 
 .studies-admin-table tbody tr:nth-child(even) {
-    background: #fbfcfd;
+    background: #fafcfb;
 }
 
 .studies-admin-table tbody tr:hover {
-    background: #f4f8fb;
+    background: #f3f9f5;
 }
 
 .studies-admin-table tbody tr:last-child td {
@@ -110,7 +110,7 @@
 .studies-admin-table th:first-child,
 .studies-admin-table td:first-child {
     width: 1%;
-    color: #748596;
+    color: #748b7b;
     text-align: center;
     white-space: nowrap;
 }
@@ -119,7 +119,7 @@
     width: 210px;
     min-width: 210px;
     max-width: 210px;
-    color: #243447;
+    color: #263b2f;
     font-weight: 650;
     overflow-wrap: anywhere;
 }
@@ -137,13 +137,13 @@
     width: 220px;
     min-width: 220px;
     max-width: 220px;
-    color: #5b6e80;
+    color: #5b7362;
     overflow-wrap: anywhere;
 }
 
 .studies-time-cell {
     min-width: 155px;
-    color: #5b6e80;
+    color: #5b7362;
     white-space: nowrap;
 }
 
@@ -161,9 +161,9 @@
     justify-content: center;
     min-height: 32px;
     padding: 4px 10px;
-    color: #1f5f99;
-    background: #eef5fb;
-    border: 1px solid #d5e5f2;
+    color: #2f7a4f;
+    background: #edf7f0;
+    border: 1px solid #d4e9da;
     border-radius: 6px;
     font: inherit;
     font-weight: 600;
@@ -174,9 +174,9 @@
 }
 
 .studies-user-button:hover {
-    color: #173f64;
-    background: #e1edf7;
-    border-color: #bfd5e7;
+    color: #1d5435;
+    background: #e0efe4;
+    border-color: #bedac7;
 }
 
 .studies-filename-link:focus-visible,
@@ -184,22 +184,22 @@
 .studies-delete-button:focus-visible,
 .student-modal-close:focus-visible,
 .student-modal-close-button:focus-visible {
-    outline: 2px solid #1f4e79;
+    outline: 2px solid #25613e;
     outline-offset: 2px;
 }
 
 .studies-filename-link {
-    color: #1f5f99;
+    color: #2f7a4f;
     font-weight: 600;
     line-height: 1.6;
     text-decoration: underline;
-    text-decoration-color: #9bbbd5;
+    text-decoration-color: #9ac5a8;
     text-underline-offset: 3px;
     overflow-wrap: anywhere;
 }
 
 .studies-filename-link:hover {
-    color: #173f64;
+    color: #1d5435;
     text-decoration-color: currentColor;
 }
 
@@ -231,8 +231,8 @@
     justify-content: center;
     min-height: 180px;
     padding: 24px;
-    color: #748596;
-    background: #fafcfd;
+    color: #748b7b;
+    background: #fafcfb;
     text-align: center;
 }
 
@@ -270,9 +270,9 @@
     overflow-y: auto;
     padding: 26px;
     background: #fff;
-    border: 1px solid #dce4eb;
+    border: 1px solid #dbe8df;
     border-radius: 12px;
-    box-shadow: 0 24px 64px rgba(20, 43, 64, .28);
+    box-shadow: 0 24px 64px rgba(28, 67, 42, .28);
     box-sizing: border-box;
 }
 
@@ -286,7 +286,7 @@
 
 .student-modal-header h2 {
     margin: 0;
-    color: #243447;
+    color: #263b2f;
     font-size: 20px;
 }
 
@@ -295,9 +295,9 @@
     width: 34px;
     height: 34px;
     padding: 0;
-    color: #526779;
-    background: #f3f6f8;
-    border: 1px solid #dce4eb;
+    color: #526b5a;
+    background: #f2f7f3;
+    border: 1px solid #dbe8df;
     border-radius: 50%;
     font-size: 22px;
     line-height: 1;
@@ -305,12 +305,12 @@
 }
 
 .student-modal-close:hover {
-    background: #e8eef3;
+    background: #e7f0e9;
 }
 
 .student-modal-content dl {
     margin: 0;
-    border-top: 1px solid #e3eaf0;
+    border-top: 1px solid #e2ece5;
 }
 
 .student-modal-content dl > div {
@@ -318,18 +318,18 @@
     grid-template-columns: 100px minmax(0, 1fr);
     gap: 16px;
     padding: 14px 0;
-    border-bottom: 1px solid #e3eaf0;
+    border-bottom: 1px solid #e2ece5;
 }
 
 .student-modal-content dt {
-    color: #6a7d8f;
+    color: #6a8170;
     font-size: 13px;
     font-weight: 700;
 }
 
 .student-modal-content dd {
     margin: 0;
-    color: #2e4356;
+    color: #2e4937;
     font-weight: 600;
     overflow-wrap: anywhere;
 }
@@ -337,8 +337,8 @@
 .student-modal-missing {
     margin: 0;
     padding: 16px;
-    color: #526779;
-    background: #f4f7f9;
+    color: #526b5a;
+    background: #f3f8f4;
     border-radius: 7px;
     line-height: 1.7;
 }
@@ -353,15 +353,15 @@
     min-width: 90px;
     height: 40px;
     color: #fff;
-    background: #1f4e79;
-    border: 1px solid #1f4e79;
+    background: #25613e;
+    border: 1px solid #25613e;
     border-radius: 6px;
     font-weight: 700;
     cursor: pointer;
 }
 
 .student-modal-close-button:hover {
-    background: #163a5c;
+    background: #19472d;
 }
 
 body.modal-open {
