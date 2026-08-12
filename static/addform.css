@@ -1,6 +1,7 @@
 .addform-panel {
     display: grid;
     gap: 10px;
+    width: min(100%, 760px);
 }
 
 .addform-panel label {
