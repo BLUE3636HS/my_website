@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}ダッシュボード{% endblock %}
+{% block css %}
+<link rel="stylesheet" href="/static/dashboard.css">
+{% endblock %}
+{% block content %}
+<div class="student-page dashboard-page">
+    <section class="student-page-hero">
+        <p class="student-page-eyebrow">DASHBOARD</p>
+        <h1>ダッシュボード</h1>
+        <p>次の予約を確認できます。</p>
+    </section>
+
+    <div class="dashboard-grid">
+        <section class="student-panel dashboard-card">
+            <p class="dashboard-card-label">NEXT RESERVATION</p>
+            <h2>次のTEKNE工作室予約</h2>
+            {% if next_reservation %}
+            <dl class="dashboard-details">
+                <div><dt>予約日</dt><dd>{{ next_reservation[0] }}</dd></div>
+                <div><dt>予約時間</dt><dd>{{ next_reservation[1] }} ～ {{ next_reservation[2] }}</dd></div>
+                <div><dt>使用器具</dt><dd>{{ next_reservation[3] }}</dd></div>
+                <div><dt>使用目的</dt><dd>{{ next_reservation[4] }}</dd></div>
+            </dl>
+            {% else %}
+            <div class="dashboard-empty">
+                <p>次の予約はありません。</p>
+                <a class="student-primary-button" href="/reservation">TEKNE工作室を予約する</a>
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="student-panel dashboard-card">
+            <p class="dashboard-card-label">NEXT EQUIPMENT</p>
+            <h2>次の実験器具予約</h2>
+            {% if next_equipment_reservation %}
+            <dl class="dashboard-details">
+                <div><dt>器具名</dt><dd>{{ next_equipment_reservation[0] }}</dd></div>
+                <div><dt>貸出日</dt><dd>{{ next_equipment_reservation[1] }}</dd></div>
+                <div><dt>返却日</dt><dd>{{ next_equipment_reservation[2] }}</dd></div>
+                <div><dt>数量</dt><dd>{{ next_equipment_reservation[3] }}</dd></div>
+            </dl>
+            {% else %}
+            <div class="dashboard-empty">
+                <p>次の予約はありません。</p>
+                <a class="student-primary-button" href="/equipment-reservation">実験器具を予約する</a>
+            </div>
+            {% endif %}
+        </section>
+    </div>
+
+    <div class="dashboard-actions">
+        <a class="student-secondary-link" href="/mypage">すべての予約を確認する</a>
+    </div>
+</div>
+{% endblock %}

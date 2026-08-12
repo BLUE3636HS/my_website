@@ -1,0 +1,86 @@
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px;
+}
+
+.dashboard-grid .student-panel + .student-panel {
+    margin-top: 0;
+}
+
+.dashboard-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.dashboard-card-label {
+    margin: 0 0 6px;
+    color: #1f4e79;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .12em;
+}
+
+.dashboard-details {
+    margin: 0;
+}
+
+.dashboard-details > div {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 14px;
+    padding: 13px 0;
+    border-top: 1px solid #dce3ea;
+}
+
+.dashboard-details dt {
+    color: #64748b;
+    font-weight: 700;
+}
+
+.dashboard-details dd {
+    min-width: 0;
+    margin: 0;
+    color: #243447;
+    overflow-wrap: anywhere;
+}
+
+.dashboard-empty {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    padding-top: 4px;
+}
+
+.dashboard-empty p {
+    margin: 0;
+    color: #64748b;
+}
+
+.dashboard-actions {
+    display: flex;
+    justify-content: center;
+    margin-top: 28px;
+}
+
+@media (max-width: 900px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .dashboard-details > div {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+
+    .dashboard-empty .student-primary-button,
+    .dashboard-actions .student-secondary-link {
+        width: 100%;
+        min-width: 0;
+    }
+}

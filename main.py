@@ -208,13 +208,60 @@ app.add_middleware(
 #get関数
 @app.get("/", response_class = HTMLResponse)
 async def Home(request: Request):
+    return RedirectResponse("/dashboard", status_code=303)
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def Dashboard(request: Request):
+    user_id = request.session.get("user_id")
+    now = datetime.datetime.now(JST)
+    today = now.date().isoformat()
+    current_time = now.strftime("%H:%M")
+
+    cursor.execute(
+        """
+        SELECT day, start_time, end_time, equipment, purpose
+        FROM reservation
+        WHERE userid = ?
+          AND (day > ? OR (day = ? AND end_time > ?))
+        ORDER BY day ASC, start_time ASC, end_time ASC, id ASC
+        LIMIT 1
+        """,
+        (user_id, today, today, current_time)
+    )
+    next_reservation = cursor.fetchone()
+    if next_reservation is not None:
+        next_reservation = (
+            *next_reservation[:3],
+            format_reserved_equipment(next_reservation[3]),
+            next_reservation[4]
+        )
+
+    cursor.execute(
+        """
+        SELECT equipment, start_day, end_day, quantity
+        FROM equipment_reservation
+        WHERE userid = ? AND end_day >= ?
+        ORDER BY
+            CASE WHEN start_day <= ? THEN 0 ELSE 1 END ASC,
+            start_day ASC,
+            end_day ASC,
+            id ASC
+        LIMIT 1
+        """,
+        (user_id, today, today)
+    )
+    next_equipment_reservation = cursor.fetchone()
+
     return templates.TemplateResponse(
         request = request,
-        name = "home.html",
+        name = "dashboard.html",
         context = {
             "request": request,
             "user_login": request.session.get("user_login"),
-            "user_id": request.session.get("user_id")
+            "user_id": user_id,
+            "next_reservation": next_reservation,
+            "next_equipment_reservation": next_equipment_reservation
         }
     )
 

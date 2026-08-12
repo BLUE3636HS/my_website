@@ -46,7 +46,7 @@ student_login_btn.addEventListener("click", function(event){
     })
     .then(function(data){
         if(data.result == true){
-            window.location.href = "/";
+            window.location.href = "/dashboard";
         }
         else{
             alert("ID または パスワード が違います");
