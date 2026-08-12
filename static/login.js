@@ -71,7 +71,7 @@ teacher_login_btn.addEventListener("click", function(event){
     })
     .then(function(data){
         if(data.result == true){
-            window.location.href = "/admin";
+            window.location.href = "/teacher";
         }
         else{
             alert("ID または パスワード が違います");
