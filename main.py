@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "database" / "database.db"
 UPLOADS_DIR = (BASE_DIR / "uploads").resolve()
+JST = datetime.timezone(datetime.timedelta(hours=9))
 
 app = FastAPI()
 
@@ -260,28 +261,49 @@ async def pdf(id: int):
     )
 
 @app.get("/reservation", response_class = HTMLResponse)
-async def Reservation(request: Request):
+async def ReservationPage(request: Request, day: str = None):
+    today = datetime.datetime.now(JST).date()
+    initial_day = ""
+    if day:
+        try:
+            selected_day = datetime.date.fromisoformat(day)
+        except ValueError:
+            selected_day = None
+        if selected_day is not None and selected_day >= today:
+            initial_day = selected_day.isoformat()
+
+    with open("csv/equipment.csv", "r", encoding="utf-8") as f:
+        equipments = [row[0] for row in csv.reader(f) if row]
+
     return templates.TemplateResponse(
         request = request,
         name = "reservation.html",
         context = {
             "request": request,
+            "today": today.isoformat(),
+            "initial_day": initial_day,
+            "equipments": equipments,
             "user_login": request.session.get("user_login"),
             "user_id": request.session.get("user_id")
         }
     )
 
-@app.get("/reservation/{year}/{month}/{day}", response_class = HTMLResponse)
-async def Reservation(request: Request, year: int, month: int, day: int):
+
+@app.get("/reservation/availability")
+async def ReservationAvailability(day: str):
     try:
-        target_date = datetime.date(year, month, day)
+        target_date = datetime.date.fromisoformat(day)
     except ValueError:
-        raise HTTPException(status_code = 404, detail = "Not Found")
+        raise HTTPException(status_code=400, detail="日付が正しくありません。")
 
-    if target_date < datetime.date.today():
-        raise HTTPException(status_code = 404, detail = "Not Found")
+    now = datetime.datetime.now(JST)
+    if target_date < now.date():
+        raise HTTPException(status_code=400, detail="過去の日付は選択できません。")
 
-    cursor.execute("SELECT start_time, end_time FROM reservation WHERE day = ?", (target_date.isoformat(),))
+    cursor.execute(
+        "SELECT start_time, end_time FROM reservation WHERE day = ?",
+        (target_date.isoformat(),)
+    )
     reserved_times = []
     for start_time, end_time in cursor.fetchall():
         start_total = sum(value * factor for value, factor in zip(map(int, start_time.split(":")), (60, 1)))
@@ -290,22 +312,36 @@ async def Reservation(request: Request, year: int, month: int, day: int):
             reserved_times.append(f"{start_total // 60:02d}:{start_total % 60:02d}")
             start_total += 30
 
-    with open("csv/equipment.csv", "r", encoding="utf-8") as f:
-        equipments = [row[0] for row in csv.reader(f) if row]
+    closed_times = []
+    if target_date == now.date():
+        for total_minutes in range(9 * 60, 21 * 60, 30):
+            slot_time = datetime.datetime.combine(
+                target_date,
+                datetime.time(total_minutes // 60, total_minutes % 60),
+                tzinfo=JST
+            )
+            if slot_time < now:
+                closed_times.append(f"{total_minutes // 60:02d}:{total_minutes % 60:02d}")
 
-    return templates.TemplateResponse(
-        request = request,
-        name = "reservation/date.html",
-        context = {
-            "request": request,
-            "year": year,
-            "month": f"{month:02d}",
-            "day": f"{day:02d}",
-            "reserved_times": reserved_times,
-            "equipments": equipments,
-            "user_login": request.session.get("user_login"),
-            "user_id": request.session.get("user_id")
-        }
+    return {
+        "day": target_date.isoformat(),
+        "reserved_times": sorted(set(reserved_times)),
+        "closed_times": closed_times
+    }
+
+
+@app.get("/reservation/{year}/{month}/{day}", response_class = HTMLResponse)
+async def ReservationLegacyDate(request: Request, year: int, month: int, day: int):
+    try:
+        target_date = datetime.date(year, month, day)
+    except ValueError:
+        raise HTTPException(status_code = 404, detail = "Not Found")
+
+    if target_date < datetime.datetime.now(JST).date():
+        raise HTTPException(status_code = 404, detail = "Not Found")
+    return RedirectResponse(
+        f"/reservation?{urlencode({'day': target_date.isoformat()})}",
+        status_code=303
     )
 
 @app.get("/login")
@@ -1075,31 +1111,73 @@ async def ReservationDate(
     purpose: str = Form(...)
 ):
     try:
-        reservation_start = datetime.datetime.strptime(
-            f"{day} {start_time}",
-            "%Y-%m-%d %H:%M"
-        )
+        reservation_day = datetime.date.fromisoformat(day)
+        parsed_start = datetime.datetime.strptime(start_time, "%H:%M").time()
+        parsed_end = datetime.datetime.strptime(end_time, "%H:%M").time()
     except ValueError:
-        raise HTTPException(
-            status_code = 400,
-            detail = "Invalid reservation datetime."
+        return JSONResponse(
+            {"result": False, "message": "予約日時が正しくありません。"},
+            status_code=400
         )
 
-    if reservation_start < datetime.datetime.now():
-        raise HTTPException(
-            status_code = 400,
-            detail = "Past reservation datetime is not allowed."
+    reservation_start = datetime.datetime.combine(reservation_day, parsed_start, tzinfo=JST)
+    reservation_end = datetime.datetime.combine(reservation_day, parsed_end, tzinfo=JST)
+    duration_minutes = int((reservation_end - reservation_start).total_seconds() // 60)
+    if (
+        reservation_start < datetime.datetime.now(JST) or
+        duration_minutes <= 0 or
+        duration_minutes > 180 or
+        duration_minutes % 30 != 0 or
+        parsed_start.minute not in (0, 30) or
+        parsed_end.minute not in (0, 30) or
+        parsed_start < datetime.time(9, 0) or
+        parsed_end > datetime.time(21, 0)
+    ):
+        return JSONResponse(
+            {"result": False, "message": "予約時間は当日以降の9:00〜21:00から、30分単位・3時間以内で選択してください。"},
+            status_code=400
         )
 
-    # 予約情報をDBに保存
-    cursor.execute(
-        """
-        INSERT INTO reservation (userid, day, start_time, end_time, equipment, purpose)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (request.session.get("user_id"), day, start_time, end_time, equipment, purpose)
-    )
-    conn.commit()
+    if not purpose.strip():
+        return JSONResponse(
+            {"result": False, "message": "使用目的を入力してください。"},
+            status_code=400
+        )
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        overlap = db.execute(
+            """
+            SELECT 1 FROM reservation
+            WHERE day = ? AND start_time < ? AND end_time > ?
+            LIMIT 1
+            """,
+            (reservation_day.isoformat(), end_time, start_time)
+        ).fetchone()
+        if overlap is not None:
+            db.rollback()
+            return JSONResponse(
+                {"result": False, "message": "選択した時間帯は、すでに予約されています。空き状況を更新しました。"},
+                status_code=409
+            )
+
+        db.execute(
+            """
+            INSERT INTO reservation (userid, day, start_time, end_time, equipment, purpose)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                request.session.get("user_id"),
+                reservation_day.isoformat(),
+                start_time,
+                end_time,
+                equipment,
+                purpose.strip()
+            )
+        )
+        db.commit()
+
+    return {"result": True, "message": "予約が完了しました。マイページで予約を確認できます。"}
 
 @app.post("/mypage/edit/id")
 async def Edit(

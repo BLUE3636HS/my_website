@@ -4,15 +4,97 @@
     <link rel="stylesheet" href="/static/reservation.css">
 {% endblock %}
 {% block content %}
-    <h1>TEKNE工作室予約</h1>
-    <h2>下のカレンダーから日付を選択してください</h2><br>
-    <button id="dec_month_btn"><</button>
-    <span id="year"></span>
-    <span>年</span>
-    <span id="month"></span>
-    <span>月</span>
-    <button id="inc_month_btn">></button>
-    <div id="calendar"></div>
+<div
+    class="reservation-page"
+    id="reservation-page"
+    data-today="{{ today }}"
+    data-initial-day="{{ initial_day }}"
+>
+    <section class="reservation-hero">
+        <p class="reservation-eyebrow">TEKNE RESERVATION</p>
+        <h1>TEKNE工作室予約</h1>
+        <p>利用日と空いている時間を選び、予約内容を入力してください。</p>
+    </section>
+
+    <div class="reservation-message" id="reservation-message" role="status" hidden></div>
+
+    <div class="booking-grid">
+        <section class="reservation-panel">
+            <div class="section-title">
+                <span>1</span>
+                <div>
+                    <h2>利用日を選択</h2>
+                    <p>本日以降の日付を選択できます</p>
+                </div>
+            </div>
+
+            <div class="reservation-calendar">
+                <div class="calendar-nav">
+                    <button type="button" id="prev-month" aria-label="前月">‹</button>
+                    <strong id="month-title"></strong>
+                    <button type="button" id="next-month" aria-label="翌月">›</button>
+                </div>
+                <div class="weekdays" aria-hidden="true">
+                    <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+                </div>
+                <div id="calendar-days" class="calendar-days"></div>
+            </div>
+            <p id="selected-date" class="selection">日付を選択してください</p>
+        </section>
+
+        <section class="reservation-panel">
+            <div class="section-title">
+                <span>2</span>
+                <div>
+                    <h2>時間帯を選択</h2>
+                    <p>開始時間から終了時間までドラッグしてください</p>
+                </div>
+            </div>
+
+            <p id="time-message" class="time-message">日付を先に選択してください</p>
+            <div id="reservation-status" class="reservation-status is-disabled" aria-live="polite"></div>
+
+            <div id="selected-time" class="selected-time">
+                <p>開始時間：<span id="selected-start">未選択</span></p>
+                <p>終了時間：<span id="selected-end">未選択</span></p>
+            </div>
+            <p class="reservation-note">予約は30分単位、最大3時間までです。</p>
+        </section>
+    </div>
+
+    <section class="reservation-panel reservation-form-panel">
+        <div class="section-title">
+            <span>3</span>
+            <div>
+                <h2>予約内容を入力</h2>
+                <p>機材は必要なものだけ選択してください</p>
+            </div>
+        </div>
+
+        <div class="reservation-fields">
+            <fieldset>
+                <legend>機材を選択</legend>
+                <div class="equipment-list" id="equipment-list">
+                    {% for equipment in equipments %}
+                    <label>
+                        <input type="checkbox" class="equipment" value="{{ equipment }}">
+                        <span>{{ equipment }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            <label class="purpose-field" for="purpose">
+                使用目的、備考欄
+                <textarea id="purpose" rows="7" required></textarea>
+            </label>
+        </div>
+
+        <button type="button" class="reservation-submit" id="reservation-submit" disabled>
+            予約する
+        </button>
+    </section>
+</div>
 {% endblock %}
 {% block script %}
     <script src="/static/reservation.js"></script>

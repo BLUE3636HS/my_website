@@ -1,317 +1,359 @@
-/* =========================
-   予約ページ全体
-========================= */
-
-main {
-    max-width: 800px;
-
-    margin: 50px auto;
-
-    padding: 40px;
-
-    background-color: white;
-
-    border-radius: 15px;
-
-    box-shadow:
-        0 5px 20px rgba(0, 0, 0, 0.1);
-
-    text-align: center;
+.reservation-page {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 42px 30px 72px;
 }
 
-
-/* =========================
-   タイトル
-========================= */
-
-h1 {
-    margin-bottom: 15px;
-
-    font-size: 32px;
+.reservation-hero {
+    margin-bottom: 28px;
 }
 
-h2 {
-    margin-bottom: 30px;
-
-    font-size: 18px;
-
-    font-weight: normal;
-
-    color: #555;
+.reservation-eyebrow {
+    margin: 0 0 6px;
+    color: #1f4e79;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .14em;
 }
 
-
-/* =========================
-   年・月表示
-========================= */
-
-#year,
-#month {
-    font-size: 26px;
-
-    font-weight: bold;
-}
-
-main > span {
-    font-size: 20px;
-}
-
-
-/* =========================
-   月移動ボタン
-========================= */
-
-#dec_month_btn,
-#inc_month_btn {
-    width: 45px;
-
-    height: 40px;
-
-    margin: 0 15px;
-
-    border: none;
-
-    border-radius: 8px;
-
-    background-color: #555;
-
-    color: white;
-
-    font-size: 20px;
-
-    font-weight: bold;
-
-    cursor: pointer;
-
-    transition: 0.2s;
-}
-
-#dec_month_btn:not(:disabled):hover,
-#inc_month_btn:not(:disabled):hover {
-    background-color: #333;
-}
-
-#dec_month_btn:not(:disabled):active,
-#inc_month_btn:not(:disabled):active {
-    transform: scale(0.95);
-}
-
-#dec_month_btn:disabled,
-#inc_month_btn:disabled {
-    background-color: #bbbbbb;
-    cursor: not-allowed;
-}
-
-#dec_month_btn:disabled:active,
-#inc_month_btn:disabled:active {
-    transform: none;
-}
-
-
-/* =========================
-   カレンダー全体
-========================= */
-
-#calendar {
-    width: 100%;
-
-    margin-top: 30px;
-}
-
-
-/* =========================
-   カレンダーテーブル
-========================= */
-
-#calendar table {
-    width: 100%;
-
-    border-collapse: collapse;
-
-    table-layout: fixed;
-
-    border: none;
-}
-
-
-/* =========================
-   曜日
-========================= */
-
-#calendar th {
-    height: 45px;
-
-    background-color: #555;
-
-    color: white;
-
-    font-size: 16px;
-
-    font-weight: bold;
-
-    border: 1px solid #ddd;
-}
-
-
-/* =========================
-   日付セル
-========================= */
-
-#calendar td {
-    height: 80px;
-
-    padding: 0;
-
-    background-color: white;
-
-    border: 1px solid #ddd;
-
-    text-align: center;
-
-    vertical-align: middle;
-}
-
-
-/* =========================
-   日付リンク
-========================= */
-
-#calendar td a {
-    display: flex;
-
-    align-items: center;
-
-    justify-content: center;
-
-    width: 100%;
-
-    height: 100%;
-
-    box-sizing: border-box;
-
-    color: #333;
-
-    text-decoration: none;
-
-    font-size: 17px;
-
-    font-weight: bold;
-
-    transition: 0.2s;
-}
-
-
-/* =========================
-   日付リンク ホバー
-========================= */
-
-#calendar td a:hover {
-    background-color: #eeeeee;
-
-    color: #222;
-}
-
-
-/* =========================
-   日付リンク クリック時
-========================= */
-
-#calendar td a:active {
-    background-color: #dddddd;
-}
-
-#calendar td .disabled_day {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
+.reservation-hero h1 {
     margin: 0;
-    box-sizing: border-box;
-    color: #bbbbbb;
-    font-size: 17px;
-    font-weight: bold;
+    color: #243447;
+    font-size: clamp(28px, 4vw, 42px);
+}
+
+.reservation-hero > p:last-child {
+    margin: 7px 0 0;
+    color: #64748b;
+}
+
+.booking-grid {
+    display: grid;
+    grid-template-columns: minmax(320px, .9fr) minmax(390px, 1.1fr);
+    gap: 22px;
+    align-items: start;
+}
+
+.reservation-panel {
+    min-width: 0;
+    padding: 26px;
+    border: 1px solid #d6e0ea;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 8px 26px rgba(31, 78, 121, .08);
+}
+
+.section-title {
+    display: flex;
+    gap: 13px;
+    align-items: flex-start;
+    margin-bottom: 22px;
+}
+
+.section-title > span {
+    display: grid;
+    flex: 0 0 32px;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #1f4e79;
+    color: #fff;
+    font-weight: 800;
+}
+
+.section-title h2 {
+    margin: 0;
+    color: #243447;
+    font-size: 21px;
+}
+
+.section-title p {
+    margin: 2px 0 0;
+    color: #748293;
+    font-size: 13px;
+}
+
+.calendar-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.calendar-nav button {
+    width: 38px;
+    height: 38px;
+    border: 1px solid #cbd6e2;
+    border-radius: 8px;
+    background: #fff;
+    color: #1f4e79;
+    font-size: 24px;
+    cursor: pointer;
+}
+
+.calendar-nav button:disabled {
+    color: #b8c1ca;
     cursor: not-allowed;
 }
 
-#calendar td.past_day {
-    background-color: #f8f8f8;
+.weekdays,
+.calendar-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
 }
 
-
-/* =========================
-   空白セル
-========================= */
-
-#calendar td:empty {
-    background-color: #f5f5f5;
+.weekdays {
+    margin-bottom: 5px;
+    color: #718096;
+    font-size: 12px;
+    text-align: center;
 }
 
+.calendar-days button,
+.calendar-days .blank {
+    aspect-ratio: 1;
+    border: 0;
+    border-radius: 8px;
+    background: #f0f3f6;
+}
 
-/* =========================
-   スマホ対応
-========================= */
+.calendar-days button {
+    color: #a0a9b2;
+    font: inherit;
+}
 
-@media (max-width: 600px) {
+.calendar-days button.available {
+    background: #e6f0f9;
+    color: #17466f;
+    font-weight: 800;
+    cursor: pointer;
+}
 
-    main {
-        margin: 20px 10px;
+.calendar-days button.available:hover {
+    background: #cddff0;
+}
 
-        padding: 25px 10px;
+.calendar-days button.selected {
+    background: #1f4e79;
+    color: #fff;
+}
+
+.selection,
+.selected-time {
+    margin: 16px 0 0;
+    padding: 11px 13px;
+    border-radius: 9px;
+    background: #eef4fa;
+    color: #1f4e79;
+    font-weight: 700;
+}
+
+.time-message {
+    min-height: 21px;
+    margin: 0 0 10px;
+    color: #66788a;
+    font-size: 14px;
+}
+
+.reservation-status {
+    max-height: 380px;
+    padding: 6px;
+    overflow-y: auto;
+    border: 1px solid #d7e0ea;
+    border-radius: 10px;
+    background: #f8fafc;
+    user-select: none;
+}
+
+.reservation-status.is-disabled {
+    min-height: 130px;
+    display: grid;
+    place-items: center;
+}
+
+.status-placeholder,
+.status-loading {
+    margin: 0;
+    color: #7b8794;
+    text-align: center;
+}
+
+.reservation-time {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 42px;
+    margin-bottom: 5px;
+    padding: 10px 14px;
+    border-radius: 7px;
+    font-weight: 700;
+}
+
+.reservation-time.available {
+    background: #dbeed7;
+    color: #2d6a31;
+    cursor: pointer;
+}
+
+.reservation-time.available:hover {
+    background: #c4e2bd;
+}
+
+.reservation-time.reserved {
+    background: #f3d0d0;
+    color: #a13c3c;
+}
+
+.reservation-time.closed {
+    background: #e7e9ec;
+    color: #747b84;
+}
+
+.reservation-time.selected {
+    background: #a9c9e6;
+    color: #173f64;
+}
+
+.reservation-time.drag-start {
+    background: #3d85c6;
+    color: #fff;
+}
+
+.selected-time {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.selected-time p {
+    margin: 0;
+}
+
+.reservation-note {
+    margin: 10px 0 0;
+    color: #718096;
+    font-size: 12px;
+    text-align: center;
+}
+
+.reservation-form-panel {
+    margin-top: 22px;
+}
+
+.reservation-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+}
+
+.reservation-fields fieldset {
+    min-width: 0;
+    margin: 0;
+    padding: 18px;
+    border: 1px solid #cbd6e2;
+    border-radius: 10px;
+}
+
+.reservation-fields legend,
+.purpose-field {
+    color: #334155;
+    font-weight: 700;
+}
+
+.equipment-list {
+    display: grid;
+    gap: 10px;
+    max-height: 205px;
+    overflow-y: auto;
+}
+
+.equipment-list label {
+    display: flex;
+    gap: 9px;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 7px;
+    background: #f5f8fb;
+}
+
+.equipment-list input {
+    width: 17px;
+    height: 17px;
+}
+
+.purpose-field {
+    display: grid;
+    gap: 8px;
+}
+
+.purpose-field textarea {
+    width: 100%;
+    min-height: 185px;
+    padding: 12px;
+    border: 1px solid #cbd6e2;
+    border-radius: 9px;
+    font: inherit;
+    resize: vertical;
+}
+
+.purpose-field textarea:focus {
+    outline: 3px solid rgba(31, 78, 121, .18);
+    border-color: #1f4e79;
+}
+
+.reservation-submit {
+    display: block;
+    min-width: 240px;
+    margin: 25px auto 0;
+    padding: 13px 24px;
+    border: 0;
+    border-radius: 8px;
+    background: #1f4e79;
+    color: #fff;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.reservation-submit:disabled {
+    background: #aeb9c4;
+    cursor: not-allowed;
+}
+
+.reservation-message {
+    margin: 0 0 20px;
+    padding: 12px 16px;
+    border: 1px solid #e5b7b7;
+    border-radius: 9px;
+    background: #fff0f0;
+    color: #963737;
+}
+
+.reservation-message.is-success {
+    border-color: #acd2b2;
+    background: #edf8ef;
+    color: #296834;
+}
+
+@container (max-width: 900px) {
+    .booking-grid,
+    .reservation-fields {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 700px) {
+    .reservation-page {
+        padding: 25px 16px 50px;
     }
 
-
-    h1 {
-        font-size: 26px;
+    .reservation-panel {
+        padding: 19px;
     }
 
-
-    h2 {
-        font-size: 16px;
-    }
-
-
-    #year,
-    #month {
-        font-size: 21px;
-    }
-
-
-    main > span {
-        font-size: 17px;
-    }
-
-
-    #dec_month_btn,
-    #inc_month_btn {
-        width: 38px;
-
-        height: 35px;
-
-        margin: 0 7px;
-
-        font-size: 18px;
-    }
-
-
-    #calendar {
-        margin-top: 25px;
-    }
-
-
-    #calendar th {
-        height: 35px;
-
-        font-size: 13px;
-    }
-
-
-    #calendar td {
-        height: 55px;
-    }
-
-
-    #calendar td a {
-        font-size: 14px;
+    .selected-time {
+        grid-template-columns: 1fr;
     }
 }
