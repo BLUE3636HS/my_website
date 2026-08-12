@@ -273,6 +273,7 @@ submitButton.addEventListener("click", async () => {
         if (!response.ok || !data.result) {
             throw new Error(data.message || "予約を登録できませんでした。");
         }
+        alert(data.message);
         document.querySelectorAll(".equipment:checked").forEach((input) => { input.checked = false; });
         purpose.value = "";
         showMessage(data.message, "success");

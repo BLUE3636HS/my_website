@@ -25,7 +25,7 @@
             </aside>
             <main class="admin-main">
                 <header class="admin-header">
-                    <p>管理者画面</p>
+                    <p>{% block page_title %}{{ self.title() }}{% endblock %}</p>
                     <span>{{ admin_id }}</span>
                 </header>
                 <section class="admin-content">
