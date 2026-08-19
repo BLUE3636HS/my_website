@@ -49,18 +49,35 @@
     </div>
     </section>
     <section class="student-panel">
-    <h2>実験器具 貸出予約一覧</h2>
+    <h2>実験器具 持ち出し予約一覧</h2>
     <div class="mypage-table-scroll">
     <table class="equipment-reservation-table" border="1">
-        <tr><th>器具</th><th>借りる日</th><th>返却日</th><th>数量</th><th>使用目的</th><th>備考</th><th>取消</th></tr>
+        <tr><th>利用区分</th><th>器具</th><th>借りる日</th><th>返却日</th><th>数量</th><th>使用目的</th><th>備考</th><th>取消</th></tr>
         {% for reservation in equipment_reservations %}
         <tr>
-            <td>{{ reservation[1] }}</td><td>{{ reservation[2] }}</td><td>{{ reservation[3] }}</td>
+            <td>持ち出し</td><td>{{ reservation[1] }}</td><td>{{ reservation[2] }}</td><td>{{ reservation[3] }}</td>
             <td>{{ reservation[4] }}</td><td>{{ reservation[5] }}</td><td>{{ reservation[6] or "-" }}</td>
             <td><a class="del_reservation" href="/mypage/equipment-reservation/{{ reservation[0] }}/cancel">X</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="7">実験器具の予約はありません。</td></tr>
+        <tr><td colspan="8">持ち出し予約はありません。</td></tr>
+        {% endfor %}
+    </table>
+    </div>
+    </section>
+    <section class="student-panel">
+    <h2>実験器具 工作室内予約一覧</h2>
+    <div class="mypage-table-scroll">
+    <table class="equipment-reservation-table" border="1">
+        <tr><th>利用区分</th><th>器具</th><th>利用日</th><th>開始</th><th>終了</th><th>数量</th><th>使用目的</th><th>備考</th><th>取消</th></tr>
+        {% for reservation in equipment_room_reservations %}
+        <tr>
+            <td>工作室内</td><td>{{ reservation[1] }}</td><td>{{ reservation[2] }}</td><td>{{ reservation[3] }}</td><td>{{ reservation[4] }}</td>
+            <td>{{ reservation[5] }}</td><td>{{ reservation[6] }}</td><td>{{ reservation[7] or "-" }}</td>
+            <td><form method="post" action="/mypage/equipment-room-reservation/{{ reservation[0] }}/cancel" class="reservation-cancel-form"><button type="submit" class="del_reservation">X</button></form></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9">工作室内予約はありません。</td></tr>
         {% endfor %}
     </table>
     </div>

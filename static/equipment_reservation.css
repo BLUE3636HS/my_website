@@ -87,6 +87,9 @@
     color: #1f4e79;
 }
 
+.equipment-usage { justify-self: start; padding: 4px 8px; border-radius: 999px; background: #e8eef5; color: #334155; font-size: 12px; font-weight: 800; }
+.reservation-mode[hidden], #equipment-submit[hidden] { display: none; }
+
 .date-fields {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -138,7 +141,7 @@
     border-color: #1f4e79;
 }
 
-#availability {
+.availability {
     margin: 2px 0 0;
     padding: 11px 13px;
     border-radius: 9px;
@@ -147,13 +150,32 @@
     font-weight: 700;
 }
 
+.equipment-message { margin: 0 0 18px; padding: 12px 14px; border-radius: 9px; font-weight: 700; }
+.equipment-message.is-error { background: #fde8e8; color: #9b2c2c; }
+.equipment-message.is-success { background: #e4f4e0; color: #2d6a31; }
+.room-date-row, .selected-time { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.time-message { color: #526173; font-weight: 700; }
+.room-time-slots { max-height: 390px; padding: 6px; overflow-y: auto; border: 1px solid #d7e0ea; border-radius: 10px; background: #f8fafc; user-select: none; }
+.room-time-slots.is-disabled { min-height: 100px; display: grid; place-items: center; }
+.room-time-slot { display: flex; align-items: center; justify-content: space-between; min-height: 42px; margin: 4px 0; padding: 8px 12px; border-radius: 7px; font-weight: 700; }
+.room-time-slot.available { background: #dbeed7; color: #2d6a31; cursor: pointer; }
+.room-time-slot.available:hover { background: #c4e2bd; }
+.room-time-slot.unavailable { background: #f3d0d0; color: #a13c3c; }
+.room-time-slot.closed { background: #e7e9ec; color: #747b84; }
+.room-time-slot.selected { background: #a9c9e6; color: #173f64; }
+.room-time-slot.drag-start { background: #3d85c6; color: #fff; }
+.selected-time { margin-top: 14px; padding: 11px 13px; border-radius: 9px; background: #eef4fa; }
+.selected-time p { margin: 0; }
+
 .equipment-reservation form > button {
     justify-self: center;
 }
 
 @container (max-width: 760px) {
     .date-fields,
-    .equipment-purpose {
+    .equipment-purpose,
+    .room-date-row,
+    .selected-time {
         grid-template-columns: 1fr;
     }
 }

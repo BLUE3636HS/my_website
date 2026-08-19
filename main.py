@@ -68,6 +68,26 @@ cursor.execute("""
         userid TEXT NOT NULL, equipment TEXT NOT NULL,
         start_day TEXT NOT NULL, end_day TEXT NOT NULL,
         quantity INTEGER NOT NULL, purpose TEXT NOT NULL,
+        note TEXT NOT NULL DEFAULT '',
+        equipment_id TEXT
+    )
+""")
+equipment_reservation_columns = {
+    row[1] for row in cursor.execute("PRAGMA table_info(equipment_reservation)").fetchall()
+}
+if "equipment_id" not in equipment_reservation_columns:
+    cursor.execute("ALTER TABLE equipment_reservation ADD COLUMN equipment_id TEXT")
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS equipment_room_reservation (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userid TEXT NOT NULL,
+        equipment_id TEXT NOT NULL,
+        equipment TEXT NOT NULL,
+        use_day TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        quantity INTEGER NOT NULL,
+        purpose TEXT NOT NULL,
         note TEXT NOT NULL DEFAULT ''
     )
 """)
@@ -77,16 +97,34 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="templates")
 
-def load_equipment_catalog():
+def load_equipment_catalog(catalog_path=None):
     catalog = []
-    with open("csv/equipment-reservation.csv", "r", encoding="utf-8-sig", newline="") as f:
+    seen_ids = set()
+    path = catalog_path or BASE_DIR / "csv" / "equipment-reservation.csv"
+    with open(path, "r", encoding="utf-8-sig", newline="") as f:
         for row in csv.DictReader(f):
             try:
-                count = int(row.get("count", ""))
-            except ValueError:
+                count = int(row.get("count") or "")
+            except (TypeError, ValueError):
                 continue
-            if row.get("name") and count > 0:
-                catalog.append({"name": row["name"].strip(), "image": row.get("image", "").strip(), "content": row.get("content", "").strip(), "count": count})
+            equipment_id = (row.get("id") or "").strip()
+            name = (row.get("name") or "").strip()
+            usage_type = (row.get("usage_type") or "").strip()
+            if (
+                not equipment_id or not name or count <= 0 or
+                usage_type not in {"takeout", "in_room"} or
+                equipment_id in seen_ids
+            ):
+                continue
+            seen_ids.add(equipment_id)
+            catalog.append({
+                "id": equipment_id,
+                "name": name,
+                "image": (row.get("image") or "").strip(),
+                "content": (row.get("content") or "").strip(),
+                "count": count,
+                "usage_type": usage_type
+            })
     return catalog
 
 
@@ -94,14 +132,93 @@ def load_schools():
     with open(BASE_DIR / "csv" / "school.csv", "r", encoding="utf-8", newline="") as f:
         return [row[0].strip() for row in csv.reader(f) if row and row[0].strip()]
 
+def find_equipment(catalog, equipment_id=None, equipment_name=None):
+    if equipment_id:
+        return next((item for item in catalog if item["id"] == equipment_id), None)
+    if equipment_name:
+        return next((item for item in catalog if item["name"] == equipment_name), None)
+    return None
+
+
+def date_range(start_day, end_day):
+    current = start_day
+    while current <= end_day:
+        yield current
+        current += datetime.timedelta(days=1)
+
+
+def takeout_availability(item, start_day, end_day, db=None):
+    database = db or conn
+    rows = database.execute(
+        """
+        SELECT start_day, end_day, quantity
+        FROM equipment_reservation
+        WHERE (equipment_id = ? OR ((equipment_id IS NULL OR equipment_id = '') AND equipment = ?))
+          AND start_day <= ? AND end_day >= ?
+        """,
+        (item["id"], item["name"], end_day.isoformat(), start_day.isoformat())
+    ).fetchall()
+    reserved_by_day = {day.isoformat(): 0 for day in date_range(start_day, end_day)}
+    for reserved_start, reserved_end, quantity in rows:
+        overlap_start = max(start_day, datetime.date.fromisoformat(reserved_start))
+        overlap_end = min(end_day, datetime.date.fromisoformat(reserved_end))
+        for day in date_range(overlap_start, overlap_end):
+            reserved_by_day[day.isoformat()] += quantity
+    peak_reserved = max(reserved_by_day.values(), default=0)
+    return {
+        **item,
+        "reserved": peak_reserved,
+        "available": max(item["count"] - peak_reserved, 0),
+        "reserved_by_day": reserved_by_day
+    }
+
+
+def room_slot_availability(item, use_day, db=None):
+    database = db or conn
+    rows = database.execute(
+        """
+        SELECT start_time, end_time, quantity
+        FROM equipment_room_reservation
+        WHERE equipment_id = ? AND use_day = ?
+        """,
+        (item["id"], use_day.isoformat())
+    ).fetchall()
+    now = datetime.datetime.now(JST)
+    slots = []
+    for total_minutes in range(9 * 60, 20 * 60 + 1, 30):
+        start_time = f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
+        end_minutes = total_minutes + 30
+        end_time = f"{end_minutes // 60:02d}:{end_minutes % 60:02d}"
+        reserved = sum(
+            quantity for reserved_start, reserved_end, quantity in rows
+            if reserved_start < end_time and reserved_end > start_time
+        )
+        slot_start = datetime.datetime.combine(
+            use_day,
+            datetime.time(total_minutes // 60, total_minutes % 60),
+            tzinfo=JST
+        )
+        closed = use_day == now.date() and slot_start < now
+        slots.append({
+            "start_time": start_time,
+            "end_time": end_time,
+            "reserved_quantity": reserved,
+            "available_quantity": max(item["count"] - reserved, 0),
+            "closed": closed
+        })
+    return slots
+
+
 def equipment_availability(equipment, start_day, end_day, catalog):
-    item = next((item for item in catalog if item["name"] == equipment), None)
+    """Compatibility wrapper for the original name-based takeout lookup."""
+    item = find_equipment(catalog, equipment_name=equipment)
     if item is None:
         return None
-    cursor.execute("""SELECT COALESCE(SUM(quantity), 0) FROM equipment_reservation
-        WHERE equipment = ? AND start_day <= ? AND end_day >= ?""", (equipment, end_day, start_day))
-    reserved = cursor.fetchone()[0]
-    return {**item, "reserved": reserved, "available": max(item["count"] - reserved, 0)}
+    return takeout_availability(
+        item,
+        datetime.date.fromisoformat(start_day),
+        datetime.date.fromisoformat(end_day)
+    )
 
 
 def format_reserved_equipment(value):
@@ -816,6 +933,14 @@ async def Mypage(request: Request):
         FROM equipment_reservation WHERE userid = ? ORDER BY start_day, end_day, id""", (user_id,))
     equipment_reservations = cursor.fetchall()
 
+    cursor.execute("""SELECT id, equipment, use_day, start_time, end_time, quantity, purpose, note
+        FROM equipment_room_reservation
+        WHERE userid = ?
+        ORDER BY use_day, start_time, end_time, id""", (
+            user_id,
+        ))
+    equipment_room_reservations = cursor.fetchall()
+
     return templates.TemplateResponse(
         request = request,
         name = "mypage.html",
@@ -825,7 +950,8 @@ async def Mypage(request: Request):
             "user_id": user_id,
             "user_school": user_school,
             "reservations": reservations,
-            "equipment_reservations": equipment_reservations
+            "equipment_reservations": equipment_reservations,
+            "equipment_room_reservations": equipment_room_reservations
         }
     )
 
@@ -857,27 +983,60 @@ async def DelReservation(request: Request, day: str, time: str):
     return RedirectResponse("/mypage", status_code=303)
 
 @app.post("/equipment-reservation")
-async def CreateEquipmentReservation(request: Request, equipment: str = Form(...), start_day: str = Form(...), end_day: str = Form(...), quantity: int = Form(...), purpose: str = Form(...), note: str = Form("")):
+async def CreateEquipmentReservation(
+    request: Request,
+    equipment_id: str = Form(""),
+    equipment: str = Form(""),
+    start_day: str = Form(...),
+    end_day: str = Form(...),
+    quantity: int = Form(...),
+    purpose: str = Form(...),
+    note: str = Form("")
+):
+    catalog = load_equipment_catalog()
+    item = find_equipment(catalog, equipment_id=equipment_id, equipment_name=equipment)
+    if item is None:
+        raise HTTPException(status_code=400, detail="選択した器具は利用できません。")
+    if item["usage_type"] != "takeout":
+        raise HTTPException(status_code=400, detail="この器具は工作室内専用です。")
     try:
         start = datetime.date.fromisoformat(start_day)
         end = datetime.date.fromisoformat(end_day)
     except ValueError:
         raise HTTPException(status_code=400, detail="日付の形式が正しくありません。")
-    if start < datetime.date.today() or end < start:
+    if start < datetime.datetime.now(JST).date() or end < start:
         raise HTTPException(status_code=400, detail="利用日を正しく指定してください。")
     if (end - start).days + 1 > 7:
         raise HTTPException(status_code=400, detail="貸出期間は最長7日間です。")
-    if quantity < 1 or not purpose.strip():
+    clean_purpose = purpose.strip()
+    clean_note = note.strip()
+    if quantity < 1 or not clean_purpose:
         raise HTTPException(status_code=400, detail="数量と使用目的を入力してください。")
-    item = equipment_availability(equipment, start.isoformat(), end.isoformat(), load_equipment_catalog())
-    if item is None:
-        raise HTTPException(status_code=400, detail="選択した器具は利用できません。")
-    if quantity > item["available"]:
-        raise HTTPException(status_code=409, detail=f"在庫が不足しています。利用可能数: {item['available']}")
-    cursor.execute("""INSERT INTO equipment_reservation
-        (userid, equipment, start_day, end_day, quantity, purpose, note)
-        VALUES (?, ?, ?, ?, ?, ?, ?)""", (request.session.get("user_id"), equipment, start.isoformat(), end.isoformat(), quantity, purpose.strip(), note.strip()))
-    conn.commit()
+    if len(clean_purpose) > 500 or len(clean_note) > 500:
+        raise HTTPException(status_code=400, detail="使用目的と備考は500文字以内で入力してください。")
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            availability = takeout_availability(item, start, end, db)
+            if quantity > availability["available"]:
+                db.rollback()
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"選択した期間は必要な数量を確保できません。利用可能数: {availability['available']}"
+                )
+            db.execute("""INSERT INTO equipment_reservation
+                (userid, equipment, start_day, end_day, quantity, purpose, note, equipment_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", (
+                    request.session.get("user_id"), item["name"], start.isoformat(),
+                    end.isoformat(), quantity, clean_purpose, clean_note, item["id"]
+                ))
+            db.commit()
+        except HTTPException:
+            raise
+        except Exception:
+            db.rollback()
+            raise
     return {"result": True}
 
 @app.get("/mypage/equipment-reservation/{reservation_id}/cancel")
@@ -887,18 +1046,125 @@ async def CancelEquipmentReservation(request: Request, reservation_id: int):
     return RedirectResponse("/mypage", status_code=303)
 
 @app.get("/equipment-availability")
-async def EquipmentAvailability(equipment: str, start_day: str, end_day: str):
+async def EquipmentAvailability(start_day: str, end_day: str, equipment_id: str = "", equipment: str = ""):
+    item = find_equipment(load_equipment_catalog(), equipment_id=equipment_id, equipment_name=equipment)
+    if item is None:
+        raise HTTPException(status_code=404, detail="器具が見つかりません。")
+    if item["usage_type"] != "takeout":
+        raise HTTPException(status_code=400, detail="この器具は工作室内専用です。")
     try:
         start = datetime.date.fromisoformat(start_day)
         end = datetime.date.fromisoformat(end_day)
     except ValueError:
         raise HTTPException(status_code=400, detail="日付の形式が正しくありません。")
-    if end < start or (end - start).days + 1 > 7:
+    if start < datetime.datetime.now(JST).date() or end < start or (end - start).days + 1 > 7:
         raise HTTPException(status_code=400, detail="利用期間は最長7日間で指定してください。")
-    item = equipment_availability(equipment, start.isoformat(), end.isoformat(), load_equipment_catalog())
+    availability = takeout_availability(item, start, end)
+    return {"count": item["count"], "available": availability["available"]}
+
+
+@app.get("/equipment-room-availability")
+async def EquipmentRoomAvailability(equipment_id: str, day: str):
+    item = find_equipment(load_equipment_catalog(), equipment_id=equipment_id)
     if item is None:
         raise HTTPException(status_code=404, detail="器具が見つかりません。")
-    return {"count": item["count"], "available": item["available"]}
+    if item["usage_type"] != "in_room":
+        raise HTTPException(status_code=400, detail="この器具は持ち出し用です。")
+    try:
+        use_day = datetime.date.fromisoformat(day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付の形式が正しくありません。")
+    if use_day < datetime.datetime.now(JST).date():
+        raise HTTPException(status_code=400, detail="過去の日付は選択できません。")
+    return {"count": item["count"], "day": day, "slots": room_slot_availability(item, use_day)}
+
+
+@app.post("/equipment-room-reservation")
+async def CreateEquipmentRoomReservation(
+    request: Request,
+    equipment_id: str = Form(...),
+    use_day: str = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(...),
+    quantity: int = Form(...),
+    purpose: str = Form(...),
+    note: str = Form("")
+):
+    if request.session.get("user_login") is not True or not request.session.get("user_id"):
+        raise HTTPException(status_code=401, detail="ログインが必要です。")
+    item = find_equipment(load_equipment_catalog(), equipment_id=equipment_id)
+    if item is None:
+        raise HTTPException(status_code=400, detail="選択した器具は利用できません。")
+    if item["usage_type"] != "in_room":
+        raise HTTPException(status_code=400, detail="この器具は持ち出し用です。")
+    try:
+        reservation_day = datetime.date.fromisoformat(use_day)
+        parsed_start = datetime.datetime.strptime(start_time, "%H:%M").time()
+        parsed_end = datetime.datetime.strptime(end_time, "%H:%M").time()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="予約日時が正しくありません。")
+    reservation_start = datetime.datetime.combine(reservation_day, parsed_start, tzinfo=JST)
+    duration_minutes = (
+        datetime.datetime.combine(reservation_day, parsed_end, tzinfo=JST) - reservation_start
+    ).total_seconds() // 60
+    if (
+        reservation_start < datetime.datetime.now(JST) or
+        start_time != parsed_start.strftime("%H:%M") or
+        end_time != parsed_end.strftime("%H:%M") or
+        parsed_start < datetime.time(9, 0) or parsed_end > datetime.time(20, 30) or
+        duration_minutes < 30 or duration_minutes % 30 != 0 or
+        parsed_start.minute not in (0, 30) or parsed_end.minute not in (0, 30)
+    ):
+        raise HTTPException(status_code=400, detail="この時間帯は予約できません。")
+    clean_purpose = purpose.strip()
+    clean_note = note.strip()
+    if quantity < 1 or not clean_purpose:
+        raise HTTPException(status_code=400, detail="数量と使用目的を入力してください。")
+    if len(clean_purpose) > 500 or len(clean_note) > 500:
+        raise HTTPException(status_code=400, detail="使用目的と備考は500文字以内で入力してください。")
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            slots = room_slot_availability(item, reservation_day, db)
+            selected_slots = [
+                slot for slot in slots
+                if slot["start_time"] < end_time and slot["end_time"] > start_time
+            ]
+            if not selected_slots or any(slot["closed"] for slot in selected_slots):
+                db.rollback()
+                raise HTTPException(status_code=400, detail="この時間帯は予約できません。")
+            available = min(slot["available_quantity"] for slot in selected_slots)
+            if quantity > available:
+                db.rollback()
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"選択した時間帯は在庫が不足しています。利用可能数: {available}"
+                )
+            db.execute("""INSERT INTO equipment_room_reservation
+                (userid, equipment_id, equipment, use_day, start_time, end_time, quantity, purpose, note)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
+                    request.session.get("user_id"), item["id"], item["name"], reservation_day.isoformat(),
+                    start_time, end_time, quantity, clean_purpose, clean_note
+                ))
+            db.commit()
+        except HTTPException:
+            raise
+        except Exception:
+            db.rollback()
+            raise
+    return {"result": True}
+
+
+@app.post("/mypage/equipment-room-reservation/{reservation_id}/cancel")
+async def CancelEquipmentRoomReservation(request: Request, reservation_id: int):
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.execute(
+            "DELETE FROM equipment_room_reservation WHERE id = ? AND userid = ?",
+            (reservation_id, request.session.get("user_id"))
+        )
+        db.commit()
+    return RedirectResponse("/mypage", status_code=303)
 
 #teacherページ
 @app.get("/teacher")
