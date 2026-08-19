@@ -34,6 +34,33 @@
     margin-bottom: 30px;
 }
 
+.equipment-admin-message {
+    margin: 0 0 24px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+.equipment-admin-message.is-success {
+    background: #e7f5ea;
+    color: #28633a;
+}
+
+.equipment-admin-message.is-error {
+    background: #fdeaea;
+    color: #963737;
+}
+
+.equipment-reservation-section + .equipment-reservation-section {
+    margin-top: 34px;
+}
+
+.equipment-reservation-section h2 {
+    margin: 0 0 14px;
+    color: #354f3e;
+    font-size: 20px;
+}
+
 
 /* ========================================
    検索フォーム
@@ -291,8 +318,8 @@
 .equipment-admin-table td:nth-child(1),
 .equipment-admin-table th:nth-child(2),
 .equipment-admin-table td:nth-child(2),
-.equipment-admin-table th:nth-child(6),
-.equipment-admin-table td:nth-child(6) {
+.equipment-takeout-admin-table th:nth-child(6),
+.equipment-takeout-admin-table td:nth-child(6) {
     text-align: center;
 }
 
@@ -303,10 +330,10 @@
     white-space: nowrap;
 }
 
-.equipment-admin-table th:nth-child(4),
-.equipment-admin-table td:nth-child(4),
-.equipment-admin-table th:nth-child(5),
-.equipment-admin-table td:nth-child(5) {
+.equipment-takeout-admin-table th:nth-child(4),
+.equipment-takeout-admin-table td:nth-child(4),
+.equipment-takeout-admin-table th:nth-child(5),
+.equipment-takeout-admin-table td:nth-child(5) {
     white-space: nowrap;
 }
 
@@ -315,20 +342,76 @@
    使用目的・備考
 ======================================== */
 
-.equipment-admin-table th:nth-child(7),
-.equipment-admin-table td:nth-child(7) {
+.equipment-takeout-admin-table th:nth-child(7),
+.equipment-takeout-admin-table td:nth-child(7) {
     min-width: 220px;
     max-width: 320px;
     white-space: normal;
     overflow-wrap: anywhere;
 }
 
-.equipment-admin-table th:nth-child(8),
-.equipment-admin-table td:nth-child(8) {
+.equipment-takeout-admin-table th:nth-child(8),
+.equipment-takeout-admin-table td:nth-child(8) {
     min-width: 220px;
     max-width: 320px;
     white-space: normal;
     overflow-wrap: anywhere;
+}
+
+.equipment-admin-table th:last-child,
+.equipment-admin-table td:last-child {
+    width: 1%;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.equipment-room-admin-table th:nth-child(7),
+.equipment-room-admin-table td:nth-child(7) {
+    text-align: center;
+}
+
+.equipment-room-admin-table th:nth-child(8),
+.equipment-room-admin-table td:nth-child(8),
+.equipment-room-admin-table th:nth-child(9),
+.equipment-room-admin-table td:nth-child(9) {
+    min-width: 220px;
+    max-width: 320px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.equipment-room-admin-table th:nth-child(4),
+.equipment-room-admin-table td:nth-child(4),
+.equipment-room-admin-table th:nth-child(5),
+.equipment-room-admin-table td:nth-child(5),
+.equipment-room-admin-table th:nth-child(6),
+.equipment-room-admin-table td:nth-child(6) {
+    white-space: nowrap;
+}
+
+.equipment-cancel-form {
+    margin: 0;
+}
+
+.equipment-cancel-button {
+    min-height: 36px;
+    padding: 0 14px;
+    border: 1px solid #c75b5b;
+    border-radius: 6px;
+    background: #fff;
+    color: #a13c3c;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.equipment-cancel-button:hover {
+    background: #fff0f0;
+}
+
+.equipment-cancel-button:focus-visible {
+    outline: 2px solid #a13c3c;
+    outline-offset: 2px;
 }
 
 

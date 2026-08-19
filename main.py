@@ -618,25 +618,41 @@ async def AdminEquipmentReservationPage(request: Request, start_day: str = None,
     if request.session.get("admin_login") != True:
         return RedirectResponse("/admin/login", status_code=303)
 
-    today = datetime.datetime.now(
-        datetime.timezone(datetime.timedelta(hours=9))
-    ).date().isoformat()
-
     if start_day and end_day:
         cursor.execute("""
             SELECT id, userid, equipment, start_day, end_day, quantity, purpose, note
             FROM equipment_reservation
-            WHERE end_day >= ? AND start_day <= ? AND end_day >= ?
+            WHERE start_day <= ? AND end_day >= ?
             ORDER BY start_day ASC, id ASC
-        """, (today, end_day, start_day))
+        """, (end_day, start_day))
     else:
         cursor.execute("""
             SELECT id, userid, equipment, start_day, end_day, quantity, purpose, note
             FROM equipment_reservation
-            WHERE end_day >= ?
             ORDER BY start_day ASC, id ASC
-        """, (today,))
+        """)
     equipment_reservations = cursor.fetchall()
+
+    if start_day and end_day:
+        cursor.execute("""
+            SELECT id, userid, equipment, use_day, start_time, end_time, quantity, purpose, note
+            FROM equipment_room_reservation
+            WHERE use_day >= ? AND use_day <= ?
+            ORDER BY use_day ASC, start_time ASC, id ASC
+        """, (start_day, end_day))
+    else:
+        cursor.execute("""
+            SELECT id, userid, equipment, use_day, start_time, end_time, quantity, purpose, note
+            FROM equipment_room_reservation
+            ORDER BY use_day ASC, start_time ASC, id ASC
+        """)
+    equipment_room_reservations = cursor.fetchall()
+
+    csrf_token = request.session.get("equipment_reservation_csrf_token")
+    if not csrf_token:
+        csrf_token = secrets.token_urlsafe(32)
+        request.session["equipment_reservation_csrf_token"] = csrf_token
+    notice = request.session.pop("equipment_reservation_notice", None)
 
     return templates.TemplateResponse(
         request=request,
@@ -645,10 +661,64 @@ async def AdminEquipmentReservationPage(request: Request, start_day: str = None,
             "request": request,
             "admin_id": request.session.get("admin_id"),
             "equipment_reservations": equipment_reservations,
+            "equipment_room_reservations": equipment_room_reservations,
             "start_day": start_day,
-            "end_day": end_day
+            "end_day": end_day,
+            "csrf_token": csrf_token,
+            "notice": notice
         }
     )
+
+
+@app.post("/admin/equipment-reservation/cancel")
+async def AdminCancelEquipmentReservation(
+    request: Request,
+    reservation_type: str = Form(...),
+    reservation_id: int = Form(...),
+    csrf_token: str = Form(...)
+):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    session_token = request.session.get("equipment_reservation_csrf_token", "")
+    if not session_token or not secrets.compare_digest(csrf_token, session_token):
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "操作を確認できませんでした。ページを再読み込みして、もう一度お試しください。"
+        }
+        return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+    table_by_type = {
+        "takeout": "equipment_reservation",
+        "in_room": "equipment_room_reservation"
+    }
+    table = table_by_type.get(reservation_type)
+    if table is None:
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "予約種別が正しくありません。"
+        }
+        return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        deleted_count = db.execute(
+            f"DELETE FROM {table} WHERE id = ?", (reservation_id,)
+        ).rowcount
+        db.commit()
+
+    if deleted_count != 1:
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "取消対象の予約が見つかりませんでした。"
+        }
+    else:
+        request.session["equipment_reservation_notice"] = {
+            "type": "success",
+            "message": "実験器具の予約を取り消しました。"
+        }
+        request.session["equipment_reservation_csrf_token"] = secrets.token_urlsafe(32)
+
+    return RedirectResponse("/admin/equipment-reservation", status_code=303)
 
 
 @app.get("/admin/studies", response_class=HTMLResponse)

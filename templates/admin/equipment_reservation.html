@@ -14,6 +14,10 @@
     <p class="dashboard-eyebrow">Equipment Reservation Management</p>
     <h1>実験器具予約確認</h1>
 
+    {% if notice %}
+    <p class="equipment-admin-message is-{{ notice.type }}" role="status">{{ notice.message }}</p>
+    {% endif %}
+
     <details class="equipment-filter" {% if start_day or end_day %}open{% endif %}>
         <summary class="equipment-filter-toggle">絞り込み</summary>
 
@@ -55,11 +59,13 @@
     </form>
     </details>
 
+    <section class="equipment-reservation-section" aria-labelledby="takeout-reservation-title">
+    <h2 id="takeout-reservation-title">持ち出し予約</h2>
     <div class="equipment-table-container">
 
         {% if equipment_reservations %}
 
-        <table class="equipment-admin-table">
+        <table class="equipment-admin-table equipment-takeout-admin-table">
 
             <thead>
                 <tr>
@@ -71,6 +77,7 @@
                     <th>数量</th>
                     <th>使用目的</th>
                     <th>備考</th>
+                    <th>操作</th>
                 </tr>
             </thead>
 
@@ -85,6 +92,14 @@
                     <td>{{ r[5] }}</td>
                     <td>{{ r[6] }}</td>
                     <td>{{ r[7] }}</td>
+                    <td>
+                        <form method="post" action="/admin/equipment-reservation/cancel" class="equipment-cancel-form" data-reservation-label="{{ r[2] }}の持ち出し予約">
+                            <input type="hidden" name="reservation_type" value="takeout">
+                            <input type="hidden" name="reservation_id" value="{{ r[0] }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="equipment-cancel-button">取消</button>
+                        </form>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -100,9 +115,67 @@
         {% endif %}
 
     </div>
+    </section>
+
+    <section class="equipment-reservation-section" aria-labelledby="room-reservation-title">
+    <h2 id="room-reservation-title">工作室内利用予約</h2>
+    <div class="equipment-table-container">
+
+        {% if equipment_room_reservations %}
+
+        <table class="equipment-admin-table equipment-room-admin-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>ユーザーID</th>
+                    <th>器具名</th>
+                    <th>利用日</th>
+                    <th>開始時間</th>
+                    <th>終了時間</th>
+                    <th>数量</th>
+                    <th>使用目的</th>
+                    <th>備考</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in equipment_room_reservations %}
+                <tr>
+                    <td>{{ r[0] }}</td>
+                    <td>{{ r[1] }}</td>
+                    <td>{{ r[2] }}</td>
+                    <td>{{ r[3] }}</td>
+                    <td>{{ r[4] }}</td>
+                    <td>{{ r[5] }}</td>
+                    <td>{{ r[6] }}</td>
+                    <td>{{ r[7] }}</td>
+                    <td>{{ r[8] }}</td>
+                    <td>
+                        <form method="post" action="/admin/equipment-reservation/cancel" class="equipment-cancel-form" data-reservation-label="{{ r[2] }}の工作室内利用予約">
+                            <input type="hidden" name="reservation_type" value="in_room">
+                            <input type="hidden" name="reservation_id" value="{{ r[0] }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="equipment-cancel-button">取消</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% else %}
+        <div class="equipment-no-data">
+            <p>予約情報が見つかりません。</p>
+        </div>
+        {% endif %}
+
+    </div>
+    </section>
 
 </div>
 
 
 </div>
 {% endblock %}
+
+{% block scripts %}<script src="/static/admin/equipment_reservation.js"></script>{% endblock %}
