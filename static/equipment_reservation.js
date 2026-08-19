@@ -98,7 +98,8 @@
     }
     function addRoomSlotEvents(element, index) {
         element.addEventListener("mousedown", event => {
-            if (event.button !== 0 || element.classList.contains("unavailable")) return;
+            const slot = element.closest(".room-time-slot");
+            if (event.button !== 0 || slot.classList.contains("unavailable")) return;
             event.preventDefault();
             resetRoomSelection();
             state.dragging = true;
@@ -106,10 +107,18 @@
             updateRoomSelection(index);
             roomTimeMessage.textContent = "終了する枠までドラッグしてください。";
         });
-        element.addEventListener("mouseenter", () => { if (state.dragging) updateRoomSelection(index); });
+        element.addEventListener("mouseenter", () => {
+            if (!state.dragging) return;
+            element.closest(".room-time-slot").classList.add("drag-hover");
+            updateRoomSelection(index);
+        });
+        element.addEventListener("mouseleave", () => {
+            element.closest(".room-time-slot").classList.remove("drag-hover");
+        });
         element.addEventListener("mouseup", event => {
             if (event.button !== 0 || !state.dragging) return;
             if (updateRoomSelection(index)) roomTimeMessage.textContent = "選択した利用時間を確認してください。";
+            element.closest(".room-time-slot").classList.remove("drag-hover");
             state.dragging = false;
         });
     }
@@ -122,14 +131,28 @@
             const unavailable = slot.closed || slot.available_quantity <= 0;
             element.classList.add(unavailable ? "unavailable" : "available");
             if (slot.closed) element.classList.add("closed");
-            const period = document.createElement("span");
-            period.textContent = `${slot.start_time}～${slot.end_time}`;
+            const time = document.createElement("span");
+            time.className = "room-time-label";
+            time.textContent = slot.start_time;
+            const slotBody = document.createElement("div");
+            slotBody.className = "room-slot-body";
             const status = document.createElement("span");
+            status.className = "room-slot-status";
             status.textContent = slot.closed ? "受付終了" : slot.available_quantity ? `残り ${slot.available_quantity}` : "在庫なし";
-            element.append(period, status);
-            addRoomSlotEvents(element, index);
+            slotBody.append(status);
+            element.append(time, slotBody);
+            addRoomSlotEvents(slotBody, index);
             roomTimeSlots.append(element);
         });
+        const endMarker = document.createElement("div");
+        endMarker.className = "room-timeline-end";
+        const endTime = document.createElement("span");
+        endTime.className = "room-time-label";
+        endTime.textContent = slots.length ? slots[slots.length - 1].end_time : "20:30";
+        const endLine = document.createElement("span");
+        endLine.className = "room-timeline-end-line";
+        endMarker.append(endTime, endLine);
+        roomTimeSlots.append(endMarker);
     }
     async function updateRoomAvailability() {
         if (state.usageType !== "in_room" || !useDay.value) return;
@@ -167,7 +190,10 @@
     startDay.addEventListener("change", () => { setTakeoutLimits(); updateTakeoutAvailability(); });
     endDay.addEventListener("change", updateTakeoutAvailability);
     useDay.addEventListener("change", updateRoomAvailability);
-    document.addEventListener("mouseup", () => { state.dragging = false; });
+    document.addEventListener("mouseup", () => {
+        state.dragging = false;
+        roomTimeSlots.querySelectorAll(".drag-hover").forEach(slot => slot.classList.remove("drag-hover"));
+    });
     form.addEventListener("submit", async event => {
         event.preventDefault();
         clearMessage();

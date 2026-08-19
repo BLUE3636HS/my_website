@@ -155,15 +155,22 @@
 .equipment-message.is-success { background: #e4f4e0; color: #2d6a31; }
 .room-date-row, .selected-time { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .time-message { color: #526173; font-weight: 700; }
-.room-time-slots { max-height: 390px; padding: 6px; overflow-y: auto; border: 1px solid #d7e0ea; border-radius: 10px; background: #f8fafc; user-select: none; }
+.room-time-slots { max-height: 480px; padding: 14px 12px 18px; overflow-y: auto; border: 1px solid #d7e0ea; border-radius: 10px; background: #fff; user-select: none; }
 .room-time-slots.is-disabled { min-height: 100px; display: grid; place-items: center; }
-.room-time-slot { display: flex; align-items: center; justify-content: space-between; min-height: 42px; margin: 4px 0; padding: 8px 12px; border-radius: 7px; font-weight: 700; }
-.room-time-slot.available { background: #dbeed7; color: #2d6a31; cursor: pointer; }
-.room-time-slot.available:hover { background: #c4e2bd; }
-.room-time-slot.unavailable { background: #f3d0d0; color: #a13c3c; }
-.room-time-slot.closed { background: #e7e9ec; color: #747b84; }
-.room-time-slot.selected { background: #a9c9e6; color: #173f64; }
-.room-time-slot.drag-start { background: #3d85c6; color: #fff; }
+.room-time-slot,
+.room-timeline-end { display: grid; grid-template-columns: 64px minmax(0, 1fr); min-height: 40px; }
+.room-time-label { align-self: start; padding: 0 10px 0 0; color: #526173; font-size: 12px; font-weight: 800; line-height: 1; text-align: right; transform: translateY(-6px); }
+.room-slot-body { display: flex; align-items: center; justify-content: flex-end; min-width: 0; min-height: 40px; padding: 5px 12px; border-top: 1px solid #cbd5e1; border-left: 1px solid #94a3b8; transition: background-color .15s ease, color .15s ease; }
+.room-slot-status { color: inherit; font-size: 12px; font-weight: 700; opacity: .82; }
+.room-time-slot.available .room-slot-body { background: #f4faf2; color: #2d6a31; cursor: pointer; }
+.room-time-slot.available .room-slot-body:hover { background: #e2f1de; }
+.room-time-slot.unavailable .room-slot-body { background: #fbeaea; color: #a13c3c; }
+.room-time-slot.closed .room-slot-body { background: #f0f1f3; color: #747b84; }
+.room-time-slot.selected .room-slot-body { background: #c9dff1; color: #173f64; }
+.room-time-slot.drag-start .room-slot-body { background: #3d85c6; color: #fff; }
+.room-time-slot.drag-hover .room-slot-body { background: #3d85c6; color: #fff; }
+.room-timeline-end { min-height: 0; }
+.room-timeline-end-line { height: 1px; border-left: 1px solid #94a3b8; background: #cbd5e1; }
 .selected-time { margin-top: 14px; padding: 11px 13px; border-radius: 9px; background: #eef4fa; }
 .selected-time p { margin: 0; }
 
