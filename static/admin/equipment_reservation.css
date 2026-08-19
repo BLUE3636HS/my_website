@@ -168,6 +168,30 @@
     box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.08);
 }
 
+.equipment-unreturned-filter {
+    display: inline-flex;
+    align-items: center;
+    align-self: center;
+    gap: 8px;
+    min-height: 42px;
+    color: #444;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.equipment-unreturned-filter input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: #39784c;
+}
+
+.equipment-unreturned-filter input:focus-visible {
+    outline: 2px solid #39784c;
+    outline-offset: 2px;
+}
+
 
 /* ========================================
    ボタン
@@ -391,6 +415,59 @@
 
 .equipment-cancel-form {
     margin: 0;
+}
+
+.equipment-return-form {
+    margin: 0;
+}
+
+.equipment-return-status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.equipment-returned-label {
+    color: #28633a;
+    font-weight: 700;
+}
+
+.equipment-return-button {
+    min-height: 36px;
+    padding: 0 14px;
+    border: 1px solid #39784c;
+    border-radius: 6px;
+    background: #39784c;
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.equipment-return-button:hover {
+    background: #2f663f;
+}
+
+.equipment-return-button:focus-visible,
+.equipment-undo-return-button:focus-visible {
+    outline: 2px solid #39784c;
+    outline-offset: 2px;
+}
+
+.equipment-undo-return-button {
+    padding: 2px 5px;
+    border: 0;
+    background: transparent;
+    color: #7b8880;
+    font-size: 10px;
+    line-height: 1.3;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.equipment-undo-return-button:hover {
+    color: #536159;
 }
 
 .equipment-cancel-button {

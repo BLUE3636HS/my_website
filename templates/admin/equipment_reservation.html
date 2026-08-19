@@ -18,7 +18,7 @@
     <p class="equipment-admin-message is-{{ notice.type }}" role="status">{{ notice.message }}</p>
     {% endif %}
 
-    <details class="equipment-filter" {% if start_day or end_day %}open{% endif %}>
+    <details class="equipment-filter" {% if start_day or end_day or unreturned_only %}open{% endif %}>
         <summary class="equipment-filter-toggle">絞り込み</summary>
 
     <form method="get" action="/admin/equipment-reservation" class="equipment-filter-form">
@@ -42,6 +42,16 @@
                 value="{{ end_day or '' }}"
             >
         </div>
+
+        <label class="equipment-unreturned-filter">
+            <input
+                type="checkbox"
+                name="unreturned_only"
+                value="1"
+                {% if unreturned_only %}checked{% endif %}
+            >
+            <span>未返却のみ</span>
+        </label>
 
         <div class="equipment-filter-btn-group">
             <button type="submit" class="equipment-btn-search">
@@ -77,6 +87,7 @@
                     <th>数量</th>
                     <th>使用目的</th>
                     <th>備考</th>
+                    <th>返却状態</th>
                     <th>操作</th>
                 </tr>
             </thead>
@@ -92,6 +103,28 @@
                     <td>{{ r[5] }}</td>
                     <td>{{ r[6] }}</td>
                     <td>{{ r[7] }}</td>
+                    <td>
+                        {% if r[8] %}
+                        <div class="equipment-return-status">
+                            <span class="equipment-returned-label">返却済み</span>
+                            <form method="post" action="/admin/equipment-reservation/return-status" class="equipment-return-form">
+                                <input type="hidden" name="reservation_type" value="takeout">
+                                <input type="hidden" name="reservation_id" value="{{ r[0] }}">
+                                <input type="hidden" name="returned" value="0">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="equipment-undo-return-button">未返却に戻す</button>
+                            </form>
+                        </div>
+                        {% else %}
+                        <form method="post" action="/admin/equipment-reservation/return-status" class="equipment-return-form">
+                            <input type="hidden" name="reservation_type" value="takeout">
+                            <input type="hidden" name="reservation_id" value="{{ r[0] }}">
+                            <input type="hidden" name="returned" value="1">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="equipment-return-button">返却済にする</button>
+                        </form>
+                        {% endif %}
+                    </td>
                     <td>
                         <form method="post" action="/admin/equipment-reservation/cancel" class="equipment-cancel-form" data-reservation-label="{{ r[2] }}の持ち出し予約">
                             <input type="hidden" name="reservation_type" value="takeout">
@@ -135,6 +168,7 @@
                     <th>数量</th>
                     <th>使用目的</th>
                     <th>備考</th>
+                    <th>返却状態</th>
                     <th>操作</th>
                 </tr>
             </thead>
@@ -150,6 +184,28 @@
                     <td>{{ r[6] }}</td>
                     <td>{{ r[7] }}</td>
                     <td>{{ r[8] }}</td>
+                    <td>
+                        {% if r[9] %}
+                        <div class="equipment-return-status">
+                            <span class="equipment-returned-label">返却済み</span>
+                            <form method="post" action="/admin/equipment-reservation/return-status" class="equipment-return-form">
+                                <input type="hidden" name="reservation_type" value="in_room">
+                                <input type="hidden" name="reservation_id" value="{{ r[0] }}">
+                                <input type="hidden" name="returned" value="0">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="equipment-undo-return-button">未返却に戻す</button>
+                            </form>
+                        </div>
+                        {% else %}
+                        <form method="post" action="/admin/equipment-reservation/return-status" class="equipment-return-form">
+                            <input type="hidden" name="reservation_type" value="in_room">
+                            <input type="hidden" name="reservation_id" value="{{ r[0] }}">
+                            <input type="hidden" name="returned" value="1">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="equipment-return-button">返却済にする</button>
+                        </form>
+                        {% endif %}
+                    </td>
                     <td>
                         <form method="post" action="/admin/equipment-reservation/cancel" class="equipment-cancel-form" data-reservation-label="{{ r[2] }}の工作室内利用予約">
                             <input type="hidden" name="reservation_type" value="in_room">

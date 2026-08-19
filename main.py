@@ -99,7 +99,8 @@ cursor.execute("""
         start_day TEXT NOT NULL, end_day TEXT NOT NULL,
         quantity INTEGER NOT NULL, purpose TEXT NOT NULL,
         note TEXT NOT NULL DEFAULT '',
-        equipment_id TEXT
+        equipment_id TEXT,
+        returned INTEGER NOT NULL DEFAULT 0
     )
 """)
 equipment_reservation_columns = {
@@ -107,6 +108,11 @@ equipment_reservation_columns = {
 }
 if "equipment_id" not in equipment_reservation_columns:
     cursor.execute("ALTER TABLE equipment_reservation ADD COLUMN equipment_id TEXT")
+if "returned" not in equipment_reservation_columns:
+    cursor.execute(
+        "ALTER TABLE equipment_reservation "
+        "ADD COLUMN returned INTEGER NOT NULL DEFAULT 0"
+    )
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS equipment_room_reservation (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,9 +124,20 @@ cursor.execute("""
         end_time TEXT NOT NULL,
         quantity INTEGER NOT NULL,
         purpose TEXT NOT NULL,
-        note TEXT NOT NULL DEFAULT ''
+        note TEXT NOT NULL DEFAULT '',
+        returned INTEGER NOT NULL DEFAULT 0
     )
 """)
+equipment_room_reservation_columns = {
+    row[1] for row in cursor.execute(
+        "PRAGMA table_info(equipment_room_reservation)"
+    ).fetchall()
+}
+if "returned" not in equipment_room_reservation_columns:
+    cursor.execute(
+        "ALTER TABLE equipment_room_reservation "
+        "ADD COLUMN returned INTEGER NOT NULL DEFAULT 0"
+    )
 conn.commit()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -614,38 +631,49 @@ async def AdminReservationPage(request: Request, start_day: str = None, end_day:
 
 
 @app.get("/admin/equipment-reservation", response_class=HTMLResponse)
-async def AdminEquipmentReservationPage(request: Request, start_day: str = None, end_day: str = None):
+async def AdminEquipmentReservationPage(
+    request: Request,
+    start_day: str = None,
+    end_day: str = None,
+    unreturned_only: str = None
+):
     if request.session.get("admin_login") != True:
         return RedirectResponse("/admin/login", status_code=303)
 
+    show_unreturned_only = unreturned_only == "1"
+
+    takeout_conditions = []
+    takeout_params = []
     if start_day and end_day:
-        cursor.execute("""
-            SELECT id, userid, equipment, start_day, end_day, quantity, purpose, note
-            FROM equipment_reservation
-            WHERE start_day <= ? AND end_day >= ?
-            ORDER BY start_day ASC, id ASC
-        """, (end_day, start_day))
-    else:
-        cursor.execute("""
-            SELECT id, userid, equipment, start_day, end_day, quantity, purpose, note
-            FROM equipment_reservation
-            ORDER BY start_day ASC, id ASC
-        """)
+        takeout_conditions.append("start_day <= ? AND end_day >= ?")
+        takeout_params.extend((end_day, start_day))
+    if show_unreturned_only:
+        takeout_conditions.append("returned = 0")
+    takeout_where = (
+        f"WHERE {' AND '.join(takeout_conditions)}" if takeout_conditions else ""
+    )
+    cursor.execute(f"""
+        SELECT id, userid, equipment, start_day, end_day, quantity, purpose, note, returned
+        FROM equipment_reservation
+        {takeout_where}
+        ORDER BY start_day ASC, id ASC
+    """, takeout_params)
     equipment_reservations = cursor.fetchall()
 
+    room_conditions = []
+    room_params = []
     if start_day and end_day:
-        cursor.execute("""
-            SELECT id, userid, equipment, use_day, start_time, end_time, quantity, purpose, note
-            FROM equipment_room_reservation
-            WHERE use_day >= ? AND use_day <= ?
-            ORDER BY use_day ASC, start_time ASC, id ASC
-        """, (start_day, end_day))
-    else:
-        cursor.execute("""
-            SELECT id, userid, equipment, use_day, start_time, end_time, quantity, purpose, note
-            FROM equipment_room_reservation
-            ORDER BY use_day ASC, start_time ASC, id ASC
-        """)
+        room_conditions.append("use_day >= ? AND use_day <= ?")
+        room_params.extend((start_day, end_day))
+    if show_unreturned_only:
+        room_conditions.append("returned = 0")
+    room_where = f"WHERE {' AND '.join(room_conditions)}" if room_conditions else ""
+    cursor.execute(f"""
+        SELECT id, userid, equipment, use_day, start_time, end_time, quantity, purpose, note, returned
+        FROM equipment_room_reservation
+        {room_where}
+        ORDER BY use_day ASC, start_time ASC, id ASC
+    """, room_params)
     equipment_room_reservations = cursor.fetchall()
 
     csrf_token = request.session.get("equipment_reservation_csrf_token")
@@ -664,6 +692,7 @@ async def AdminEquipmentReservationPage(request: Request, start_day: str = None,
             "equipment_room_reservations": equipment_room_reservations,
             "start_day": start_day,
             "end_day": end_day,
+            "unreturned_only": show_unreturned_only,
             "csrf_token": csrf_token,
             "notice": notice
         }
@@ -715,6 +744,59 @@ async def AdminCancelEquipmentReservation(
         request.session["equipment_reservation_notice"] = {
             "type": "success",
             "message": "実験器具の予約を取り消しました。"
+        }
+        request.session["equipment_reservation_csrf_token"] = secrets.token_urlsafe(32)
+
+    return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+
+@app.post("/admin/equipment-reservation/return-status")
+async def AdminUpdateEquipmentReturnStatus(
+    request: Request,
+    reservation_type: str = Form(...),
+    reservation_id: int = Form(...),
+    returned: int = Form(...),
+    csrf_token: str = Form(...)
+):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    session_token = request.session.get("equipment_reservation_csrf_token", "")
+    if not session_token or not secrets.compare_digest(csrf_token, session_token):
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "操作を確認できませんでした。ページを再読み込みして、もう一度お試しください。"
+        }
+        return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+    table_by_type = {
+        "takeout": "equipment_reservation",
+        "in_room": "equipment_room_reservation"
+    }
+    table = table_by_type.get(reservation_type)
+    if table is None or returned not in (0, 1):
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "返却状態の指定が正しくありません。"
+        }
+        return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        updated_count = db.execute(
+            f"UPDATE {table} SET returned = ? WHERE id = ?",
+            (returned, reservation_id)
+        ).rowcount
+        db.commit()
+
+    if updated_count != 1:
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "更新対象の予約が見つかりませんでした。"
+        }
+    else:
+        request.session["equipment_reservation_notice"] = {
+            "type": "success",
+            "message": "返却状態を更新しました。"
         }
         request.session["equipment_reservation_csrf_token"] = secrets.token_urlsafe(32)
 
