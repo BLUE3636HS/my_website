@@ -158,12 +158,12 @@
 }
 
 .reservation-status {
-    max-height: 380px;
-    padding: 6px;
+    max-height: 480px;
+    padding: 14px 12px 18px;
     overflow-y: auto;
     border: 1px solid #d7e0ea;
     border-radius: 10px;
-    background: #f8fafc;
+    background: #fff;
     user-select: none;
 }
 
@@ -181,44 +181,81 @@
 }
 
 .reservation-time {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 42px;
-    margin-bottom: 5px;
-    padding: 10px 14px;
-    border-radius: 7px;
-    font-weight: 700;
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    min-height: 40px;
 }
 
-.reservation-time.available {
-    background: #dbeed7;
+.reservation-time-label {
+    align-self: start;
+    padding: 0 10px 0 0;
+    color: #526173;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+    text-align: right;
+    transform: translateY(-6px);
+}
+
+.reservation-slot-body {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+    min-height: 40px;
+    padding: 5px 12px;
+    border-top: 1px solid #cbd5e1;
+    border-left: 1px solid #94a3b8;
+    transition: background-color .15s ease, color .15s ease;
+}
+
+.reservation-slot-status {
+    color: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    opacity: .82;
+}
+
+.reservation-time.available .reservation-slot-body {
+    background: #f4faf2;
     color: #2d6a31;
     cursor: pointer;
 }
 
-.reservation-time.available:hover {
-    background: #c4e2bd;
+.reservation-time.available .reservation-slot-body:hover {
+    background: #e2f1de;
 }
 
-.reservation-time.reserved {
-    background: #f3d0d0;
+.reservation-time.reserved .reservation-slot-body {
+    background: #fbeaea;
     color: #a13c3c;
 }
 
-.reservation-time.closed {
-    background: #e7e9ec;
+.reservation-time.closed .reservation-slot-body {
+    background: #f0f1f3;
     color: #747b84;
 }
 
-.reservation-time.selected {
-    background: #a9c9e6;
+.reservation-time.selected .reservation-slot-body {
+    background: #c9dff1;
     color: #173f64;
 }
 
-.reservation-time.drag-start {
+.reservation-time.drag-start .reservation-slot-body {
     background: #3d85c6;
     color: #fff;
+}
+
+.reservation-timeline-end {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    min-height: 0;
+}
+
+.reservation-timeline-end-line {
+    height: 1px;
+    border-left: 1px solid #94a3b8;
+    background: #cbd5e1;
 }
 
 .selected-time {
@@ -243,44 +280,12 @@
 }
 
 .reservation-fields {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 22px;
+    display: block;
 }
 
-.reservation-fields fieldset {
-    min-width: 0;
-    margin: 0;
-    padding: 18px;
-    border: 1px solid #cbd6e2;
-    border-radius: 10px;
-}
-
-.reservation-fields legend,
 .purpose-field {
     color: #334155;
     font-weight: 700;
-}
-
-.equipment-list {
-    display: grid;
-    gap: 10px;
-    max-height: 205px;
-    overflow-y: auto;
-}
-
-.equipment-list label {
-    display: flex;
-    gap: 9px;
-    align-items: center;
-    padding: 8px 10px;
-    border-radius: 7px;
-    background: #f5f8fb;
-}
-
-.equipment-list input {
-    width: 17px;
-    height: 17px;
 }
 
 .purpose-field {
@@ -338,8 +343,7 @@
 }
 
 @container (max-width: 900px) {
-    .booking-grid,
-    .reservation-fields {
+    .booking-grid {
         grid-template-columns: 1fr;
     }
 }

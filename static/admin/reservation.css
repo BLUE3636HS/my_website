@@ -320,8 +320,8 @@
    利用目的
 ======================================== */
 
-.reservation-admin-table th:nth-child(7),
-.reservation-admin-table td:nth-child(7) {
+.reservation-admin-table th:nth-child(6),
+.reservation-admin-table td:nth-child(6) {
     min-width: 260px;
     max-width: 360px;
     white-space: normal;

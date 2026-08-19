@@ -126,8 +126,12 @@ function renderTimeSlots(reservedTimes, closedTimes) {
         slot.dataset.time = time;
 
         const label = document.createElement("span");
+        label.className = "reservation-time-label";
         label.textContent = time;
+        const slotBody = document.createElement("div");
+        slotBody.className = "reservation-slot-body";
         const status = document.createElement("span");
+        status.className = "reservation-slot-status";
 
         if (reservedTimes.has(time)) {
             slot.classList.add("reserved");
@@ -140,10 +144,21 @@ function renderTimeSlots(reservedTimes, closedTimes) {
             status.textContent = "空き";
         }
 
-        slot.append(label, status);
+        slotBody.append(status);
+        slot.append(label, slotBody);
         addTimeEvents(slot);
         reservationStatus.append(slot);
     }
+
+    const endMarker = document.createElement("div");
+    endMarker.className = "reservation-timeline-end";
+    const endTime = document.createElement("span");
+    endTime.className = "reservation-time-label";
+    endTime.textContent = "21:00";
+    const endLine = document.createElement("span");
+    endLine.className = "reservation-timeline-end-line";
+    endMarker.append(endTime, endLine);
+    reservationStatus.append(endMarker);
 
     timeMessage.textContent = "空いている時間を開始から終了までドラッグしてください";
 }
@@ -249,7 +264,6 @@ nextMonthButton.addEventListener("click", () => {
 });
 
 submitButton.addEventListener("click", async () => {
-    const selectedEquipment = [...document.querySelectorAll(".equipment:checked")].map((input) => input.value);
     if (!selectedDay || selectedStart.textContent === "未選択" || selectedEnd.textContent === "未選択") {
         showMessage("日付と予約時間を選択してください。");
         return;
@@ -263,7 +277,6 @@ submitButton.addEventListener("click", async () => {
     formData.append("day", selectedDay);
     formData.append("start_time", selectedStart.textContent);
     formData.append("end_time", selectedEnd.textContent);
-    formData.append("equipment", JSON.stringify(selectedEquipment));
     formData.append("purpose", purpose.value);
 
     submitButton.disabled = true;
@@ -274,7 +287,6 @@ submitButton.addEventListener("click", async () => {
             throw new Error(data.message || "予約を登録できませんでした。");
         }
         alert(data.message);
-        document.querySelectorAll(".equipment:checked").forEach((input) => { input.checked = false; });
         purpose.value = "";
         showMessage(data.message, "success");
         await chooseDate(selectedDay);

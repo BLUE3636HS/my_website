@@ -67,23 +67,11 @@
             <span>3</span>
             <div>
                 <h2>予約内容を入力</h2>
-                <p>機材は必要なものだけ選択してください</p>
+                <p>利用目的を入力してください</p>
             </div>
         </div>
 
         <div class="reservation-fields">
-            <fieldset>
-                <legend>機材を選択</legend>
-                <div class="equipment-list" id="equipment-list">
-                    {% for equipment in equipments %}
-                    <label>
-                        <input type="checkbox" class="equipment" value="{{ equipment }}">
-                        <span>{{ equipment }}</span>
-                    </label>
-                    {% endfor %}
-                </div>
-            </fieldset>
-
             <label class="purpose-field" for="purpose">
                 使用目的、備考欄
                 <textarea id="purpose" rows="7" required></textarea>

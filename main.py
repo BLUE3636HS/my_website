@@ -7,7 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import closing
 from pathlib import Path
 
-import sqlite3, shutil, bcrypt, datetime, csv, json, secrets
+import sqlite3, shutil, bcrypt, datetime, csv, secrets
 from urllib.parse import urlencode
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -58,10 +58,40 @@ cursor.execute("""
         day TEXT NOT NULL,
         start_time TEXT NOT NULL,
         end_time TEXT NOT NULL,
-        equipment TEXT NOT NULL,
         purpose TEXT NOT NULL
     )
 """)
+reservation_columns = {
+    row[1] for row in cursor.execute("PRAGMA table_info(reservation)").fetchall()
+}
+if "equipment" in reservation_columns:
+    conn.commit()
+    with conn:
+        original_count = conn.execute("SELECT COUNT(*) FROM reservation").fetchone()[0]
+        conn.execute("DROP TABLE IF EXISTS reservation_without_equipment")
+        conn.execute("""
+            CREATE TABLE reservation_without_equipment (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                userid TEXT NOT NULL,
+                day TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                purpose TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            INSERT INTO reservation_without_equipment
+                (id, userid, day, start_time, end_time, purpose)
+            SELECT id, userid, day, start_time, end_time, purpose
+            FROM reservation
+        """)
+        migrated_count = conn.execute(
+            "SELECT COUNT(*) FROM reservation_without_equipment"
+        ).fetchone()[0]
+        if migrated_count != original_count:
+            raise RuntimeError("工作室予約データの移行件数が一致しません。")
+        conn.execute("DROP TABLE reservation")
+        conn.execute("ALTER TABLE reservation_without_equipment RENAME TO reservation")
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS equipment_reservation (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -221,18 +251,6 @@ def equipment_availability(equipment, start_day, end_day, catalog):
     )
 
 
-def format_reserved_equipment(value):
-    try:
-        equipment = json.loads(value)
-    except (TypeError, json.JSONDecodeError):
-        return value
-
-    if not isinstance(equipment, list):
-        return value
-
-    return ", ".join(str(item) for item in equipment)
-
-
 #classの定義
 #httpが呼び出されたとき最初に実行
 class LoginCheckMiddleware(BaseHTTPMiddleware):
@@ -337,7 +355,7 @@ async def Dashboard(request: Request):
 
     cursor.execute(
         """
-        SELECT day, start_time, end_time, equipment, purpose
+        SELECT day, start_time, end_time, purpose
         FROM reservation
         WHERE userid = ?
           AND (day > ? OR (day = ? AND end_time > ?))
@@ -347,13 +365,6 @@ async def Dashboard(request: Request):
         (user_id, today, today, current_time)
     )
     next_reservation = cursor.fetchone()
-    if next_reservation is not None:
-        next_reservation = (
-            *next_reservation[:3],
-            format_reserved_equipment(next_reservation[3]),
-            next_reservation[4]
-        )
-
     cursor.execute(
         """
         SELECT equipment, start_day, end_day, quantity
@@ -436,9 +447,6 @@ async def ReservationPage(request: Request, day: str = None):
         if selected_day is not None and selected_day >= today:
             initial_day = selected_day.isoformat()
 
-    with open("csv/equipment.csv", "r", encoding="utf-8") as f:
-        equipments = [row[0] for row in csv.reader(f) if row]
-
     return templates.TemplateResponse(
         request = request,
         name = "reservation.html",
@@ -446,7 +454,6 @@ async def ReservationPage(request: Request, day: str = None):
             "request": request,
             "today": today.isoformat(),
             "initial_day": initial_day,
-            "equipments": equipments,
             "user_login": request.session.get("user_login"),
             "user_id": request.session.get("user_id")
         }
@@ -579,22 +586,19 @@ async def AdminReservationPage(request: Request, start_day: str = None, end_day:
 
     if start_day and end_day:
         cursor.execute("""
-            SELECT id, userid, day, start_time, end_time, equipment, purpose
+            SELECT id, userid, day, start_time, end_time, purpose
             FROM reservation
             WHERE day >= ? AND day >= ? AND day <= ?
             ORDER BY day ASC, start_time ASC, id ASC
         """, (today, start_day, end_day))
     else:
         cursor.execute("""
-            SELECT id, userid, day, start_time, end_time, equipment, purpose
+            SELECT id, userid, day, start_time, end_time, purpose
             FROM reservation
             WHERE day >= ?
             ORDER BY day ASC, start_time ASC, id ASC
         """, (today,))
-    reservations = [
-        (*reservation[:5], format_reserved_equipment(reservation[5]), *reservation[6:])
-        for reservation in cursor.fetchall()
-    ]
+    reservations = cursor.fetchall()
 
     return templates.TemplateResponse(
         request=request,
@@ -1420,7 +1424,6 @@ async def ReservationDate(
     day: str = Form(...),
     start_time: str = Form(...),
     end_time: str = Form(...),
-    equipment: str = Form(...),
     purpose: str = Form(...)
 ):
     try:
@@ -1476,15 +1479,14 @@ async def ReservationDate(
 
         db.execute(
             """
-            INSERT INTO reservation (userid, day, start_time, end_time, equipment, purpose)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO reservation (userid, day, start_time, end_time, purpose)
+            VALUES (?, ?, ?, ?, ?)
             """,
             (
                 request.session.get("user_id"),
                 reservation_day.isoformat(),
                 start_time,
                 end_time,
-                equipment,
                 purpose.strip()
             )
         )
