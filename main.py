@@ -578,10 +578,60 @@ async def AdminLogin(
 
 @app.get("/admin", response_class=HTMLResponse)
 async def AdminHome(request: Request):
+    now = datetime.datetime.now(JST)
+    today = now.date().isoformat()
+    current_time = now.strftime("%H:%M")
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        recent_reservations = db.execute(
+            """
+            SELECT id, userid, day, start_time, end_time, purpose
+            FROM reservation
+            WHERE day > ? OR (day = ? AND end_time > ?)
+            ORDER BY day ASC, start_time ASC, id ASC
+            LIMIT 3
+            """,
+            (today, today, current_time)
+        ).fetchall()
+
+        recent_equipment_reservations = db.execute(
+            """
+            SELECT id, userid, equipment, start_day, end_day, quantity,
+                   purpose, note, returned
+            FROM equipment_reservation
+            WHERE end_day >= ?
+            ORDER BY
+                CASE WHEN start_day <= ? THEN 0 ELSE 1 END ASC,
+                start_day ASC,
+                end_day ASC,
+                id ASC
+            LIMIT 3
+            """,
+            (today, today)
+        ).fetchall()
+
+        recent_room_equipment_reservations = db.execute(
+            """
+            SELECT id, userid, equipment, use_day, start_time, end_time,
+                   quantity, purpose, note, returned
+            FROM equipment_room_reservation
+            WHERE use_day > ? OR (use_day = ? AND end_time > ?)
+            ORDER BY use_day ASC, start_time ASC, id ASC
+            LIMIT 3
+            """,
+            (today, today, current_time)
+        ).fetchall()
+
     return templates.TemplateResponse(
         request=request,
         name="admin/index.html",
-        context={"request": request, "admin_id": request.session.get("admin_id")}
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "recent_reservations": recent_reservations,
+            "recent_equipment_reservations": recent_equipment_reservations,
+            "recent_room_equipment_reservations": recent_room_equipment_reservations
+        }
     )
 
 @app.get("/admin/logout")

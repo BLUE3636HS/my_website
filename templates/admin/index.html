@@ -2,10 +2,113 @@
 
 {% block title %}ダッシュボード{% endblock %}
 
+{% block css %}
+<link rel="stylesheet" href="/static/admin/dashboard.css">
+{% endblock %}
+
 {% block content %}
-<div class="dashboard-card">
-    <p class="dashboard-eyebrow">Dashboard</p>
-    <h1>管理者ホーム</h1>
-    <p>ログインしています。管理機能は今後この画面に追加されます。</p>
+<div class="admin-dashboard">
+    <header class="admin-dashboard-intro">
+        <p class="dashboard-eyebrow">Dashboard</p>
+        <h1>直近の予約</h1>
+        <p>進行中または今後の予約を、各区分3件まで表示しています。</p>
+    </header>
+
+    <div class="admin-dashboard-grid">
+        <section class="reservation-summary-card" aria-labelledby="tekne-reservation-title">
+            <div class="reservation-summary-header">
+                <div>
+                    <p class="reservation-summary-type">TEKNE</p>
+                    <h2 id="tekne-reservation-title">工作室予約</h2>
+                </div>
+                <a href="/admin/reservation">すべて確認</a>
+            </div>
+
+            {% if recent_reservations %}
+            <div class="reservation-summary-list">
+                {% for reservation in recent_reservations %}
+                <article class="reservation-summary-item">
+                    <div class="reservation-summary-item-heading">
+                        <strong>{{ reservation[2] }}</strong>
+                        <span>{{ reservation[3] }}–{{ reservation[4] }}</span>
+                    </div>
+                    <dl>
+                        <div><dt>ユーザー</dt><dd>{{ reservation[1] }}</dd></div>
+                        <div><dt>利用目的</dt><dd>{{ reservation[5] }}</dd></div>
+                    </dl>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="reservation-summary-empty">進行中または今後の予約はありません。</p>
+            {% endif %}
+        </section>
+
+        <section class="reservation-summary-card" aria-labelledby="takeout-reservation-title">
+            <div class="reservation-summary-header">
+                <div>
+                    <p class="reservation-summary-type">Equipment / Takeout</p>
+                    <h2 id="takeout-reservation-title">実験器具・持ち出し</h2>
+                </div>
+                <a href="/admin/equipment-reservation">すべて確認</a>
+            </div>
+
+            {% if recent_equipment_reservations %}
+            <div class="reservation-summary-list">
+                {% for reservation in recent_equipment_reservations %}
+                <article class="reservation-summary-item">
+                    <div class="reservation-summary-item-heading">
+                        <strong>{{ reservation[2] }}</strong>
+                        <span class="reservation-status {{ 'is-returned' if reservation[8] else 'is-unreturned' }}">
+                            {{ '返却済み' if reservation[8] else '未返却' }}
+                        </span>
+                    </div>
+                    <p class="reservation-summary-date">{{ reservation[3] }}–{{ reservation[4] }}</p>
+                    <dl>
+                        <div><dt>ユーザー</dt><dd>{{ reservation[1] }}</dd></div>
+                        <div><dt>数量</dt><dd>{{ reservation[5] }}</dd></div>
+                        <div><dt>利用目的</dt><dd>{{ reservation[6] }}</dd></div>
+                    </dl>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="reservation-summary-empty">進行中または今後の予約はありません。</p>
+            {% endif %}
+        </section>
+
+        <section class="reservation-summary-card" aria-labelledby="room-equipment-reservation-title">
+            <div class="reservation-summary-header">
+                <div>
+                    <p class="reservation-summary-type">Equipment / In Room</p>
+                    <h2 id="room-equipment-reservation-title">実験器具・工作室内利用</h2>
+                </div>
+                <a href="/admin/equipment-reservation">すべて確認</a>
+            </div>
+
+            {% if recent_room_equipment_reservations %}
+            <div class="reservation-summary-list">
+                {% for reservation in recent_room_equipment_reservations %}
+                <article class="reservation-summary-item">
+                    <div class="reservation-summary-item-heading">
+                        <strong>{{ reservation[2] }}</strong>
+                        <span class="reservation-status {{ 'is-returned' if reservation[9] else 'is-unreturned' }}">
+                            {{ '返却済み' if reservation[9] else '未返却' }}
+                        </span>
+                    </div>
+                    <p class="reservation-summary-date">{{ reservation[3] }} {{ reservation[4] }}–{{ reservation[5] }}</p>
+                    <dl>
+                        <div><dt>ユーザー</dt><dd>{{ reservation[1] }}</dd></div>
+                        <div><dt>数量</dt><dd>{{ reservation[6] }}</dd></div>
+                        <div><dt>利用目的</dt><dd>{{ reservation[7] }}</dd></div>
+                    </dl>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="reservation-summary-empty">進行中または今後の予約はありません。</p>
+            {% endif %}
+        </section>
+    </div>
 </div>
 {% endblock %}
