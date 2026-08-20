@@ -52,7 +52,7 @@
     <h2>実験器具 予約一覧</h2>
     <div class="mypage-table-scroll">
     <table class="equipment-reservation-table" border="1">
-        <tr><th>利用区分</th><th>器具</th><th>利用日・期間</th><th>利用時間</th><th>数量</th><th>使用目的</th><th>備考</th><th>取消</th></tr>
+        <tr><th>利用区分</th><th>器具</th><th>利用日・期間</th><th>利用時間</th><th>数量</th><th>使用目的</th><th>返却状態</th><th>取消</th></tr>
         {% for reservation in equipment_reservations %}
         <tr>
             <td><span class="usage-type usage-type-{{ reservation.cancel_method }}">{{ reservation.usage_type }}</span></td>
@@ -61,7 +61,7 @@
             <td>{{ reservation.usage_time }}</td>
             <td>{{ reservation.quantity }}</td>
             <td>{{ reservation.purpose }}</td>
-            <td>{{ reservation.note }}</td>
+            <td><span class="return-status return-status-{{ reservation.return_status_class }}">{{ reservation.return_status }}</span></td>
             <td>
                 {% if reservation.cancel_method == "post" %}
                 <form method="post" action="{{ reservation.cancel_url }}" class="reservation-cancel-form"><button type="submit" class="del_reservation" aria-label="{{ reservation.usage_type }}予約を取り消す">X</button></form>

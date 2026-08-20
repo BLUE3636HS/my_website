@@ -79,6 +79,31 @@
     color: #25613e;
 }
 
+.return-status {
+    display: inline-block;
+    min-width: 68px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.return-status-returned {
+    background: #e2ebe5;
+    color: #4a6252;
+}
+
+.return-status-unreturned {
+    background: #fff1cc;
+    color: #795b08;
+}
+
+.return-status-not-applicable {
+    background: #edf1ee;
+    color: #708077;
+}
+
 .reservation-cancel-form { margin: 0; }
 .reservation-cancel-form .del_reservation { border: 0; cursor: pointer; font: inherit; }
 

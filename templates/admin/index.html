@@ -92,9 +92,6 @@
                 <article class="reservation-summary-item">
                     <div class="reservation-summary-item-heading">
                         <strong>{{ reservation[2] }}</strong>
-                        <span class="reservation-status {{ 'is-returned' if reservation[9] else 'is-unreturned' }}">
-                            {{ '返却済み' if reservation[9] else '未返却' }}
-                        </span>
                     </div>
                     <p class="reservation-summary-date">{{ reservation[3] }} {{ reservation[4] }}–{{ reservation[5] }}</p>
                     <dl>

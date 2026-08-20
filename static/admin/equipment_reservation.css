@@ -333,6 +333,14 @@
     border-bottom: none;
 }
 
+.equipment-takeout-admin-table tbody tr.equipment-overdue-row td {
+    background: #fde8e8;
+}
+
+.equipment-takeout-admin-table tbody tr.equipment-overdue-row:hover td {
+    background: #fbdada;
+}
+
 
 /* ========================================
    ID・ユーザーID・数量

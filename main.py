@@ -613,7 +613,7 @@ async def AdminHome(request: Request):
         recent_room_equipment_reservations = db.execute(
             """
             SELECT id, userid, equipment, use_day, start_time, end_time,
-                   quantity, purpose, note, returned
+                   quantity, purpose, note
             FROM equipment_room_reservation
             WHERE use_day > ? OR (use_day = ? AND end_time > ?)
             ORDER BY use_day ASC, start_time ASC, id ASC
@@ -690,6 +690,7 @@ async def AdminEquipmentReservationPage(
     if request.session.get("admin_login") != True:
         return RedirectResponse("/admin/login", status_code=303)
 
+    today = datetime.datetime.now(JST).date().isoformat()
     show_unreturned_only = unreturned_only == "1"
 
     takeout_conditions = []
@@ -703,11 +704,12 @@ async def AdminEquipmentReservationPage(
         f"WHERE {' AND '.join(takeout_conditions)}" if takeout_conditions else ""
     )
     cursor.execute(f"""
-        SELECT id, userid, equipment, start_day, end_day, quantity, purpose, note, returned
+        SELECT id, userid, equipment, start_day, end_day, quantity, purpose, note, returned,
+               CASE WHEN end_day < ? AND returned = 0 THEN 1 ELSE 0 END AS is_overdue
         FROM equipment_reservation
         {takeout_where}
         ORDER BY start_day ASC, id ASC
-    """, takeout_params)
+    """, [today, *takeout_params])
     equipment_reservations = cursor.fetchall()
 
     room_conditions = []
@@ -715,11 +717,9 @@ async def AdminEquipmentReservationPage(
     if start_day and end_day:
         room_conditions.append("use_day >= ? AND use_day <= ?")
         room_params.extend((start_day, end_day))
-    if show_unreturned_only:
-        room_conditions.append("returned = 0")
     room_where = f"WHERE {' AND '.join(room_conditions)}" if room_conditions else ""
     cursor.execute(f"""
-        SELECT id, userid, equipment, use_day, start_time, end_time, quantity, purpose, note, returned
+        SELECT id, userid, equipment, use_day, start_time, end_time, quantity, purpose, note
         FROM equipment_room_reservation
         {room_where}
         ORDER BY use_day ASC, start_time ASC, id ASC
@@ -819,12 +819,7 @@ async def AdminUpdateEquipmentReturnStatus(
         }
         return RedirectResponse("/admin/equipment-reservation", status_code=303)
 
-    table_by_type = {
-        "takeout": "equipment_reservation",
-        "in_room": "equipment_room_reservation"
-    }
-    table = table_by_type.get(reservation_type)
-    if table is None or returned not in (0, 1):
+    if reservation_type != "takeout" or returned not in (0, 1):
         request.session["equipment_reservation_notice"] = {
             "type": "error",
             "message": "返却状態の指定が正しくありません。"
@@ -833,7 +828,7 @@ async def AdminUpdateEquipmentReturnStatus(
 
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
         updated_count = db.execute(
-            f"UPDATE {table} SET returned = ? WHERE id = ?",
+            "UPDATE equipment_reservation SET returned = ? WHERE id = ?",
             (returned, reservation_id)
         ).rowcount
         db.commit()
@@ -1135,7 +1130,7 @@ async def Mypage(request: Request):
     reservations = [i[2:4] for i in cursor.fetchall()]
     reservations.sort()
 
-    cursor.execute("""SELECT id, equipment, start_day, end_day, quantity, purpose, note
+    cursor.execute("""SELECT id, equipment, start_day, end_day, quantity, purpose, returned
         FROM equipment_reservation WHERE userid = ? ORDER BY start_day, end_day, id""", (user_id,))
     equipment_reservations = [
         {
@@ -1145,7 +1140,8 @@ async def Mypage(request: Request):
             "usage_time": "-",
             "quantity": row[4],
             "purpose": row[5],
-            "note": row[6] or "-",
+            "return_status": "返却済み" if row[6] else "未返却",
+            "return_status_class": "returned" if row[6] else "unreturned",
             "sort_key": (row[2], "", 0, row[0]),
             "cancel_url": f"/mypage/equipment-reservation/{row[0]}/cancel",
             "cancel_method": "get"
@@ -1153,7 +1149,7 @@ async def Mypage(request: Request):
         for row in cursor.fetchall()
     ]
 
-    cursor.execute("""SELECT id, equipment, use_day, start_time, end_time, quantity, purpose, note
+    cursor.execute("""SELECT id, equipment, use_day, start_time, end_time, quantity, purpose
         FROM equipment_room_reservation
         WHERE userid = ?
         ORDER BY use_day, start_time, end_time, id""", (
@@ -1167,7 +1163,8 @@ async def Mypage(request: Request):
             "usage_time": f"{row[3]} ～ {row[4]}",
             "quantity": row[5],
             "purpose": row[6],
-            "note": row[7] or "-",
+            "return_status": "対象外",
+            "return_status_class": "not-applicable",
             "sort_key": (row[2], row[3], 1, row[0]),
             "cancel_url": f"/mypage/equipment-room-reservation/{row[0]}/cancel",
             "cancel_method": "post"
