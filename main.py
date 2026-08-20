@@ -2318,14 +2318,14 @@ async def ReservationDate(
 @app.post("/mypage/edit/id")
 async def Edit(
     request: Request,
-    old_id: str = Form(...),
     old_pwd: str = Form(...),
     new_id: str= Form(...)
 ):
+    current_id = request.session.get("user_id")
     #dbからチェック
     cursor.execute(
         "SELECT * FROM student WHERE id = ?",
-        (old_id,)
+        (current_id,)
     )
     
     #入力情報と照合
@@ -2356,8 +2356,9 @@ async def Edit(
                 UPDATE student
                 SET id = ?
                 WHERE id = ?
-                """, (new_id, old_id))
+                """, (new_id, current_id))
                 conn.commit()
+                request.session["user_id"] = new_id
                 return {"result": 3}
             else:
                 return {"result": 2}
@@ -2367,14 +2368,14 @@ async def Edit(
 @app.post("/mypage/edit/pwd")
 async def Edit(
     request: Request,
-    old_id: str = Form(...),
     old_pwd: str = Form(...),
     new_pwd: str= Form(...)
 ):
+    current_id = request.session.get("user_id")
     #dbからチェック
     cursor.execute(
         "SELECT * FROM student WHERE id = ?",
-        (old_id,)
+        (current_id,)
     )
     
     #入力情報と照合
@@ -2402,7 +2403,7 @@ async def Edit(
             UPDATE student
             SET pwd = ?
             WHERE id = ?
-            """, (new_hashed_pwd, old_id))
+            """, (new_hashed_pwd, current_id))
             conn.commit()
 
             return {"result": 2}
