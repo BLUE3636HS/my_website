@@ -21,6 +21,7 @@
 .community-like.is-liked { color: #c23d66; font-weight: 700; }
 .community-delete { margin-left: auto; color: #a13b3b; }
 .community-replies { margin-top: 14px; border-left: 2px solid #dce7f0; }
+.community-replies[hidden] { display: none; }
 .community-replies .community-post { padding: 14px 12px 14px 18px; border-bottom: 0; }
 .community-replies .community-replies { margin-left: min(18px, 2vw); }
 .community-replies .community-replies .community-replies { margin-left: 0; }

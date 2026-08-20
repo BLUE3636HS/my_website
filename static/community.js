@@ -33,6 +33,30 @@
         return button;
     }
 
+    function ensureReplyToggle(container, replies) {
+        let actions = container.querySelector(":scope > .community-actions");
+        if (!actions) {
+            actions = document.createElement("div");
+            actions.className = "community-actions";
+            container.append(actions);
+        }
+        let toggle = actions.querySelector(".community-replies-toggle");
+        if (!toggle) {
+            toggle = makeButton("", "community-replies-toggle", () => {
+                replies.hidden = !replies.hidden;
+                toggle.setAttribute("aria-expanded", String(!replies.hidden));
+                toggle.textContent = replies.hidden
+                    ? `返信を表示（${replies.children.length}件）`
+                    : "返信を隠す";
+            });
+            toggle.setAttribute("aria-expanded", "false");
+            actions.insertBefore(toggle, actions.querySelector(".community-delete"));
+        }
+        toggle.textContent = replies.hidden
+            ? `返信を表示（${replies.children.length}件）`
+            : "返信を隠す";
+    }
+
     function createReplyForm(parentId, container) {
         const replyForm = document.createElement("form");
         replyForm.className = "community-reply-form";
@@ -66,11 +90,11 @@
                 if (!replies) {
                     replies = document.createElement("div");
                     replies.className = "community-replies";
+                    replies.hidden = true;
                     container.append(replies);
                 }
                 replies.append(renderPost(data.post));
-                const replyButton = container.querySelector(":scope > .community-actions .community-reply");
-                if (replyButton) replyButton.textContent = `返信 ${replies.children.length}件`;
+                ensureReplyToggle(container, replies);
                 replyForm.remove();
             } catch (error) {
                 window.alert(error.message);
@@ -114,7 +138,7 @@
                 finally { like.disabled = false; }
             });
             like.setAttribute("aria-pressed", String(post.liked));
-            const reply = makeButton(`返信 ${post.replies.length}件`, "community-reply", () => {
+            const reply = makeButton("返信する", "community-reply", () => {
                 const existing = article.querySelector(":scope > .community-reply-form");
                 if (existing) existing.remove();
                 else article.insertBefore(createReplyForm(post.id, article), article.querySelector(":scope > .community-replies"));
@@ -139,8 +163,10 @@
         if (post.replies.length) {
             const replies = document.createElement("div");
             replies.className = "community-replies";
+            replies.hidden = true;
             post.replies.forEach((item) => replies.append(renderPost(item)));
             article.append(replies);
+            ensureReplyToggle(article, replies);
         }
         return article;
     }
