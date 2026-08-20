@@ -1,37 +1,39 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
     <head>
-        <title>
-            {% block title %}
-            {% endblock %}
-        </title>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{% block title %}先生用ページ{% endblock %}</title>
         <link rel="stylesheet" href="/static/teacher/base.css">
         <link rel="icon" href="/static/icon.ico">
         {% block css %}
         {% endblock %}
     </head>
     <body>
-        <header>
-            <div class="header_left">
-                <a href="/teacher">
+        <div class="teacher-layout">
+            <aside class="teacher-sidebar">
+                <a class="teacher-brand" href="/teacher">
                     <img src="/static/top.png" alt="TEKNE工作室">
                 </a>
+                <nav class="teacher-nav" aria-label="先生用メニュー">
+                    <a class="teacher-nav-link" href="/teacher">ダッシュボード</a>
+                    <a class="teacher-nav-link" href="/teacher/studylist">自校提出物確認</a>
+                    <a class="teacher-nav-link" href="/teacher/edit">マイページ</a>
+                </nav>
+                <a class="teacher-logout-link" href="/logout">Logout</a>
+            </aside>
+
+            <div class="teacher-main">
+                <header class="teacher-header">
+                    <p>{% block page_title %}{{ self.title() }}{% endblock %}</p>
+                    <span>{{ teacher_id }}</span>
+                </header>
+                <main class="teacher-content">
+                    {% block content %}
+                    {% endblock %}
+                </main>
             </div>
-            <div class="header_right">
-                {%if teacher_login != true%}
-                <a href="/teacher/login">ログイン</a>
-                <a href="/teacher/registration">会員登録</a>
-                {%else%}
-                <a href="/teacher">{{teacher_id}}さん 管理者ページ</a>
-                <a href="/logout">ログアウト</a>
-                {%endif%}
-            </div>
-        </header>
-        <main>
-            {% block content %}
-            {% endblock %}
-        </main>
+        </div>
         {% block script %}
         {% endblock %}
     </body>

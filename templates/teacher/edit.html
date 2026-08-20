@@ -1,12 +1,22 @@
 {% extends "teacher/base.html" %}
-{% block title %}管理者プロフィール編集{% endblock %}
+{% block title %}マイページ{% endblock %}
 {% block css %}
     <link rel="stylesheet" href="/static/teacher/edit.css">
 {% endblock %}
 {% block content %}
-    <h1>管理者プロフィール編集</h1><br>
-    <label for="id">現在のID</label><br>
-    <input type="text" id="old_id"><br><br>
+<div class="teacher-page teacher-mypage">
+    <section class="teacher-mypage-card">
+    <p class="teacher-eyebrow">My Page</p>
+    <h1>先生用マイページ</h1>
+    <dl class="teacher-profile-summary">
+        <div><dt>先生ID</dt><dd>{{ teacher_id }}</dd></div>
+        <div><dt>在籍校</dt><dd>{{ teacher_school }}</dd></div>
+    </dl>
+    </section>
+
+    <section class="teacher-mypage-card teacher-edit-section">
+    <h2>プロフィール情報編集</h2>
+    <input type="hidden" id="old_id" value="{{ teacher_id }}">
     <label for="pwd">現在のパスワード</label><br>
     <input type="password" id="old_pwd"><br><br><br><br>
     <div id="tab">
@@ -27,7 +37,8 @@
         <em>8文字以上の半角英数字どちらむ含む、記号も可</em><br><br>
         <button type="button" id="pwd_edit_btn">変更</button><br><br>
     </div>
-    <a href="/teacher">管理者ページへ戻る</a>
+    </section>
+</div>
 {% endblock %}
 {% block script %}
     <script src="/static/teacher/edit.js"></script>

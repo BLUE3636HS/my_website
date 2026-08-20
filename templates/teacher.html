@@ -1,26 +1,32 @@
 {% extends "teacher/base.html" %}
-{% block title %}管理者ページ{% endblock %}
+{% block title %}ダッシュボード{% endblock %}
 {% block css %}
     <link rel="stylesheet" href="/static/teacher.css">
 {% endblock %}
 {% block content %}
-    <h1>管理者ページ</h1><br>
-    <table border="1">
-        <tr>
-            <th>id</th>
-            <td>{{teacher_id}}</td>
-        </tr>
-        <tr>
-            <th>pwd</th>
-            <td>********</td>
-        </tr>
-        <tr>
-            <th>在籍校</th>
-            <td>{{teacher_school}}</td>
-        </tr>
-    </table><br><br>
-    <a href="/teacher/edit">プロフィール情報編集</a><br>
-    <a href="/teacher/studylist">自校の提出物を確認</a><br>
+    <div class="teacher-page teacher-dashboard-page">
+        <section class="teacher-dashboard-card">
+            <p class="teacher-eyebrow">Teacher Dashboard</p>
+            <h1>先生用ダッシュボード</h1>
+            <dl class="teacher-profile-summary">
+                <div><dt>先生ID</dt><dd>{{ teacher_id }}</dd></div>
+                <div><dt>在籍校</dt><dd>{{ teacher_school }}</dd></div>
+            </dl>
+        </section>
+
+        <div class="teacher-guide-grid">
+            <a class="teacher-guide-card" href="/teacher/studylist">
+                <span>提出物確認</span>
+                <strong>自校提出物確認</strong>
+                <p>生徒が登録した研究成果を一覧で確認します。</p>
+            </a>
+            <a class="teacher-guide-card" href="/teacher/edit">
+                <span>アカウント</span>
+                <strong>マイページ</strong>
+                <p>登録情報の確認とID・パスワードの変更ができます。</p>
+            </a>
+        </div>
+    </div>
 {% endblock %}
 {% block script %}
 {% endblock %}

@@ -1087,7 +1087,21 @@ async def Mypage(request: Request):
 
     cursor.execute("""SELECT id, equipment, start_day, end_day, quantity, purpose, note
         FROM equipment_reservation WHERE userid = ? ORDER BY start_day, end_day, id""", (user_id,))
-    equipment_reservations = cursor.fetchall()
+    equipment_reservations = [
+        {
+            "usage_type": "持ち出し",
+            "equipment": row[1],
+            "usage_date": f"{row[2]} ～ {row[3]}",
+            "usage_time": "-",
+            "quantity": row[4],
+            "purpose": row[5],
+            "note": row[6] or "-",
+            "sort_key": (row[2], "", 0, row[0]),
+            "cancel_url": f"/mypage/equipment-reservation/{row[0]}/cancel",
+            "cancel_method": "get"
+        }
+        for row in cursor.fetchall()
+    ]
 
     cursor.execute("""SELECT id, equipment, use_day, start_time, end_time, quantity, purpose, note
         FROM equipment_room_reservation
@@ -1095,7 +1109,25 @@ async def Mypage(request: Request):
         ORDER BY use_day, start_time, end_time, id""", (
             user_id,
         ))
-    equipment_room_reservations = cursor.fetchall()
+    equipment_room_reservations = [
+        {
+            "usage_type": "工作室内",
+            "equipment": row[1],
+            "usage_date": row[2],
+            "usage_time": f"{row[3]} ～ {row[4]}",
+            "quantity": row[5],
+            "purpose": row[6],
+            "note": row[7] or "-",
+            "sort_key": (row[2], row[3], 1, row[0]),
+            "cancel_url": f"/mypage/equipment-room-reservation/{row[0]}/cancel",
+            "cancel_method": "post"
+        }
+        for row in cursor.fetchall()
+    ]
+    all_equipment_reservations = sorted(
+        equipment_reservations + equipment_room_reservations,
+        key=lambda reservation: reservation["sort_key"]
+    )
 
     return templates.TemplateResponse(
         request = request,
@@ -1106,8 +1138,7 @@ async def Mypage(request: Request):
             "user_id": user_id,
             "user_school": user_school,
             "reservations": reservations,
-            "equipment_reservations": equipment_reservations,
-            "equipment_room_reservations": equipment_room_reservations
+            "equipment_reservations": all_equipment_reservations
         }
     )
 
@@ -1348,13 +1379,23 @@ async def teacher(request: Request):
 
 @app.get("/teacher/edit")
 async def Edit(request: Request):
+    teacher_id = request.session.get("teacher_id")
+
+    cursor.execute("""
+    SELECT school
+    FROM teacher
+    WHERE id = ?
+    """, (teacher_id,))
+    teacher = cursor.fetchone()
+
     return templates.TemplateResponse(
         request = request,
         name = "teacher/edit.html",
         context = {
             "request": request,
             "teacher_login": request.session.get("teacher_login"),
-            "teacher_id": request.session.get("teacher_id")
+            "teacher_id": teacher_id,
+            "teacher_school": teacher[0] if teacher else ""
         }
     )
 
@@ -1785,6 +1826,7 @@ async def Edit(
                 WHERE id = ?
                 """, (new_id, old_id))
                 conn.commit()
+                request.session["teacher_id"] = new_id
                 return {"result": 3}
             else:
                 return {"result": 2}

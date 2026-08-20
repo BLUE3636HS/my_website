@@ -56,6 +56,7 @@ id_edit_btn.addEventListener("click", () => {
         }
         else if(data.result == 3){
             alert("IDを変更しました");
+            window.location.reload();
         }
     });
 })
@@ -81,7 +82,8 @@ pwd_edit_btn.addEventListener("click", () => {
             alert("新しいパスワードが条件を満たしていません");
         }
         else if(data.result == 2){
-            alert("パスワードを変更しました")
+            alert("パスワードを変更しました");
+            window.location.reload();
         }
     });
 })

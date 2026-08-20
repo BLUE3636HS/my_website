@@ -1,10 +1,14 @@
 {% extends "teacher/base.html" %}
-{% block title %}研究成果{% endblock %}
+{% block title %}自校提出物確認{% endblock %}
 {% block css %}
     <link rel="stylesheet" href="/static/teacher/studylist.css">
 {% endblock %}
 {% block content %}
-    <h1>研究成果一覧</h1>
+<div class="teacher-page teacher-studylist-page">
+    <section class="teacher-studylist-card">
+    <p class="teacher-eyebrow">Submissions</p>
+    <h1>自校提出物確認</h1>
+    <div class="teacher-table-scroll">
     <table border="1">
         <tr>
             <th>題名</th>
@@ -18,8 +22,10 @@
             <td><a href="/uploads/{{study[4]}}">{{study[3]}}</a></td>
         </tr>
         {% endfor %}
-    </table><br>
-    <a href="/teacher">管理者ページへ戻る</a>
+    </table>
+    </div>
+    </section>
+</div>
 {% endblock %}
 {% block script %}
 {% endblock %}
