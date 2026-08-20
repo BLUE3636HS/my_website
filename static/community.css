@@ -1,0 +1,30 @@
+.community-page { max-width: 820px; }
+.community-composer { margin-bottom: 22px; }
+.community-composer h1 { margin: 0 0 20px; color: #243447; }
+.community-composer label { display: block; margin-bottom: 8px; color: #526477; font-weight: 700; }
+.community-composer textarea, .community-reply-form textarea { width: 100%; resize: vertical; border: 1px solid #cbd8e5; border-radius: 9px; padding: 12px; font: inherit; line-height: 1.6; }
+.community-composer textarea:focus, .community-reply-form textarea:focus { outline: 2px solid rgba(31,78,121,.2); border-color: #1f4e79; }
+.community-form-footer { display: flex; align-items: center; justify-content: flex-end; gap: 18px; margin-top: 12px; }
+.community-form-footer .student-primary-button { min-width: 120px; padding: 10px 20px; }
+.community-counter, .community-status { color: #718096; font-size: 13px; }
+.community-error { margin: 12px 0 0; color: #ad2e2e; }
+.community-timeline { border: 1px solid #d6e0ea; border-radius: 14px; background: #fff; overflow: hidden; }
+.community-post { padding: 20px; border-bottom: 1px solid #e3eaf1; }
+.community-post:last-child { border-bottom: 0; }
+.community-post-header { display: flex; justify-content: space-between; gap: 16px; color: #64748b; font-size: 13px; }
+.community-author { color: #1f4e79; font-weight: 800; }
+.community-content { margin: 13px 0; color: #25384a; line-height: 1.7; overflow-wrap: anywhere; white-space: pre-wrap; }
+.community-deleted { color: #8a98a6; font-style: italic; }
+.community-actions { display: flex; align-items: center; gap: 18px; }
+.community-action { border: 0; padding: 3px; background: transparent; color: #617487; font: inherit; font-size: 13px; cursor: pointer; }
+.community-action:hover { color: #1f4e79; }
+.community-like.is-liked { color: #c23d66; font-weight: 700; }
+.community-delete { margin-left: auto; color: #a13b3b; }
+.community-replies { margin-top: 14px; border-left: 2px solid #dce7f0; }
+.community-replies .community-post { padding: 14px 12px 14px 18px; border-bottom: 0; }
+.community-replies .community-replies { margin-left: min(18px, 2vw); }
+.community-replies .community-replies .community-replies { margin-left: 0; }
+.community-reply-form { margin-top: 12px; padding: 12px; border-radius: 9px; background: #f5f8fb; }
+.community-reply-form .community-form-footer { margin-top: 8px; }
+.community-status { margin: 18px 0; text-align: center; }
+#community-sentinel { height: 1px; }

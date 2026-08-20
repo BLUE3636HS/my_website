@@ -128,6 +128,39 @@ cursor.execute("""
         returned INTEGER NOT NULL DEFAULT 0
     )
 """)
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS community_post (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        parent_id INTEGER,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        deleted_at TEXT,
+        FOREIGN KEY (parent_id) REFERENCES community_post(id)
+    )
+""")
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS community_like (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        post_id INTEGER NOT NULL,
+        user_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (post_id, user_id),
+        FOREIGN KEY (post_id) REFERENCES community_post(id)
+    )
+""")
+cursor.execute(
+    "CREATE INDEX IF NOT EXISTS idx_community_post_parent_id ON community_post(parent_id)"
+)
+cursor.execute(
+    "CREATE INDEX IF NOT EXISTS idx_community_post_created_id ON community_post(created_at, id)"
+)
+cursor.execute(
+    "CREATE INDEX IF NOT EXISTS idx_community_like_post_id ON community_like(post_id)"
+)
+cursor.execute(
+    "CREATE INDEX IF NOT EXISTS idx_community_like_user_id ON community_like(user_id)"
+)
 equipment_room_reservation_columns = {
     row[1] for row in cursor.execute(
         "PRAGMA table_info(equipment_room_reservation)"
@@ -143,6 +176,85 @@ conn.commit()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="templates")
+
+COMMUNITY_PAGE_SIZE = 20
+
+
+def community_now():
+    return datetime.datetime.now(JST).isoformat(timespec="seconds")
+
+
+def validate_community_content(content):
+    if not isinstance(content, str) or not content.strip():
+        return "本文を入力してください。"
+    if len(content) > 200:
+        return "本文は200文字以内で入力してください。"
+    return None
+
+
+def community_csrf_token(request):
+    token = request.session.get("community_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session["community_csrf_token"] = token
+    return token
+
+
+def valid_community_csrf(request, token):
+    expected = request.session.get("community_csrf_token", "")
+    return bool(expected and token and secrets.compare_digest(expected, token))
+
+
+def community_post_payloads(db, root_ids, user_id=None):
+    if not root_ids:
+        return []
+    placeholders = ",".join("?" for _ in root_ids)
+    rows = db.execute(
+        f"""
+        WITH RECURSIVE tree(id, user_id, parent_id, content, created_at, deleted_at) AS (
+            SELECT id, user_id, parent_id, content, created_at, deleted_at
+            FROM community_post WHERE id IN ({placeholders})
+            UNION ALL
+            SELECT p.id, p.user_id, p.parent_id, p.content, p.created_at, p.deleted_at
+            FROM community_post p JOIN tree t ON p.parent_id = t.id
+        )
+        SELECT tree.id, tree.user_id, tree.parent_id, tree.content,
+               tree.created_at, tree.deleted_at,
+               COUNT(community_like.id) AS like_count,
+               MAX(CASE WHEN community_like.user_id = ? THEN 1 ELSE 0 END) AS liked
+        FROM tree LEFT JOIN community_like ON community_like.post_id = tree.id
+        GROUP BY tree.id
+        ORDER BY tree.created_at ASC, tree.id ASC
+        """,
+        [*root_ids, user_id or ""]
+    ).fetchall()
+    by_id = {}
+    for row in rows:
+        deleted = row[5] is not None
+        try:
+            displayed_at = datetime.datetime.fromisoformat(row[4]).astimezone(JST).strftime("%Y/%m/%d %H:%M")
+        except ValueError:
+            displayed_at = row[4]
+        by_id[row[0]] = {
+            "id": row[0],
+            "user_id": None if deleted else row[1],
+            "parent_id": row[2],
+            "content": None if deleted else row[3],
+            "created_at": displayed_at,
+            "is_deleted": deleted,
+            "like_count": row[6],
+            "liked": bool(row[7]),
+            "can_delete": bool(user_id and not deleted and row[1] == user_id),
+            "replies": []
+        }
+    roots = []
+    for item in by_id.values():
+        if item["parent_id"] in by_id:
+            by_id[item["parent_id"]]["replies"].append(item)
+        else:
+            roots.append(item)
+    roots.sort(key=lambda item: item["id"], reverse=True)
+    return roots
 
 def load_equipment_catalog(catalog_path=None):
     catalog = []
@@ -1055,6 +1167,205 @@ async def AdminDeleteAccount(
     }
     request.session["account_csrf_token"] = secrets.token_urlsafe(32)
     return RedirectResponse(redirect_url, status_code=303)
+
+@app.get("/community", response_class=HTMLResponse)
+async def CommunityPage(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="community.html",
+        context={
+            "request": request,
+            "user_id": request.session.get("user_id"),
+            "csrf_token": community_csrf_token(request)
+        }
+    )
+
+
+@app.get("/community/posts")
+async def CommunityPosts(request: Request, before_id: int = None):
+    user_id = request.session.get("user_id")
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        if before_id is None:
+            rows = db.execute(
+                "SELECT id FROM community_post WHERE parent_id IS NULL ORDER BY id DESC LIMIT ?",
+                (COMMUNITY_PAGE_SIZE + 1,)
+            ).fetchall()
+        else:
+            rows = db.execute(
+                "SELECT id FROM community_post WHERE parent_id IS NULL AND id < ? ORDER BY id DESC LIMIT ?",
+                (before_id, COMMUNITY_PAGE_SIZE + 1)
+            ).fetchall()
+        has_more = len(rows) > COMMUNITY_PAGE_SIZE
+        root_ids = [row[0] for row in rows[:COMMUNITY_PAGE_SIZE]]
+        posts = community_post_payloads(db, root_ids, user_id)
+    return JSONResponse({
+        "posts": posts,
+        "next_cursor": root_ids[-1] if has_more and root_ids else None,
+        "has_more": has_more
+    })
+
+
+@app.post("/community/posts")
+async def CreateCommunityPost(
+    request: Request,
+    content: str = Form(...),
+    parent_id: int = Form(None),
+    csrf_token: str = Form(...)
+):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return JSONResponse({"error": "ログインが必要です。"}, status_code=401)
+    if not valid_community_csrf(request, csrf_token):
+        return JSONResponse({"error": "操作を確認できませんでした。"}, status_code=403)
+    error = validate_community_content(content)
+    if error:
+        return JSONResponse({"error": error}, status_code=422)
+
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        if parent_id is not None:
+            parent = db.execute(
+                "SELECT id FROM community_post WHERE id = ? AND deleted_at IS NULL",
+                (parent_id,)
+            ).fetchone()
+            if parent is None:
+                db.rollback()
+                return JSONResponse({"error": "返信先の投稿が見つかりません。"}, status_code=404)
+        created_at = community_now()
+        post_id = db.execute(
+            "INSERT INTO community_post (user_id, parent_id, content, created_at) VALUES (?, ?, ?, ?)",
+            (user_id, parent_id, content, created_at)
+        ).lastrowid
+        db.commit()
+        post = community_post_payloads(db, [post_id], user_id)[0]
+    return JSONResponse({"post": post}, status_code=201)
+
+
+@app.post("/community/posts/{post_id}/like")
+async def ToggleCommunityLike(
+    request: Request,
+    post_id: int,
+    csrf_token: str = Form(...)
+):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return JSONResponse({"error": "ログインが必要です。"}, status_code=401)
+    if not valid_community_csrf(request, csrf_token):
+        return JSONResponse({"error": "操作を確認できませんでした。"}, status_code=403)
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        post = db.execute(
+            "SELECT id FROM community_post WHERE id = ? AND deleted_at IS NULL", (post_id,)
+        ).fetchone()
+        if post is None:
+            db.rollback()
+            return JSONResponse({"error": "投稿が見つかりません。"}, status_code=404)
+        existing = db.execute(
+            "SELECT id FROM community_like WHERE post_id = ? AND user_id = ?",
+            (post_id, user_id)
+        ).fetchone()
+        if existing:
+            db.execute("DELETE FROM community_like WHERE id = ?", (existing[0],))
+            liked = False
+        else:
+            db.execute(
+                "INSERT OR IGNORE INTO community_like (post_id, user_id, created_at) VALUES (?, ?, ?)",
+                (post_id, user_id, community_now())
+            )
+            liked = True
+        count = db.execute(
+            "SELECT COUNT(*) FROM community_like WHERE post_id = ?", (post_id,)
+        ).fetchone()[0]
+        db.commit()
+    return JSONResponse({"liked": liked, "like_count": count})
+
+
+@app.post("/community/posts/{post_id}/delete")
+async def DeleteCommunityPost(
+    request: Request,
+    post_id: int,
+    csrf_token: str = Form(...)
+):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return JSONResponse({"error": "ログインが必要です。"}, status_code=401)
+    if not valid_community_csrf(request, csrf_token):
+        return JSONResponse({"error": "操作を確認できませんでした。"}, status_code=403)
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        changed = db.execute(
+            "UPDATE community_post SET deleted_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+            (community_now(), post_id, user_id)
+        ).rowcount
+        if changed != 1:
+            db.rollback()
+            return JSONResponse({"error": "削除できる投稿が見つかりません。"}, status_code=403)
+        db.execute("DELETE FROM community_like WHERE post_id = ?", (post_id,))
+        db.commit()
+    return JSONResponse({"deleted": True})
+
+
+@app.get("/admin/community", response_class=HTMLResponse)
+async def AdminCommunityPage(request: Request, page: int = 1):
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    safe_page = max(page, 1)
+    per_page = 50
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        total = db.execute("SELECT COUNT(*) FROM community_post").fetchone()[0]
+        posts = db.execute(
+            """
+            SELECT p.id, p.user_id, p.parent_id, p.content, p.created_at, p.deleted_at,
+                   COUNT(l.id) AS like_count
+            FROM community_post p LEFT JOIN community_like l ON l.post_id = p.id
+            GROUP BY p.id ORDER BY p.id DESC LIMIT ? OFFSET ?
+            """,
+            (per_page, (safe_page - 1) * per_page)
+        ).fetchall()
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/community.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "posts": posts,
+            "page": safe_page,
+            "has_previous": safe_page > 1,
+            "has_next": safe_page * per_page < total,
+            "csrf_token": community_csrf_token(request),
+            "notice": request.session.pop("community_admin_notice", None)
+        }
+    )
+
+
+@app.post("/admin/community/{post_id}/delete")
+async def AdminDeleteCommunityPost(
+    request: Request,
+    post_id: int,
+    csrf_token: str = Form(...),
+    return_page: int = Form(1)
+):
+    redirect_url = "/admin/community?" + urlencode({"page": max(return_page, 1)})
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    if not valid_community_csrf(request, csrf_token):
+        request.session["community_admin_notice"] = {"type": "error", "message": "操作を確認できませんでした。"}
+        return RedirectResponse(redirect_url, status_code=303)
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        changed = db.execute(
+            "UPDATE community_post SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
+            (community_now(), post_id)
+        ).rowcount
+        if changed:
+            db.execute("DELETE FROM community_like WHERE post_id = ?", (post_id,))
+        db.commit()
+    request.session["community_admin_notice"] = {
+        "type": "success" if changed else "error",
+        "message": "投稿を削除しました。" if changed else "削除対象の投稿が見つかりませんでした。"
+    }
+    return RedirectResponse(redirect_url, status_code=303)
+
 
 @app.get("/equipment-reservation", response_class=HTMLResponse)
 async def EquipmentReservationPage(request: Request):

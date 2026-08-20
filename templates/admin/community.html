@@ -1,0 +1,32 @@
+{% extends "admin/base.html" %}
+{% block title %}TEKNEコミュニティ管理{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/admin/community.css">{% endblock %}
+{% block content %}
+<div class="dashboard-card-wide">
+    <p class="dashboard-eyebrow">Community</p>
+    <h1>TEKNEコミュニティ管理</h1>
+    {% if notice %}<p class="admin-community-notice {{ notice.type }}">{{ notice.message }}</p>{% endif %}
+    <div class="table-container">
+        <table class="admin-table">
+            <thead><tr><th>ID / 種別</th><th>投稿者</th><th>本文</th><th>投稿日時</th><th>いいね</th><th>操作</th></tr></thead>
+            <tbody>
+            {% for post in posts %}
+                <tr class="{% if post[5] %}is-deleted{% endif %}">
+                    <td>#{{ post[0] }}<br><small>{% if post[2] %}#{{ post[2] }} への返信{% else %}トップ投稿{% endif %}</small></td>
+                    <td>{% if post[5] %}—{% else %}{{ post[1] }}{% endif %}</td>
+                    <td class="admin-community-content">{% if post[5] %}この投稿は削除されました{% else %}{{ post[3] }}{% endif %}</td>
+                    <td>{{ post[4][:16].replace('-', '/').replace('T', ' ') }}</td>
+                    <td>{{ post[6] }}</td>
+                    <td>{% if not post[5] %}<form method="post" action="/admin/community/{{ post[0] }}/delete" onsubmit="return confirm('この投稿を削除しますか？');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_page" value="{{ page }}"><button class="admin-community-delete" type="submit">削除</button></form>{% else %}—{% endif %}</td>
+                </tr>
+            {% else %}<tr><td class="no-data" colspan="6">投稿はありません。</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <nav class="admin-community-pagination" aria-label="ページ移動">
+        {% if has_previous %}<a href="/admin/community?page={{ page - 1 }}">前へ</a>{% endif %}
+        <span>{{ page }}ページ</span>
+        {% if has_next %}<a href="/admin/community?page={{ page + 1 }}">次へ</a>{% endif %}
+    </nav>
+</div>
+{% endblock %}
