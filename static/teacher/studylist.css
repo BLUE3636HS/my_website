@@ -1,7 +1,7 @@
 .teacher-studylist-card { min-width: 0; padding: 32px; border: 1px solid #ead8cf; border-radius: 16px; background: #fff; box-shadow: 0 8px 26px rgba(184,92,56,.09); }
 .teacher-studylist-card h1 { margin: 0 0 28px; color: #4a3b32; font-size: clamp(26px,4vw,36px); }
 .teacher-table-scroll { overflow-x: auto; }
-.teacher-studylist-card table { width: 100%; min-width: 720px; border-collapse: collapse; }
+.teacher-studylist-card table { width: 100%; min-width: 820px; border-collapse: collapse; }
 .teacher-studylist-card th, .teacher-studylist-card td { padding: 15px; border: 1px solid #e3d6cf; vertical-align: middle; }
 .teacher-studylist-card th { background: #b85c38; color: #fff; text-align: center; }
 .teacher-studylist-card td { color: #4a3b32; }
@@ -10,7 +10,12 @@
 .teacher-studylist-card th:nth-child(1), .teacher-studylist-card td:nth-child(1) { width: 30%; min-width: 210px; text-align: center; font-weight: 700; }
 .teacher-studylist-card th:nth-child(2), .teacher-studylist-card td:nth-child(2) { min-width: 300px; }
 .teacher-studylist-card th:nth-child(3), .teacher-studylist-card td:nth-child(3) { width: 160px; min-width: 150px; text-align: center; }
+.teacher-study-action-column { width: 100px; min-width: 100px; text-align: center; }
 .teacher-studylist-card td:nth-child(2), .teacher-studylist-card td:nth-child(3) a { overflow-wrap: anywhere; }
 .teacher-studylist-card table a { color: #b85c38; font-weight: 700; text-decoration: none; }
 .teacher-studylist-card table a:hover { text-decoration: underline; }
+.teacher-study-delete-form { margin: 0; }
+.teacher-study-delete-button { padding: 8px 16px; border: 0; border-radius: 7px; background: #b5473c; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.teacher-study-delete-button:hover { background: #8f332c; }
+.teacher-study-empty { padding: 32px !important; color: #876e62 !important; text-align: center; }
 @container (max-width: 640px) { .teacher-studylist-card { padding: 20px; } }

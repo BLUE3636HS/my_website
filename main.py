@@ -1401,12 +1401,36 @@ async def Edit(request: Request):
 
 @app.get("/teacher/studylist", response_class = HTMLResponse)
 async def StudyList(request: Request):
-    cursor.execute("SELECT * FROM study")
-    studies = cursor.fetchall()
+    if request.session.get("teacher_login") != True:
+        return RedirectResponse("/login", status_code=303)
 
-    #studiesのうち、teacher_userのschoolと一致するものだけを抽出
     teacher_id = request.session.get("teacher_id")
-    
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        teacher = db.execute(
+            "SELECT school FROM teacher WHERE id = ?",
+            (teacher_id,)
+        ).fetchone()
+
+        studies = []
+        if teacher is not None:
+            studies = db.execute("""
+                SELECT study.*
+                FROM study
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM student
+                    WHERE student.id = study.userid
+                      AND student.school = ?
+                )
+                ORDER BY study.id ASC
+            """, (teacher[0],)).fetchall()
+
+    csrf_token = request.session.get("teacher_studylist_csrf_token")
+    if not csrf_token:
+        csrf_token = secrets.token_urlsafe(32)
+        request.session["teacher_studylist_csrf_token"] = csrf_token
+    delete_succeeded = request.session.pop("teacher_studylist_delete_succeeded", False)
+
     return templates.TemplateResponse(
         request = request,
         name = "teacher/studylist.html",
@@ -1414,9 +1438,87 @@ async def StudyList(request: Request):
             "request": request,
             "studies": studies,
             "teacher_login": request.session.get("teacher_login"),
-            "teacher_id": teacher_id
+            "teacher_id": teacher_id,
+            "csrf_token": csrf_token,
+            "delete_succeeded": delete_succeeded
         }
     )
+
+
+@app.post("/teacher/studylist/{study_id}/delete")
+async def TeacherDeleteStudy(
+    request: Request,
+    study_id: int,
+    csrf_token: str = Form("")
+):
+    redirect = RedirectResponse("/teacher/studylist", status_code=303)
+    if request.session.get("teacher_login") != True:
+        return RedirectResponse("/login", status_code=303)
+
+    expected_token = request.session.get("teacher_studylist_csrf_token")
+    if not expected_token or not secrets.compare_digest(expected_token, csrf_token):
+        return redirect
+
+    teacher_id = request.session.get("teacher_id")
+    study = None
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        try:
+            teacher = db.execute(
+                "SELECT school FROM teacher WHERE id = ?",
+                (teacher_id,)
+            ).fetchone()
+            if teacher is None:
+                return redirect
+
+            study = db.execute("""
+                SELECT study.pdfpath
+                FROM study
+                WHERE study.id = ?
+                  AND EXISTS (
+                      SELECT 1
+                      FROM student
+                      WHERE student.id = study.userid
+                        AND student.school = ?
+                  )
+            """, (study_id, teacher[0])).fetchone()
+
+            if study is None:
+                return redirect
+
+            deleted_count = db.execute("""
+                DELETE FROM study
+                WHERE id = ?
+                  AND EXISTS (
+                      SELECT 1
+                      FROM student
+                      WHERE student.id = study.userid
+                        AND student.school = ?
+                  )
+            """, (study_id, teacher[0])).rowcount
+            if deleted_count != 1:
+                db.rollback()
+                return redirect
+            db.commit()
+        except sqlite3.Error:
+            db.rollback()
+            return redirect
+
+    request.session["teacher_studylist_csrf_token"] = secrets.token_urlsafe(32)
+    pdfpath = study[0]
+    if pdfpath:
+        target_path = (UPLOADS_DIR / pdfpath).resolve()
+        try:
+            target_path.relative_to(UPLOADS_DIR)
+        except ValueError:
+            pass
+        else:
+            try:
+                target_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    request.session["teacher_studylist_delete_succeeded"] = True
+    return redirect
 
 #仮 request.sessionをfalseにする
 @app.get("/reset")

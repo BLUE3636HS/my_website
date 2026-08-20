@@ -4,28 +4,44 @@
     <link rel="stylesheet" href="/static/teacher/studylist.css">
 {% endblock %}
 {% block content %}
-<div class="teacher-page teacher-studylist-page">
+<div class="teacher-page teacher-studylist-page" data-delete-succeeded="{{ 'true' if delete_succeeded else 'false' }}">
     <section class="teacher-studylist-card">
     <p class="teacher-eyebrow">Submissions</p>
     <h1>自校提出物確認</h1>
     <div class="teacher-table-scroll">
     <table border="1">
-        <tr>
-            <th>題名</th>
-            <th>要約</th>
-            <th>ダウンロード</th>
-        </tr>
+        <thead>
+            <tr>
+                <th>題名</th>
+                <th>要約</th>
+                <th>ダウンロード</th>
+                <th class="teacher-study-action-column">操作</th>
+            </tr>
+        </thead>
+        <tbody>
         {%for study in studies%}
         <tr>
             <td>{{study[1]}}</td>
             <td>{{study[2]}}</td>
             <td><a href="/uploads/{{study[4]}}">{{study[3]}}</a></td>
+            <td class="teacher-study-action-column">
+                <form method="post" action="/teacher/studylist/{{ study[0] }}/delete" class="teacher-study-delete-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="teacher-study-delete-button">削除</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="4" class="teacher-study-empty">確認できる提出物はありません。</td>
         </tr>
         {% endfor %}
+        </tbody>
     </table>
     </div>
     </section>
 </div>
 {% endblock %}
 {% block script %}
+    <script src="/static/teacher/studylist.js" defer></script>
 {% endblock %}
