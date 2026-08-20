@@ -12,6 +12,33 @@ const new_pwd = document.getElementById("new_pwd");
 
 const id_edit_btn = document.getElementById("id_edit_btn");
 const pwd_edit_btn = document.getElementById("pwd_edit_btn");
+const profileImageInput = document.getElementById("profile_image");
+const profileImagePreview = document.getElementById("profile_image_preview");
+const profileImageError = document.getElementById("profile_image_error");
+let profilePreviewUrl = null;
+
+if (profileImageInput) {
+    profileImageInput.addEventListener("change", () => {
+        const file = profileImageInput.files[0];
+        profileImageError.hidden = true;
+        if (!file) return;
+        if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+            profileImageError.textContent = "対応していない画像形式です。";
+            profileImageError.hidden = false;
+            profileImageInput.value = "";
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            profileImageError.textContent = "ファイルサイズが5MBを超えています。";
+            profileImageError.hidden = false;
+            profileImageInput.value = "";
+            return;
+        }
+        if (profilePreviewUrl) URL.revokeObjectURL(profilePreviewUrl);
+        profilePreviewUrl = URL.createObjectURL(file);
+        profileImagePreview.src = profilePreviewUrl;
+    });
+}
 
 pwd_form.style.display = "none";
 

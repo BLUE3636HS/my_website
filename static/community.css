@@ -12,7 +12,8 @@
 .community-post { padding: 20px; border-bottom: 1px solid #e3eaf1; }
 .community-post:last-child { border-bottom: 0; }
 .community-post-header { display: flex; justify-content: space-between; gap: 16px; color: #64748b; font-size: 13px; }
-.community-author { color: #1f4e79; font-weight: 800; }
+.community-author { display: inline-flex; align-items: center; gap: 8px; color: #1f4e79; font-weight: 800; }
+.community-avatar { width: 28px; height: 28px; flex: 0 0 28px; border: 1px solid #d6e0ea; border-radius: 50%; background: #e8eef4; object-fit: cover; }
 .community-content { margin: 13px 0; color: #25384a; line-height: 1.7; overflow-wrap: anywhere; white-space: pre-wrap; }
 .community-deleted { color: #8a98a6; font-style: italic; }
 .community-actions { display: flex; align-items: center; gap: 18px; }

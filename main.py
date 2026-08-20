@@ -6,13 +6,23 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import closing
 from pathlib import Path
+from uuid import uuid4
 
-import sqlite3, shutil, bcrypt, datetime, csv, secrets
+import sqlite3, shutil, bcrypt, datetime, csv, secrets, io
 from urllib.parse import urlencode
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "database" / "database.db"
 UPLOADS_DIR = (BASE_DIR / "uploads").resolve()
+PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "profile").resolve()
+PROFILE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+PROFILE_MAX_BYTES = 5 * 1024 * 1024
+PROFILE_MAX_PIXELS = 25_000_000
+PROFILE_IMAGE_SIZE = (512, 512)
+PROFILE_ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}
+PROFILE_ALLOWED_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
+PROFILE_ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 JST = datetime.timezone(datetime.timedelta(hours=9))
 
 app = FastAPI()
@@ -61,6 +71,11 @@ cursor.execute("""
         purpose TEXT NOT NULL
     )
 """)
+student_columns = {
+    row[1] for row in cursor.execute("PRAGMA table_info(student)").fetchall()
+}
+if "profile_image" not in student_columns:
+    cursor.execute("ALTER TABLE student ADD COLUMN profile_image TEXT")
 reservation_columns = {
     row[1] for row in cursor.execute("PRAGMA table_info(reservation)").fetchall()
 }
@@ -174,6 +189,7 @@ if "returned" not in equipment_room_reservation_columns:
 conn.commit()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/uploads/profile", StaticFiles(directory=str(PROFILE_UPLOADS_DIR)), name="profile_uploads")
 
 templates = Jinja2Templates(directory="templates")
 
@@ -182,6 +198,66 @@ COMMUNITY_PAGE_SIZE = 20
 
 def community_now():
     return datetime.datetime.now(JST).isoformat(timespec="seconds")
+
+
+def profile_image_url(filename):
+    if not filename:
+        return "/static/images/default_profile.svg"
+    safe_name = Path(filename).name
+    if safe_name != filename or not safe_name.endswith(".webp"):
+        return "/static/images/default_profile.svg"
+    return f"/uploads/profile/{safe_name}"
+
+
+def profile_csrf_token(request):
+    token = request.session.get("profile_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session["profile_csrf_token"] = token
+    return token
+
+
+def valid_profile_csrf(request, token):
+    expected = request.session.get("profile_csrf_token", "")
+    return bool(expected and token and secrets.compare_digest(expected, token))
+
+
+def delete_profile_file(filename):
+    if not filename or Path(filename).name != filename or not filename.endswith(".webp"):
+        return
+    target = (PROFILE_UPLOADS_DIR / filename).resolve()
+    if target.parent != PROFILE_UPLOADS_DIR:
+        return
+    try:
+        target.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def process_profile_image(contents):
+    try:
+        with Image.open(io.BytesIO(contents)) as candidate:
+            detected_format = candidate.format
+            if candidate.width * candidate.height > PROFILE_MAX_PIXELS:
+                return None, "画像の縦横サイズが大きすぎます。"
+            candidate.verify()
+        if detected_format not in PROFILE_ALLOWED_FORMATS:
+            return None, "対応していない画像形式です。"
+        with Image.open(io.BytesIO(contents)) as source:
+            image = ImageOps.exif_transpose(source)
+            image.load()
+            if image.width < 1 or image.height < 1:
+                return None, "画像ファイルを読み込めませんでした。"
+            side = min(image.width, image.height)
+            left = (image.width - side) // 2
+            top = (image.height - side) // 2
+            image = image.crop((left, top, left + side, top + side)).convert("RGBA")
+            image = image.resize(PROFILE_IMAGE_SIZE, Image.Resampling.LANCZOS)
+            output = io.BytesIO()
+            image.save(output, format="WEBP", quality=88, method=6)
+            return output.getvalue(), None
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
+        return None, "画像ファイルを読み込めませんでした。"
 
 
 def validate_community_content(content):
@@ -221,7 +297,9 @@ def community_post_payloads(db, root_ids, user_id=None):
         SELECT tree.id, tree.user_id, tree.parent_id, tree.content,
                tree.created_at, tree.deleted_at,
                COUNT(community_like.id) AS like_count,
-               MAX(CASE WHEN community_like.user_id = ? THEN 1 ELSE 0 END) AS liked
+               MAX(CASE WHEN community_like.user_id = ? THEN 1 ELSE 0 END) AS liked,
+               (SELECT student.profile_image FROM student
+                WHERE student.id = tree.user_id LIMIT 1) AS profile_image
         FROM tree LEFT JOIN community_like ON community_like.post_id = tree.id
         GROUP BY tree.id
         ORDER BY tree.created_at ASC, tree.id ASC
@@ -244,6 +322,7 @@ def community_post_payloads(db, root_ids, user_id=None):
             "is_deleted": deleted,
             "like_count": row[6],
             "liked": bool(row[7]),
+            "profile_image_url": None if deleted else profile_image_url(row[8]),
             "can_delete": bool(user_id and not deleted and row[1] == user_id),
             "replies": []
         }
@@ -1421,7 +1500,9 @@ async def Mypage(request: Request):
         (user_id,)
     )
 
-    user_school = cursor.fetchone()[2]
+    user = cursor.fetchone()
+    user_school = user[2]
+    current_profile_image = user[3] if len(user) > 3 else None
 
     #userの予約した情報を取得
     cursor.execute(
@@ -1495,6 +1576,7 @@ async def Mypage(request: Request):
             "user_login": request.session.get("user_login"),
             "user_id": user_id,
             "user_school": user_school,
+            "profile_image_url": profile_image_url(current_profile_image),
             "reservations": reservations,
             "equipment_reservations": all_equipment_reservations
         }
@@ -1502,15 +1584,101 @@ async def Mypage(request: Request):
 
 @app.get("/mypage/edit")
 async def Edit(request: Request):
+    user_id = request.session.get("user_id")
+    cursor.execute("SELECT profile_image FROM student WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    current_profile_image = row[0] if row else None
     return templates.TemplateResponse(
         request = request,
         name = "mypage/edit.html",
         context = {
             "request": request,
             "user_login": request.session.get("user_login"),
-            "user_id": request.session.get("user_id")
+            "user_id": user_id,
+            "profile_image_url": profile_image_url(current_profile_image),
+            "has_profile_image": bool(current_profile_image),
+            "csrf_token": profile_csrf_token(request),
+            "profile_notice": request.session.pop("profile_notice", None)
         }
     )
+
+
+@app.post("/mypage/edit/profile-image")
+async def UpdateProfileImage(
+    request: Request,
+    profile_image: UploadFile = File(...),
+    csrf_token: str = Form("")
+):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not valid_profile_csrf(request, csrf_token):
+        request.session["profile_notice"] = {"type": "error", "message": "操作を確認できませんでした。もう一度お試しください。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+
+    suffix = Path(profile_image.filename or "").suffix.lower()
+    content_type = (profile_image.content_type or "").lower()
+    if suffix not in PROFILE_ALLOWED_SUFFIXES or content_type not in PROFILE_ALLOWED_CONTENT_TYPES:
+        request.session["profile_notice"] = {"type": "error", "message": "対応していない画像形式です。JPEG、PNG、WebPを選択してください。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+    contents = await profile_image.read(PROFILE_MAX_BYTES + 1)
+    await profile_image.close()
+    if len(contents) > PROFILE_MAX_BYTES:
+        request.session["profile_notice"] = {"type": "error", "message": "ファイルサイズが5MBを超えています。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+    processed, error = process_profile_image(contents)
+    if error:
+        request.session["profile_notice"] = {"type": "error", "message": error}
+        return RedirectResponse("/mypage/edit", status_code=303)
+
+    new_filename = f"{uuid4().hex}.webp"
+    final_path = PROFILE_UPLOADS_DIR / new_filename
+    temporary_path = PROFILE_UPLOADS_DIR / f".{new_filename}.tmp"
+    try:
+        temporary_path.write_bytes(processed)
+        temporary_path.replace(final_path)
+        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+            old_row = db.execute("SELECT profile_image FROM student WHERE id = ?", (user_id,)).fetchone()
+            if old_row is None:
+                raise RuntimeError("student not found")
+            old_filename = old_row[0]
+            db.execute("UPDATE student SET profile_image = ? WHERE id = ?", (new_filename, user_id))
+            db.commit()
+    except (OSError, sqlite3.Error, RuntimeError):
+        temporary_path.unlink(missing_ok=True)
+        final_path.unlink(missing_ok=True)
+        request.session["profile_notice"] = {"type": "error", "message": "プロフィール画像の保存に失敗しました。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+
+    delete_profile_file(old_filename)
+    request.session["profile_notice"] = {"type": "success", "message": "プロフィール画像を保存しました。"}
+    request.session["profile_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/mypage/edit", status_code=303)
+
+
+@app.post("/mypage/edit/profile-image/delete")
+async def DeleteProfileImage(request: Request, csrf_token: str = Form("")):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not valid_profile_csrf(request, csrf_token):
+        request.session["profile_notice"] = {"type": "error", "message": "操作を確認できませんでした。もう一度お試しください。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+    try:
+        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+            row = db.execute("SELECT profile_image FROM student WHERE id = ?", (user_id,)).fetchone()
+            if row is None:
+                raise RuntimeError("student not found")
+            old_filename = row[0]
+            db.execute("UPDATE student SET profile_image = NULL WHERE id = ?", (user_id,))
+            db.commit()
+    except (sqlite3.Error, RuntimeError):
+        request.session["profile_notice"] = {"type": "error", "message": "プロフィール画像の削除に失敗しました。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+    delete_profile_file(old_filename)
+    request.session["profile_notice"] = {"type": "success", "message": "プロフィール画像をデフォルトに戻しました。"}
+    request.session["profile_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/mypage/edit", status_code=303)
 
 @app.get("/mypage/del_reservation/{day}_{time}")
 async def DelReservation(request: Request, day: str, time: str):

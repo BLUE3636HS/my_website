@@ -43,6 +43,20 @@
     width: 180px;
 }
 
+.mypage-profile-image-wrap {
+    display: flex;
+    justify-content: center;
+    margin: 20px 0 24px;
+}
+
+.profile-image {
+    width: 128px;
+    height: 128px;
+    border: 4px solid #e3eaf1;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
 .reservation-table th,
 .reservation-table td,
 .equipment-reservation-table th,

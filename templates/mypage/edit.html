@@ -5,6 +5,27 @@
 {% endblock %}
 {% block content %}
     <h1>プロフィール編集</h1><br>
+    <section class="profile-image-section" aria-labelledby="profile-image-title">
+        <h2 id="profile-image-title">プロフィール画像</h2>
+        {% if profile_notice %}
+        <p class="profile-notice profile-notice-{{ profile_notice.type }}" role="status">{{ profile_notice.message }}</p>
+        {% endif %}
+        <img id="profile_image_preview" class="profile-image-preview" src="{{ profile_image_url }}" alt="現在のプロフィール画像">
+        <form method="post" action="/mypage/edit/profile-image" enctype="multipart/form-data" class="profile-image-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="profile_image">新しい画像を選択</label>
+            <input type="file" id="profile_image" name="profile_image" accept="image/jpeg,image/png,image/webp" required>
+            <p id="profile_image_error" class="profile-client-error" role="alert" hidden></p>
+            <em>JPEG・PNG・WebP、5MB以下。保存時に中央で正方形へ調整されます。</em>
+            <button type="submit" id="profile_image_save_btn">画像を保存</button>
+        </form>
+        {% if has_profile_image %}
+        <form method="post" action="/mypage/edit/profile-image/delete" onsubmit="return confirm('プロフィール画像をデフォルトに戻しますか？');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="profile-image-delete">デフォルト画像に戻す</button>
+        </form>
+        {% endif %}
+    </section>
     <label for="id">現在のID</label><br>
     <input type="text" id="old_id"><br><br>
     <label for="pwd">現在のパスワード</label><br>

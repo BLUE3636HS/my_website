@@ -113,7 +113,19 @@
         header.className = "community-post-header";
         const author = document.createElement("span");
         author.className = "community-author";
-        author.textContent = post.is_deleted ? "削除済み" : post.user_id;
+        if (post.is_deleted) {
+            author.textContent = "削除済み";
+        } else {
+            const avatar = document.createElement("img");
+            avatar.className = "community-avatar";
+            avatar.src = post.profile_image_url;
+            avatar.alt = "";
+            avatar.width = 28;
+            avatar.height = 28;
+            const authorId = document.createElement("span");
+            authorId.textContent = post.user_id;
+            author.append(avatar, authorId);
+        }
         const time = document.createElement("time");
         time.textContent = post.created_at;
         header.append(author, time);
@@ -151,7 +163,7 @@
                     requestBody.append("csrf_token", csrfToken);
                     try {
                         await request(`/community/posts/${post.id}/delete`, {method: "POST", body: requestBody});
-                        author.textContent = "削除済み";
+                        author.replaceChildren("削除済み");
                         body.textContent = "この投稿は削除されました";
                         body.className = "community-content community-deleted";
                         actions.remove();
