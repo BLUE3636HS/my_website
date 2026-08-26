@@ -27,6 +27,10 @@
                     <a class="student-nav-link" href="/equipment-reservation">実験器具の貸し出し予約</a>
                     <a class="student-nav-link" href="/mypage">マイページ</a>
                 </nav>
+                <a class="student-notification-link" href="/notifications">
+                    <span aria-hidden="true">🔔</span> 通知
+                    {% if unread_notification_count %}<span class="notification-badge">{{ unread_notification_count }}</span>{% endif %}
+                </a>
                 <a class="student-logout-link" href="/logout">Logout</a>
             </aside>
 

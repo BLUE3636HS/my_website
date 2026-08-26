@@ -11,6 +11,10 @@ from uuid import uuid4
 import sqlite3, shutil, bcrypt, datetime, csv, secrets, io
 from urllib.parse import urlencode
 from PIL import Image, ImageOps, UnidentifiedImageError
+from notifications import (
+    create_notification, initialize_notification_tables, notification_now,
+    reservation_body
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "database" / "database.db"
@@ -186,12 +190,25 @@ if "returned" not in equipment_room_reservation_columns:
         "ALTER TABLE equipment_room_reservation "
         "ADD COLUMN returned INTEGER NOT NULL DEFAULT 0"
     )
+initialize_notification_tables(conn)
 conn.commit()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/uploads/profile", StaticFiles(directory=str(PROFILE_UPLOADS_DIR)), name="profile_uploads")
 
-templates = Jinja2Templates(directory="templates")
+def student_template_context(request):
+    user_id = request.session.get("user_id")
+    unread_count = 0
+    if request.session.get("user_login") is True and user_id:
+        with closing(sqlite3.connect(DATABASE_PATH)) as db:
+            unread_count = db.execute(
+                "SELECT COUNT(*) FROM notification WHERE recipient_user_id = ? AND is_read = 0",
+                (user_id,)
+            ).fetchone()[0]
+    return {"unread_notification_count": unread_count}
+
+
+templates = Jinja2Templates(directory="templates", context_processors=[student_template_context])
 
 COMMUNITY_PAGE_SIZE = 20
 
@@ -877,6 +894,147 @@ async def AdminLogout(request: Request):
     return RedirectResponse("/admin/login", status_code=303)
 
 
+def notification_csrf_token(request, key="notification_csrf_token"):
+    token = request.session.get(key)
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session[key] = token
+    return token
+
+
+def valid_notification_csrf(request, token, key="notification_csrf_token"):
+    expected = request.session.get(key, "")
+    return bool(expected and token and secrets.compare_digest(expected, token))
+
+
+@app.get("/notifications", response_class=HTMLResponse)
+async def NotificationList(request: Request, page: int = 1):
+    user_id = request.session.get("user_id")
+    page = max(1, page)
+    page_size = 20
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        total = db.execute(
+            "SELECT COUNT(*) FROM notification WHERE recipient_user_id = ?", (user_id,)
+        ).fetchone()[0]
+        notifications = db.execute("""
+            SELECT id, title, body, sender_name, is_read, created_at
+            FROM notification WHERE recipient_user_id = ?
+            ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
+        """, (user_id, page_size, (page - 1) * page_size)).fetchall()
+    return templates.TemplateResponse(request=request, name="notifications.html", context={
+        "request": request, "user_id": user_id, "notifications": notifications,
+        "page": page, "has_previous": page > 1,
+        "has_next": page * page_size < total,
+        "csrf_token": notification_csrf_token(request)
+    })
+
+
+@app.get("/notifications/{notification_id}", response_class=HTMLResponse)
+async def NotificationDetail(request: Request, notification_id: int):
+    user_id = request.session.get("user_id")
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        notification = db.execute("""
+            SELECT * FROM notification WHERE id = ? AND recipient_user_id = ?
+        """, (notification_id, user_id)).fetchone()
+        if notification is None:
+            raise HTTPException(status_code=404, detail="通知が見つかりません。")
+        if not notification["is_read"]:
+            read_at = notification_now()
+            db.execute("""
+                UPDATE notification SET is_read = 1, read_at = ?
+                WHERE id = ? AND recipient_user_id = ? AND is_read = 0
+            """, (read_at, notification_id, user_id))
+            db.commit()
+            notification = dict(notification)
+            notification["is_read"] = 1
+            notification["read_at"] = read_at
+    return templates.TemplateResponse(request=request, name="notification_detail.html", context={
+        "request": request, "user_id": user_id, "notification": notification
+    })
+
+
+@app.post("/notifications/read-all")
+async def ReadAllNotifications(request: Request, csrf_token: str = Form(...)):
+    if not valid_notification_csrf(request, csrf_token):
+        raise HTTPException(status_code=403, detail="操作を確認できませんでした。")
+    user_id = request.session.get("user_id")
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.execute("""
+            UPDATE notification SET is_read = 1, read_at = ?
+            WHERE recipient_user_id = ? AND is_read = 0
+        """, (notification_now(), user_id))
+        db.commit()
+    return RedirectResponse("/notifications", status_code=303)
+
+
+@app.get("/admin/notifications", response_class=HTMLResponse)
+async def AdminNotifications(request: Request, page: int = 1):
+    page = max(1, page)
+    page_size = 20
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        students = db.execute("SELECT id, school FROM student ORDER BY school, id").fetchall()
+        schools = [row[0] for row in db.execute("SELECT DISTINCT school FROM student ORDER BY school")]
+        total = db.execute("SELECT COUNT(*) FROM notification_batch").fetchone()[0]
+        batches = db.execute("""
+            SELECT id, created_at, title, body, target_type, target_label, notification_count
+            FROM notification_batch ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
+        """, (page_size, (page - 1) * page_size)).fetchall()
+    return templates.TemplateResponse(request=request, name="admin/notifications.html", context={
+        "request": request, "admin_id": request.session.get("admin_id"),
+        "students": students, "schools": schools, "batches": batches,
+        "page": page, "has_previous": page > 1, "has_next": page * page_size < total,
+        "csrf_token": notification_csrf_token(request, "admin_notification_csrf_token"),
+        "notice": request.session.pop("admin_notification_notice", None)
+    })
+
+
+@app.post("/admin/notifications/send")
+async def AdminSendNotification(
+    request: Request, target_type: str = Form(...), student_id: str = Form(""),
+    school: str = Form(""), title: str = Form(...), body: str = Form(...),
+    csrf_token: str = Form(...)
+):
+    if not valid_notification_csrf(request, csrf_token, "admin_notification_csrf_token"):
+        raise HTTPException(status_code=403, detail="操作を確認できませんでした。")
+    clean_title, clean_body = title.strip(), body.strip()
+    if not clean_title or not clean_body or len(clean_title) > 200 or len(clean_body) > 5000:
+        request.session["admin_notification_notice"] = {"type": "error", "message": "タイトルは200文字、本文は5000文字以内で入力してください。"}
+        return RedirectResponse("/admin/notifications", status_code=303)
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        if target_type == "student":
+            clean_student_id = student_id.strip()
+            recipients = [row[0] for row in db.execute("SELECT id FROM student WHERE id = ?", (clean_student_id,))]
+            target_value, target_label = clean_student_id, f"個人: {clean_student_id}"
+        elif target_type == "school":
+            recipients = [row[0] for row in db.execute("SELECT id FROM student WHERE school = ?", (school,))]
+            school_exists = db.execute("SELECT 1 FROM student WHERE school = ?", (school,)).fetchone()
+            if school_exists is None:
+                recipients = []
+            target_value, target_label = school, f"学校: {school}"
+        elif target_type == "all":
+            recipients = [row[0] for row in db.execute("SELECT id FROM student")]
+            target_value, target_label = None, "全生徒"
+        else:
+            recipients, target_value, target_label = [], None, ""
+        if not recipients:
+            request.session["admin_notification_notice"] = {"type": "error", "message": "送信対象が見つかりませんでした。"}
+            return RedirectResponse("/admin/notifications", status_code=303)
+        now = notification_now()
+        batch_id = db.execute("""
+            INSERT INTO notification_batch
+                (target_type, target_value, target_label, title, body, sender_type,
+                 sender_name, notification_count, created_at)
+            VALUES (?, ?, ?, ?, ?, 'admin', '管理者', ?, ?)
+        """, (target_type, target_value, target_label, clean_title, clean_body, len(recipients), now)).lastrowid
+        for recipient in recipients:
+            create_notification(db, recipient, clean_title, clean_body, batch_id=batch_id)
+        db.commit()
+    request.session["admin_notification_notice"] = {"type": "success", "message": f"{len(recipients)}人へ通知を送信しました。"}
+    request.session["admin_notification_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/admin/notifications", status_code=303)
+
+
 @app.get("/admin/reservation", response_class=HTMLResponse)
 async def AdminReservationPage(request: Request, start_day: str = None, end_day: str = None):
     if request.session.get("admin_login") != True:
@@ -1015,9 +1173,16 @@ async def AdminCancelEquipmentReservation(
         return RedirectResponse("/admin/equipment-reservation", status_code=303)
 
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
-        deleted_count = db.execute(
-            f"DELETE FROM {table} WHERE id = ?", (reservation_id,)
-        ).rowcount
+        db.row_factory = sqlite3.Row
+        reservation = db.execute(f"SELECT * FROM {table} WHERE id = ?", (reservation_id,)).fetchone()
+        deleted_count = db.execute(f"DELETE FROM {table} WHERE id = ?", (reservation_id,)).rowcount
+        if deleted_count == 1 and reservation is not None:
+            related_type = "equipment_takeout" if reservation_type == "takeout" else "equipment_in_room"
+            create_notification(
+                db, reservation["userid"], "実験器具の予約がキャンセルされました",
+                reservation_body(related_type, reservation), "reservation_cancelled",
+                related_type, reservation_id
+            )
         db.commit()
 
     if deleted_count != 1:
@@ -1731,16 +1896,20 @@ async def DeleteProfileImage(request: Request, csrf_token: str = Form("")):
 @app.get("/mypage/del_reservation/{day}_{time}")
 async def DelReservation(request: Request, day: str, time: str):
     user_id = request.session.get("user_id")
-    cursor.execute(
-        """
-        DELETE FROM reservation
-        WHERE userid = ?
-        AND day = ?
-        AND start_time = ?
-        """,
-        (user_id, day, time)
-    )
-    conn.commit()
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        reservation = db.execute("""
+            SELECT * FROM reservation WHERE userid = ? AND day = ? AND start_time = ?
+            ORDER BY id LIMIT 1
+        """, (user_id, day, time)).fetchone()
+        if reservation is not None:
+            deleted = db.execute("DELETE FROM reservation WHERE id = ? AND userid = ?", (reservation["id"], user_id)).rowcount
+            if deleted == 1:
+                create_notification(
+                    db, user_id, "TEKNE工作室の予約がキャンセルされました",
+                    reservation_body("tekne", reservation), "reservation_cancelled", "tekne", reservation["id"]
+                )
+        db.commit()
     return RedirectResponse("/mypage", status_code=303)
 
 @app.post("/equipment-reservation")
@@ -1786,12 +1955,19 @@ async def CreateEquipmentReservation(
                     status_code=409,
                     detail=f"選択した期間は必要な数量を確保できません。利用可能数: {availability['available']}"
                 )
-            db.execute("""INSERT INTO equipment_reservation
+            reservation_id = db.execute("""INSERT INTO equipment_reservation
                 (userid, equipment, start_day, end_day, quantity, purpose, note, equipment_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", (
                     request.session.get("user_id"), item["name"], start.isoformat(),
                     end.isoformat(), quantity, clean_purpose, clean_note, item["id"]
-                ))
+                )).lastrowid
+            create_notification(
+                db, request.session.get("user_id"), "実験器具の予約を受け付けました",
+                reservation_body("equipment_takeout", {
+                    "equipment": item["name"], "start_day": start.isoformat(),
+                    "end_day": end.isoformat(), "quantity": quantity
+                }), "reservation_created", "equipment_takeout", reservation_id
+            )
             db.commit()
         except HTTPException:
             raise
@@ -1802,8 +1978,19 @@ async def CreateEquipmentReservation(
 
 @app.get("/mypage/equipment-reservation/{reservation_id}/cancel")
 async def CancelEquipmentReservation(request: Request, reservation_id: int):
-    cursor.execute("DELETE FROM equipment_reservation WHERE id = ? AND userid = ?", (reservation_id, request.session.get("user_id")))
-    conn.commit()
+    user_id = request.session.get("user_id")
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        reservation = db.execute("SELECT * FROM equipment_reservation WHERE id = ? AND userid = ?", (reservation_id, user_id)).fetchone()
+        if reservation is not None:
+            deleted = db.execute("DELETE FROM equipment_reservation WHERE id = ? AND userid = ?", (reservation_id, user_id)).rowcount
+            if deleted == 1:
+                create_notification(
+                    db, user_id, "実験器具の予約がキャンセルされました",
+                    reservation_body("equipment_takeout", reservation), "reservation_cancelled",
+                    "equipment_takeout", reservation_id
+                )
+        db.commit()
     return RedirectResponse("/mypage", status_code=303)
 
 @app.get("/equipment-availability")
@@ -1902,12 +2089,19 @@ async def CreateEquipmentRoomReservation(
                     status_code=409,
                     detail=f"選択した時間帯は在庫が不足しています。利用可能数: {available}"
                 )
-            db.execute("""INSERT INTO equipment_room_reservation
+            reservation_id = db.execute("""INSERT INTO equipment_room_reservation
                 (userid, equipment_id, equipment, use_day, start_time, end_time, quantity, purpose, note)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
                     request.session.get("user_id"), item["id"], item["name"], reservation_day.isoformat(),
                     start_time, end_time, quantity, clean_purpose, clean_note
-                ))
+                )).lastrowid
+            create_notification(
+                db, request.session.get("user_id"), "実験器具の予約を受け付けました",
+                reservation_body("equipment_in_room", {
+                    "equipment": item["name"], "use_day": reservation_day.isoformat(),
+                    "start_time": start_time, "end_time": end_time, "quantity": quantity
+                }), "reservation_created", "equipment_in_room", reservation_id
+            )
             db.commit()
         except HTTPException:
             raise
@@ -1920,10 +2114,22 @@ async def CreateEquipmentRoomReservation(
 @app.post("/mypage/equipment-room-reservation/{reservation_id}/cancel")
 async def CancelEquipmentRoomReservation(request: Request, reservation_id: int):
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
-        db.execute(
-            "DELETE FROM equipment_room_reservation WHERE id = ? AND userid = ?",
-            (reservation_id, request.session.get("user_id"))
-        )
+        db.row_factory = sqlite3.Row
+        user_id = request.session.get("user_id")
+        reservation = db.execute(
+            "SELECT * FROM equipment_room_reservation WHERE id = ? AND userid = ?",
+            (reservation_id, user_id)
+        ).fetchone()
+        if reservation is not None:
+            deleted = db.execute(
+                "DELETE FROM equipment_room_reservation WHERE id = ? AND userid = ?", (reservation_id, user_id)
+            ).rowcount
+            if deleted == 1:
+                create_notification(
+                    db, user_id, "実験器具の予約がキャンセルされました",
+                    reservation_body("equipment_in_room", reservation), "reservation_cancelled",
+                    "equipment_in_room", reservation_id
+                )
         db.commit()
     return RedirectResponse("/mypage", status_code=303)
 
@@ -2346,7 +2552,7 @@ async def ReservationDate(
                 status_code=409
             )
 
-        db.execute(
+        reservation_id = db.execute(
             """
             INSERT INTO reservation (userid, day, start_time, end_time, purpose)
             VALUES (?, ?, ?, ?, ?)
@@ -2358,6 +2564,13 @@ async def ReservationDate(
                 end_time,
                 purpose.strip()
             )
+        ).lastrowid
+        create_notification(
+            db, request.session.get("user_id"), "TEKNE工作室の予約を受け付けました",
+            reservation_body("tekne", {
+                "day": reservation_day.isoformat(), "start_time": start_time,
+                "end_time": end_time, "purpose": purpose.strip()
+            }), "reservation_created", "tekne", reservation_id
         )
         db.commit()
 

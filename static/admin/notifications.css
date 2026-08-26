@@ -1,0 +1,15 @@
+.notification-admin-page { display: grid; gap: 24px; }
+.admin-card { padding: 28px; border-radius: 12px; background: #fff; box-shadow: 0 5px 20px rgba(37,97,62,.1); }
+.admin-card h1, .admin-card h2 { margin-top: 0; }
+.notification-form { display: grid; max-width: 760px; gap: 17px; }
+.notification-form label { display: grid; gap: 7px; font-weight: 700; }
+.notification-form label[hidden] { display: none; }
+.notification-form input, .notification-form select, .notification-form textarea { width: 100%; padding: 11px; border: 1px solid #c7d8cc; border-radius: 7px; font: inherit; }
+.notification-form textarea { resize: vertical; }
+.field-help { color: #64756a; font-size: 13px; font-weight: 400; }
+.notification-form button { width: fit-content; padding: 12px 24px; border: 0; border-radius: 7px; background: #25613e; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.admin-notice { padding: 12px; border-radius: 7px; }
+.admin-notice-success { background: #e5f4e9; color: #25613e; }.admin-notice-error { background: #fff0f0; color: #a12b2b; }
+.admin-table p { max-width: 520px; margin: 6px 0 0; white-space: pre-wrap; }
+.admin-pagination { display: flex; justify-content: center; gap: 18px; margin-top: 20px; }
+.admin-pagination a { color: #25613e; font-weight: 700; }
