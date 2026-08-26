@@ -32,19 +32,24 @@
     </section>
     <section class="student-panel">
     <h2>TEKNE工作室 予約一覧</h2>
+    {% if reservation_notice %}<p class="mypage-notice is-{{ reservation_notice.type }}">{{ reservation_notice.message }}</p>{% endif %}
     <div class="mypage-table-scroll">
     <table class="reservation-table" border="1">
         <tr>
             <th>予約日</th>
             <th>予約時間</th>
-            <th>削除</th>
+            <th>利用目的</th><th>キャンセル</th>
         </tr>
         {% for reservation in reservations %}
         <tr>
-            <td>{{ reservation[0] }}</td>
-            <td>{{ reservation[1] }}</td>
+            <td>{{ reservation.day }}</td>
+            <td>{{ reservation.start_time }}〜{{ reservation.end_time }}</td>
+            <td>{{ reservation.purpose }}</td>
             <td>
-                <a class="del_reservation" href="mypage/del_reservation/{{reservation[0]}}_{{reservation[1]}}">X</a>
+                <form method="post" action="/mypage/reservation/{{ reservation.id }}/cancel" class="reservation-cancel-form">
+                    <input type="hidden" name="csrf_token" value="{{ reservation_csrf_token }}">
+                    <button class="del_reservation" type="submit" aria-label="工作室予約をキャンセル">X</button>
+                </form>
             </td>
         </tr>
         {% endfor %}
@@ -76,6 +81,7 @@
         {% else %}
         <tr><td colspan="8">実験器具の予約はありません。</td></tr>
         {% endfor %}
+        {% if not reservations %}<tr><td colspan="4">有効な工作室予約はありません。</td></tr>{% endif %}
     </table>
     </div>
     </section>

@@ -395,3 +395,5 @@
     }
 
 }
+
+.reservation-admin-notice{margin:16px 0;padding:12px 16px;border-radius:10px}.reservation-admin-notice.is-success{background:#e6f4ea;color:#19472d}.reservation-admin-notice.is-error{background:#fdecec;color:#9b2424}.reservation-state{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:700;white-space:nowrap}.reservation-state.is-active{background:#e2f2e7;color:#19472d}.reservation-state.is-cancelled{background:#eceeed;color:#5f6761}.reservation-admin-table tr.is-cancelled{color:#6b716d;background:#f5f6f5}.reservation-cancel-form button{border:0;border-radius:7px;background:#a83232;color:#fff;padding:7px 10px;font-weight:700;cursor:pointer}

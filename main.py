@@ -112,6 +112,58 @@ if "equipment" in reservation_columns:
         conn.execute("DROP TABLE reservation")
         conn.execute("ALTER TABLE reservation_without_equipment RENAME TO reservation")
 cursor.execute("""
+    CREATE TABLE IF NOT EXISTS schema_migration (
+        name TEXT PRIMARY KEY NOT NULL,
+        applied_at TEXT NOT NULL
+    )
+""")
+reservation_capacity_migration = "reservation_capacity_v1"
+if cursor.execute(
+    "SELECT 1 FROM schema_migration WHERE name = ?",
+    (reservation_capacity_migration,)
+).fetchone() is None:
+    with conn:
+        current_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(reservation)").fetchall()
+        }
+        reservation_additions = {
+            "status": "TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'cancelled'))",
+            "created_at": "TEXT NOT NULL DEFAULT ''",
+            "cancelled_at": "TEXT",
+            "cancelled_by_type": "TEXT",
+            "cancelled_by_id": "TEXT"
+        }
+        for column_name, definition in reservation_additions.items():
+            if column_name not in current_columns:
+                conn.execute(
+                    f"ALTER TABLE reservation ADD COLUMN {column_name} {definition}"
+                )
+        conn.execute("DELETE FROM reservation")
+        conn.execute(
+            "INSERT INTO schema_migration (name, applied_at) VALUES (?, ?)",
+            (reservation_capacity_migration, datetime.datetime.now(JST).isoformat())
+        )
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS reservation_available_slot (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        admin_id TEXT NOT NULL,
+        day TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (admin_id, day, start_time)
+    )
+""")
+cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_reservation_available_slot_day_time
+    ON reservation_available_slot(day, start_time)
+""")
+cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_reservation_day_status_time
+    ON reservation(day, status, start_time, end_time)
+""")
+cursor.execute("""
     CREATE TABLE IF NOT EXISTS equipment_reservation (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         userid TEXT NOT NULL, equipment TEXT NOT NULL,
@@ -608,6 +660,112 @@ app.add_middleware(
     secret_key="TEKNE"
 )
 
+RESERVATION_OPEN_MINUTES = 9 * 60
+RESERVATION_CLOSE_MINUTES = 22 * 60
+RESERVATION_MAX_MINUTES = 180
+
+
+def reservation_csrf_token(request, key="reservation_csrf_token"):
+    token = request.session.get(key)
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session[key] = token
+    return token
+
+
+def valid_reservation_csrf(request, token, key="reservation_csrf_token"):
+    expected = request.session.get(key, "")
+    return bool(expected and token and secrets.compare_digest(expected, token))
+
+
+def reservation_time_to_minutes(value):
+    parsed = datetime.datetime.strptime(value, "%H:%M").time()
+    return parsed.hour * 60 + parsed.minute
+
+
+def reservation_minutes_to_time(value):
+    return f"{value // 60:02d}:{value % 60:02d}"
+
+
+def reservation_slot_range(start_time, end_time):
+    start_minutes = reservation_time_to_minutes(start_time)
+    end_minutes = reservation_time_to_minutes(end_time)
+    return [
+        reservation_minutes_to_time(value)
+        for value in range(start_minutes, end_minutes, 30)
+    ]
+
+
+def reservation_slot_summary(db, day, admin_id=None):
+    capacity_rows = db.execute(
+        """
+        SELECT start_time, COUNT(*)
+        FROM reservation_available_slot
+        WHERE day = ?
+        GROUP BY start_time
+        """,
+        (day,)
+    ).fetchall()
+    capacities = {row[0]: row[1] for row in capacity_rows}
+    own_slots = set()
+    if admin_id:
+        own_slots = {
+            row[0] for row in db.execute(
+                """
+                SELECT start_time FROM reservation_available_slot
+                WHERE day = ? AND admin_id = ?
+                """,
+                (day, admin_id)
+            ).fetchall()
+        }
+    active_reservations = db.execute(
+        """
+        SELECT start_time, end_time
+        FROM reservation
+        WHERE day = ? AND status = 'active'
+        """,
+        (day,)
+    ).fetchall()
+    reservation_counts = {
+        reservation_minutes_to_time(value): 0
+        for value in range(RESERVATION_OPEN_MINUTES, RESERVATION_CLOSE_MINUTES, 30)
+    }
+    for start_time, end_time in active_reservations:
+        for slot_time in reservation_slot_range(start_time, end_time):
+            if slot_time in reservation_counts:
+                reservation_counts[slot_time] += 1
+    now = datetime.datetime.now(JST)
+    target_date = datetime.date.fromisoformat(day)
+    result = []
+    for value in range(RESERVATION_OPEN_MINUTES, RESERVATION_CLOSE_MINUTES, 30):
+        start_time = reservation_minutes_to_time(value)
+        end_time = reservation_minutes_to_time(value + 30)
+        capacity = capacities.get(start_time, 0)
+        reserved = reservation_counts[start_time]
+        remaining = max(capacity - reserved, 0)
+        slot_start = datetime.datetime.combine(
+            target_date, datetime.time(value // 60, value % 60), tzinfo=JST
+        )
+        closed = slot_start < now
+        if closed:
+            state = "closed"
+        elif capacity == 0:
+            state = "unset"
+        elif remaining == 0:
+            state = "full"
+        else:
+            state = "available"
+        result.append({
+            "start_time": start_time,
+            "end_time": end_time,
+            "capacity": capacity,
+            "reserved": reserved,
+            "remaining": remaining,
+            "own": start_time in own_slots,
+            "state": state
+        })
+    return result
+
 
 #get関数
 @app.get("/", response_class = HTMLResponse)
@@ -628,6 +786,7 @@ async def Dashboard(request: Request):
             SELECT day, start_time, end_time, purpose
             FROM reservation
             WHERE userid = ?
+              AND status = 'active'
               AND (day > ? OR (day = ? AND end_time > ?))
             ORDER BY day ASC, start_time ASC, end_time ASC, id ASC
             LIMIT 1
@@ -733,10 +892,40 @@ async def ReservationPage(request: Request, day: str = None):
             "request": request,
             "today": today.isoformat(),
             "initial_day": initial_day,
+            "csrf_token": reservation_csrf_token(request),
             "user_login": request.session.get("user_login"),
             "user_id": request.session.get("user_id")
         }
     )
+
+
+@app.get("/reservation/available-days")
+async def ReservationAvailableDays(month: str):
+    try:
+        month_start = datetime.date.fromisoformat(f"{month}-01")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="年月が正しくありません。")
+    if month_start.month == 12:
+        month_end = datetime.date(month_start.year + 1, 1, 1)
+    else:
+        month_end = datetime.date(month_start.year, month_start.month + 1, 1)
+    today = datetime.datetime.now(JST).date()
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        candidate_days = [
+            row[0] for row in db.execute(
+                """
+                SELECT DISTINCT day FROM reservation_available_slot
+                WHERE day >= ? AND day < ? AND day >= ?
+                ORDER BY day
+                """,
+                (month_start.isoformat(), month_end.isoformat(), today.isoformat())
+            ).fetchall()
+        ]
+        available_days = []
+        for day in candidate_days:
+            if any(slot["state"] == "available" for slot in reservation_slot_summary(db, day)):
+                available_days.append(day)
+    return {"month": month, "available_days": available_days}
 
 
 @app.get("/reservation/availability")
@@ -750,34 +939,9 @@ async def ReservationAvailability(day: str):
     if target_date < now.date():
         raise HTTPException(status_code=400, detail="過去の日付は選択できません。")
 
-    cursor.execute(
-        "SELECT start_time, end_time FROM reservation WHERE day = ?",
-        (target_date.isoformat(),)
-    )
-    reserved_times = []
-    for start_time, end_time in cursor.fetchall():
-        start_total = sum(value * factor for value, factor in zip(map(int, start_time.split(":")), (60, 1)))
-        end_total = sum(value * factor for value, factor in zip(map(int, end_time.split(":")), (60, 1)))
-        while start_total < end_total:
-            reserved_times.append(f"{start_total // 60:02d}:{start_total % 60:02d}")
-            start_total += 30
-
-    closed_times = []
-    if target_date == now.date():
-        for total_minutes in range(9 * 60, 21 * 60, 30):
-            slot_time = datetime.datetime.combine(
-                target_date,
-                datetime.time(total_minutes // 60, total_minutes % 60),
-                tzinfo=JST
-            )
-            if slot_time < now:
-                closed_times.append(f"{total_minutes // 60:02d}:{total_minutes % 60:02d}")
-
-    return {
-        "day": target_date.isoformat(),
-        "reserved_times": sorted(set(reserved_times)),
-        "closed_times": closed_times
-    }
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        slots = reservation_slot_summary(db, target_date.isoformat())
+    return {"day": target_date.isoformat(), "slots": slots}
 
 
 @app.get("/reservation/{year}/{month}/{day}", response_class = HTMLResponse)
@@ -849,7 +1013,8 @@ async def AdminHome(request: Request):
             """
             SELECT id, userid, day, start_time, end_time, purpose
             FROM reservation
-            WHERE day > ? OR (day = ? AND end_time > ?)
+            WHERE status = 'active'
+              AND (day > ? OR (day = ? AND end_time > ?))
             ORDER BY day ASC, start_time ASC, id ASC
             LIMIT 3
             """,
@@ -1045,29 +1210,164 @@ async def AdminSendNotification(
     return RedirectResponse("/admin/notifications", status_code=303)
 
 
+@app.get("/admin/reservation-schedule", response_class=HTMLResponse)
+async def AdminReservationSchedule(request: Request, day: str = None):
+    today = datetime.datetime.now(JST).date()
+    try:
+        selected_day = datetime.date.fromisoformat(day) if day else today
+    except ValueError:
+        selected_day = today
+    if selected_day < today:
+        selected_day = today
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        slots = reservation_slot_summary(
+            db, selected_day.isoformat(), request.session.get("admin_id")
+        )
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/reservation_schedule.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "today": today.isoformat(),
+            "selected_day": selected_day.isoformat(),
+            "slots": slots,
+            "csrf_token": reservation_csrf_token(request, "admin_reservation_schedule_csrf_token"),
+            "notice": request.session.pop("admin_reservation_schedule_notice", None)
+        }
+    )
+
+
+@app.get("/admin/reservation-schedule/availability")
+async def AdminReservationScheduleAvailability(request: Request, day: str):
+    try:
+        target_date = datetime.date.fromisoformat(day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付が正しくありません。")
+    if target_date < datetime.datetime.now(JST).date():
+        raise HTTPException(status_code=400, detail="過去の日付は選択できません。")
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        slots = reservation_slot_summary(
+            db, target_date.isoformat(), request.session.get("admin_id")
+        )
+    return {"day": target_date.isoformat(), "slots": slots}
+
+
+@app.post("/admin/reservation-schedule")
+async def UpdateAdminReservationSchedule(
+    request: Request,
+    day: str = Form(...),
+    action: str = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(...),
+    csrf_token: str = Form(...)
+):
+    redirect_url = f"/admin/reservation-schedule?{urlencode({'day': day})}"
+    notice_key = "admin_reservation_schedule_notice"
+    if not valid_reservation_csrf(request, csrf_token, "admin_reservation_schedule_csrf_token"):
+        request.session[notice_key] = {"type": "error", "message": "操作を確認できませんでした。ページを再読み込みしてください。"}
+        return RedirectResponse(redirect_url, status_code=303)
+    start_minutes = -1
+    end_minutes = -1
+    try:
+        target_date = datetime.date.fromisoformat(day)
+        start_minutes = reservation_time_to_minutes(start_time)
+        end_minutes = reservation_time_to_minutes(end_time)
+    except ValueError:
+        target_date = None
+    valid_range = (
+        target_date is not None and target_date >= datetime.datetime.now(JST).date()
+        and action in {"add", "delete"}
+        and RESERVATION_OPEN_MINUTES <= start_minutes < end_minutes <= RESERVATION_CLOSE_MINUTES
+        and start_minutes % 30 == 0 and end_minutes % 30 == 0
+    )
+    if valid_range and target_date == datetime.datetime.now(JST).date():
+        selected_start = datetime.datetime.combine(
+            target_date,
+            datetime.time(start_minutes // 60, start_minutes % 60),
+            tzinfo=JST
+        )
+        valid_range = selected_start >= datetime.datetime.now(JST)
+    if not valid_range:
+        request.session[notice_key] = {"type": "error", "message": "日付または時間帯が正しくありません。"}
+        return RedirectResponse(redirect_url, status_code=303)
+
+    admin_id = request.session.get("admin_id")
+    slot_times = reservation_slot_range(start_time, end_time)
+    now_text = datetime.datetime.now(JST).isoformat()
+    try:
+        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+            db.execute("BEGIN IMMEDIATE")
+            existing = {
+                row[0] for row in db.execute(
+                    f"""
+                    SELECT start_time FROM reservation_available_slot
+                    WHERE admin_id = ? AND day = ?
+                      AND start_time IN ({','.join('?' for _ in slot_times)})
+                    """,
+                    (admin_id, day, *slot_times)
+                ).fetchall()
+            }
+            if action == "add":
+                if existing:
+                    raise ValueError("選択範囲には、すでに自分が登録した時間が含まれています。")
+                db.executemany(
+                    """
+                    INSERT INTO reservation_available_slot
+                        (admin_id, day, start_time, end_time, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (admin_id, day, slot_time,
+                         reservation_minutes_to_time(reservation_time_to_minutes(slot_time) + 30),
+                         now_text, now_text)
+                        for slot_time in slot_times
+                    ]
+                )
+                success_message = "予約可能時間を追加しました。"
+            else:
+                if existing != set(slot_times):
+                    raise ValueError("選択範囲に、自分が登録していない時間が含まれています。")
+                summaries = {slot["start_time"]: slot for slot in reservation_slot_summary(db, day)}
+                if any(summaries[slot_time]["capacity"] - 1 < summaries[slot_time]["reserved"] for slot_time in slot_times):
+                    raise ValueError("既存予約の定員を下回るため、この時間帯は削除できません。")
+                db.execute(
+                    f"""
+                    DELETE FROM reservation_available_slot
+                    WHERE admin_id = ? AND day = ?
+                      AND start_time IN ({','.join('?' for _ in slot_times)})
+                    """,
+                    (admin_id, day, *slot_times)
+                )
+                success_message = "予約可能時間を削除しました。"
+            db.commit()
+        request.session[notice_key] = {"type": "success", "message": success_message}
+        request.session["admin_reservation_schedule_csrf_token"] = secrets.token_urlsafe(32)
+    except (sqlite3.Error, ValueError) as error:
+        request.session[notice_key] = {"type": "error", "message": str(error) or "時間帯を更新できませんでした。"}
+    return RedirectResponse(redirect_url, status_code=303)
+
+
 @app.get("/admin/reservation", response_class=HTMLResponse)
 async def AdminReservationPage(request: Request, start_day: str = None, end_day: str = None):
     if request.session.get("admin_login") != True:
         return RedirectResponse("/admin/login", status_code=303)
 
-    today = datetime.datetime.now(
-        datetime.timezone(datetime.timedelta(hours=9))
-    ).date().isoformat()
-
     if start_day and end_day:
         cursor.execute("""
-            SELECT id, userid, day, start_time, end_time, purpose
+            SELECT id, userid, day, start_time, end_time, purpose, status,
+                   cancelled_at, cancelled_by_type, cancelled_by_id
             FROM reservation
-            WHERE day >= ? AND day >= ? AND day <= ?
+            WHERE day >= ? AND day <= ?
             ORDER BY day ASC, start_time ASC, id ASC
-        """, (today, start_day, end_day))
+        """, (start_day, end_day))
     else:
         cursor.execute("""
-            SELECT id, userid, day, start_time, end_time, purpose
+            SELECT id, userid, day, start_time, end_time, purpose, status,
+                   cancelled_at, cancelled_by_type, cancelled_by_id
             FROM reservation
-            WHERE day >= ?
-            ORDER BY day ASC, start_time ASC, id ASC
-        """, (today,))
+            ORDER BY day DESC, start_time ASC, id ASC
+        """)
     reservations = cursor.fetchall()
 
     return templates.TemplateResponse(
@@ -1078,9 +1378,50 @@ async def AdminReservationPage(request: Request, start_day: str = None, end_day:
             "admin_id": request.session.get("admin_id"),
             "reservations": reservations,
             "start_day": start_day,
-            "end_day": end_day
+            "end_day": end_day,
+            "csrf_token": reservation_csrf_token(request, "admin_reservation_csrf_token"),
+            "notice": request.session.pop("admin_reservation_notice", None)
         }
     )
+
+
+@app.post("/admin/reservation/{reservation_id}/cancel")
+async def AdminCancelReservation(
+    request: Request,
+    reservation_id: int,
+    csrf_token: str = Form(...)
+):
+    if not valid_reservation_csrf(request, csrf_token, "admin_reservation_csrf_token"):
+        request.session["admin_reservation_notice"] = {"type": "error", "message": "操作を確認できませんでした。"}
+        return RedirectResponse("/admin/reservation", status_code=303)
+    now_text = datetime.datetime.now(JST).isoformat()
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        reservation = db.execute(
+            "SELECT * FROM reservation WHERE id = ? AND status = 'active'",
+            (reservation_id,)
+        ).fetchone()
+        changed = db.execute(
+            """
+            UPDATE reservation
+            SET status = 'cancelled', cancelled_at = ?,
+                cancelled_by_type = 'admin', cancelled_by_id = ?
+            WHERE id = ? AND status = 'active'
+            """,
+            (now_text, request.session.get("admin_id"), reservation_id)
+        ).rowcount
+        if changed and reservation is not None:
+            create_notification(
+                db, reservation["userid"], "TEKNE工作室の予約がキャンセルされました",
+                reservation_body("tekne", reservation), "reservation_cancelled", "tekne", reservation_id
+            )
+        db.commit()
+    request.session["admin_reservation_notice"] = {
+        "type": "success" if changed else "error",
+        "message": "予約をキャンセルしました。" if changed else "有効な予約が見つかりませんでした。"
+    }
+    request.session["admin_reservation_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/admin/reservation", status_code=303)
 
 
 @app.get("/admin/equipment-reservation", response_class=HTMLResponse)
@@ -1730,9 +2071,10 @@ async def Mypage(request: Request):
     #userの予約した情報を取得
     cursor.execute(
         """
-        SELECT *
+        SELECT id, day, start_time, end_time, purpose
         FROM reservation
-        WHERE userid = ? AND day >= ?
+        WHERE userid = ? AND day >= ? AND status = 'active'
+        ORDER BY day, start_time, end_time, id
         """,
         (
             user_id,
@@ -1742,8 +2084,10 @@ async def Mypage(request: Request):
         )
     )
 
-    reservations = [i[2:4] for i in cursor.fetchall()]
-    reservations.sort()
+    reservations = [
+        {"id": row[0], "day": row[1], "start_time": row[2], "end_time": row[3], "purpose": row[4]}
+        for row in cursor.fetchall()
+    ]
 
     cursor.execute("""SELECT id, equipment, start_day, end_day, quantity, purpose, returned
         FROM equipment_reservation WHERE userid = ? ORDER BY start_day, end_day, id""", (user_id,))
@@ -1801,7 +2145,9 @@ async def Mypage(request: Request):
             "user_school": user_school,
             "profile_image_url": profile_image_url(current_profile_image),
             "reservations": reservations,
-            "equipment_reservations": all_equipment_reservations
+            "equipment_reservations": all_equipment_reservations,
+            "reservation_csrf_token": reservation_csrf_token(request, "mypage_reservation_csrf_token"),
+            "reservation_notice": request.session.pop("mypage_reservation_notice", None)
         }
     )
 
@@ -1903,23 +2249,44 @@ async def DeleteProfileImage(request: Request, csrf_token: str = Form("")):
     request.session["profile_csrf_token"] = secrets.token_urlsafe(32)
     return RedirectResponse("/mypage/edit", status_code=303)
 
-@app.get("/mypage/del_reservation/{day}_{time}")
-async def DelReservation(request: Request, day: str, time: str):
+@app.post("/mypage/reservation/{reservation_id}/cancel")
+async def CancelReservation(
+    request: Request,
+    reservation_id: int,
+    csrf_token: str = Form(...)
+):
     user_id = request.session.get("user_id")
+    if not valid_reservation_csrf(request, csrf_token, "mypage_reservation_csrf_token"):
+        request.session["mypage_reservation_notice"] = {"type": "error", "message": "操作を確認できませんでした。"}
+        return RedirectResponse("/mypage", status_code=303)
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
         db.row_factory = sqlite3.Row
         reservation = db.execute("""
-            SELECT * FROM reservation WHERE userid = ? AND day = ? AND start_time = ?
-            ORDER BY id LIMIT 1
-        """, (user_id, day, time)).fetchone()
+            SELECT * FROM reservation
+            WHERE id = ? AND userid = ? AND status = 'active'
+        """, (reservation_id, user_id)).fetchone()
+        changed = False
         if reservation is not None:
-            deleted = db.execute("DELETE FROM reservation WHERE id = ? AND userid = ?", (reservation["id"], user_id)).rowcount
-            if deleted == 1:
+            changed = db.execute(
+                """
+                UPDATE reservation
+                SET status = 'cancelled', cancelled_at = ?,
+                    cancelled_by_type = 'student', cancelled_by_id = ?
+                WHERE id = ? AND userid = ? AND status = 'active'
+                """,
+                (datetime.datetime.now(JST).isoformat(), user_id, reservation_id, user_id)
+            ).rowcount == 1
+            if changed:
                 create_notification(
                     db, user_id, "TEKNE工作室の予約がキャンセルされました",
                     reservation_body("tekne", reservation), "reservation_cancelled", "tekne", reservation["id"]
                 )
         db.commit()
+    request.session["mypage_reservation_notice"] = {
+        "type": "success" if changed else "error",
+        "message": "予約をキャンセルしました。" if changed else "有効な予約が見つかりませんでした。"
+    }
+    request.session["mypage_reservation_csrf_token"] = secrets.token_urlsafe(32)
     return RedirectResponse("/mypage", status_code=303)
 
 @app.post("/equipment-reservation")
@@ -2509,8 +2876,14 @@ async def ReservationDate(
     day: str = Form(...),
     start_time: str = Form(...),
     end_time: str = Form(...),
-    purpose: str = Form(...)
+    purpose: str = Form(...),
+    csrf_token: str = Form(...)
 ):
+    if not valid_reservation_csrf(request, csrf_token):
+        return JSONResponse(
+            {"result": False, "message": "操作を確認できませんでした。ページを再読み込みしてください。"},
+            status_code=403
+        )
     try:
         reservation_day = datetime.date.fromisoformat(day)
         parsed_start = datetime.datetime.strptime(start_time, "%H:%M").time()
@@ -2532,10 +2905,10 @@ async def ReservationDate(
         parsed_start.minute not in (0, 30) or
         parsed_end.minute not in (0, 30) or
         parsed_start < datetime.time(9, 0) or
-        parsed_end > datetime.time(21, 0)
+        parsed_end > datetime.time(22, 0)
     ):
         return JSONResponse(
-            {"result": False, "message": "予約時間は当日以降の9:00〜21:00から、30分単位・3時間以内で選択してください。"},
+            {"result": False, "message": "予約時間は当日以降の9:00〜22:00から、30分単位・3時間以内で選択してください。"},
             status_code=400
         )
 
@@ -2547,32 +2920,34 @@ async def ReservationDate(
 
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
         db.execute("BEGIN IMMEDIATE")
-        overlap = db.execute(
-            """
-            SELECT 1 FROM reservation
-            WHERE day = ? AND start_time < ? AND end_time > ?
-            LIMIT 1
-            """,
-            (reservation_day.isoformat(), end_time, start_time)
-        ).fetchone()
-        if overlap is not None:
+        summaries = {
+            slot["start_time"]: slot
+            for slot in reservation_slot_summary(db, reservation_day.isoformat())
+        }
+        required_slots = reservation_slot_range(start_time, end_time)
+        if any(
+            slot_time not in summaries or summaries[slot_time]["remaining"] <= 0
+            for slot_time in required_slots
+        ):
             db.rollback()
             return JSONResponse(
-                {"result": False, "message": "選択した時間帯は、すでに予約されています。空き状況を更新しました。"},
+                {"result": False, "message": "選択した時間帯は満席になったか、予約できなくなりました。空き状況を更新しました。"},
                 status_code=409
             )
 
         reservation_id = db.execute(
             """
-            INSERT INTO reservation (userid, day, start_time, end_time, purpose)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO reservation
+                (userid, day, start_time, end_time, purpose, status, created_at)
+            VALUES (?, ?, ?, ?, ?, 'active', ?)
             """,
             (
                 request.session.get("user_id"),
                 reservation_day.isoformat(),
                 start_time,
                 end_time,
-                purpose.strip()
+                purpose.strip(),
+                datetime.datetime.now(JST).isoformat()
             )
         ).lastrowid
         create_notification(

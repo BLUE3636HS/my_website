@@ -1,104 +1,32 @@
 {% extends "admin/base.html" %}
-
 {% block title %}TEKNE工作室予約確認{% endblock %}
-
-{% block css %} <link rel="stylesheet" href="/static/admin/reservation.css">
-{% endblock %}
-
+{% block css %}<link rel="stylesheet" href="/static/admin/reservation.css">{% endblock %}
 {% block content %}
-
-<div class="reservation-page">
-
-
-<div class="dashboard-card-wide">
+<div class="reservation-page"><div class="dashboard-card-wide">
     <p class="dashboard-eyebrow">Reservation Management</p>
     <h1>TEKNE工作室予約確認</h1>
-
+    {% if notice %}<div class="reservation-admin-notice is-{{ notice.type }}" role="status">{{ notice.message }}</div>{% endif %}
     <details class="reservation-filter" {% if start_day or end_day %}open{% endif %}>
         <summary class="reservation-filter-toggle">絞り込み</summary>
-
-    <form method="get" action="/admin/reservation" class="reservation-filter-form">
-
-        <div class="reservation-filter-group">
-            <label for="start_day">開始日</label>
-            <input
-                type="date"
-                id="start_day"
-                name="start_day"
-                value="{{ start_day or '' }}"
-            >
-        </div>
-
-        <div class="reservation-filter-group">
-            <label for="end_day">終了日</label>
-            <input
-                type="date"
-                id="end_day"
-                name="end_day"
-                value="{{ end_day or '' }}"
-            >
-        </div>
-
-        <div class="reservation-filter-btn-group">
-            <button type="submit" class="reservation-btn-search">
-                検索
-            </button>
-
-            <a
-                href="/admin/reservation"
-                class="reservation-btn-clear"
-            >
-                クリア
-            </a>
-        </div>
-
-    </form>
+        <form method="get" action="/admin/reservation" class="reservation-filter-form">
+            <div class="reservation-filter-group"><label for="start_day">開始日</label><input type="date" id="start_day" name="start_day" value="{{ start_day or '' }}"></div>
+            <div class="reservation-filter-group"><label for="end_day">終了日</label><input type="date" id="end_day" name="end_day" value="{{ end_day or '' }}"></div>
+            <div class="reservation-filter-btn-group"><button type="submit" class="reservation-btn-search">検索</button><a href="/admin/reservation" class="reservation-btn-clear">クリア</a></div>
+        </form>
     </details>
-
     <div class="reservation-table-container">
-
-        {% if reservations %}
-
+    {% if reservations %}
         <table class="reservation-admin-table">
-
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>ユーザーID</th>
-                    <th>利用日</th>
-                    <th>開始時刻</th>
-                    <th>終了時刻</th>
-                    <th>利用目的</th>
-                </tr>
-            </thead>
-
-            <tbody>
-                {% for r in reservations %}
-                <tr>
-                    <td>{{ r[0] }}</td>
-                    <td>{{ r[1] }}</td>
-                    <td>{{ r[2] }}</td>
-                    <td>{{ r[3] }}</td>
-                    <td>{{ r[4] }}</td>
-                    <td>{{ r[5] }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-
+            <thead><tr><th>ID</th><th>ユーザーID</th><th>利用日</th><th>時間</th><th>利用目的</th><th>状態</th><th>取消情報</th><th>操作</th></tr></thead>
+            <tbody>{% for r in reservations %}<tr class="{% if r[6] == 'cancelled' %}is-cancelled{% endif %}">
+                <td>{{ r[0] }}</td><td>{{ r[1] }}</td><td>{{ r[2] }}</td><td>{{ r[3] }}〜{{ r[4] }}</td><td>{{ r[5] }}</td>
+                <td><span class="reservation-state is-{{ r[6] }}">{{ "有効" if r[6] == "active" else "キャンセル済み" }}</span></td>
+                <td>{% if r[6] == "cancelled" %}{{ r[7] or "-" }}<br>{{ "管理者" if r[8] == "admin" else "生徒" }}: {{ r[9] or "-" }}{% else %}-{% endif %}</td>
+                <td>{% if r[6] == "active" %}<form method="post" action="/admin/reservation/{{ r[0] }}/cancel" class="reservation-cancel-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">キャンセル</button></form>{% else %}-{% endif %}</td>
+            </tr>{% endfor %}</tbody>
         </table>
-
-        {% else %}
-
-        <div class="reservation-no-data">
-            <p>予約情報が見つかりません。</p>
-        </div>
-
-        {% endif %}
-
+    {% else %}<div class="reservation-no-data"><p>予約情報が見つかりません。</p></div>{% endif %}
     </div>
-
-</div>
-
-
-</div>
+</div></div>
 {% endblock %}
+{% block script %}<script>document.querySelectorAll('.reservation-cancel-form').forEach((form)=>form.addEventListener('submit',(event)=>{if(!confirm('この予約をキャンセルしますか？'))event.preventDefault();}));</script>{% endblock %}

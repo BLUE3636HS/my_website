@@ -143,3 +143,5 @@
     justify-content: center;
     margin-top: 24px;
 }
+
+.mypage-notice{padding:10px 14px;border-radius:8px}.mypage-notice.is-success{background:#e6f4ea;color:#19472d}.mypage-notice.is-error{background:#fdecec;color:#9b2424}.reservation-cancel-form{margin:0}

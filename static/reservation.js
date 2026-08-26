@@ -1,6 +1,7 @@
 const page = document.getElementById("reservation-page");
 const today = page.dataset.today;
 const initialDay = page.dataset.initialDay;
+const csrfToken = page.dataset.csrfToken;
 const calendarDays = document.getElementById("calendar-days");
 const monthTitle = document.getElementById("month-title");
 const prevMonthButton = document.getElementById("prev-month");
@@ -13,70 +14,71 @@ const selectedEnd = document.getElementById("selected-end");
 const purpose = document.getElementById("purpose");
 const submitButton = document.getElementById("reservation-submit");
 const message = document.getElementById("reservation-message");
-
 let selectedDay = "";
 let unavailableTimes = new Set();
+let availableDays = new Set();
 let isDragging = false;
 let dragStartTime = null;
-let cursor = initialDay ? new Date(`${initialDay}T00:00:00`) : new Date(`${today}T00:00:00`);
+let calendarRequest = 0;
+let cursor = new Date(`${initialDay || today}T00:00:00`);
 cursor.setDate(1);
 
-const pad = (number) => String(number).padStart(2, "0");
+const pad = (value) => String(value).padStart(2, "0");
 const isoDate = (year, month, day) => `${year}-${pad(month + 1)}-${pad(day)}`;
-
-function timeToMinutes(time) {
-    const [hour, minute] = time.split(":").map(Number);
+const timeToMinutes = (value) => {
+    const [hour, minute] = value.split(":").map(Number);
     return hour * 60 + minute;
-}
-
-function minutesToTime(totalMinutes) {
-    return `${pad(Math.floor(totalMinutes / 60))}:${pad(totalMinutes % 60)}`;
-}
+};
+const minutesToTime = (value) => `${pad(Math.floor(value / 60))}:${pad(value % 60)}`;
 
 function showMessage(text, type = "error") {
     message.textContent = text;
     message.className = `reservation-message is-${type}`;
     message.hidden = false;
 }
-
 function clearMessage() {
     message.hidden = true;
     message.textContent = "";
 }
 
-function renderCalendar() {
+async function renderCalendar() {
+    const requestId = ++calendarRequest;
     const year = cursor.getFullYear();
     const month = cursor.getMonth();
+    const monthKey = `${year}-${pad(month + 1)}`;
     monthTitle.textContent = `${year}年 ${month + 1}月`;
+    calendarDays.innerHTML = '<span class="status-loading">読込中...</span>';
+    try {
+        const response = await fetch(`/reservation/available-days?month=${encodeURIComponent(monthKey)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "予約可能日を取得できませんでした。");
+        if (requestId !== calendarRequest) return;
+        availableDays = new Set(data.available_days);
+    } catch (error) {
+        if (requestId !== calendarRequest) return;
+        availableDays = new Set();
+        showMessage(error.message);
+    }
     calendarDays.innerHTML = "";
-
-    const firstWeekday = new Date(year, month, 1).getDay();
-    for (let index = 0; index < firstWeekday; index += 1) {
+    for (let index = 0; index < new Date(year, month, 1).getDay(); index += 1) {
         const blank = document.createElement("span");
         blank.className = "blank";
         calendarDays.append(blank);
     }
-
-    const lastDay = new Date(year, month + 1, 0).getDate();
-    for (let day = 1; day <= lastDay; day += 1) {
+    for (let day = 1; day <= new Date(year, month + 1, 0).getDate(); day += 1) {
         const key = isoDate(year, month, day);
         const button = document.createElement("button");
         button.type = "button";
         button.textContent = day;
-        button.disabled = key < today;
+        button.disabled = !availableDays.has(key);
         if (!button.disabled) {
             button.className = "available";
             button.addEventListener("click", () => chooseDate(key));
         }
-        if (key === selectedDay) {
-            button.classList.add("selected");
-        }
+        if (key === selectedDay) button.classList.add("selected");
         calendarDays.append(button);
     }
-
-    const currentMonth = today.slice(0, 7);
-    const displayedMonth = `${year}-${pad(month + 1)}`;
-    prevMonthButton.disabled = displayedMonth <= currentMonth;
+    prevMonthButton.disabled = monthKey <= today.slice(0, 7);
 }
 
 function resetTimeSelection() {
@@ -95,19 +97,15 @@ async function chooseDate(key) {
     selectedDate.textContent = `選択日：${key}`;
     resetTimeSelection();
     clearMessage();
-    renderCalendar();
+    await renderCalendar();
     reservationStatus.classList.add("is-disabled");
     reservationStatus.innerHTML = '<p class="status-loading">空き状況を読み込んでいます...</p>';
     timeMessage.textContent = "空き状況を確認しています";
-
     try {
         const response = await fetch(`/reservation/availability?day=${encodeURIComponent(key)}`);
         const data = await response.json();
-        if (!response.ok) {
-            throw new Error(data.detail || "空き状況を取得できませんでした。");
-        }
-        unavailableTimes = new Set([...data.reserved_times, ...data.closed_times]);
-        renderTimeSlots(new Set(data.reserved_times), new Set(data.closed_times));
+        if (!response.ok) throw new Error(data.detail || "空き状況を取得できませんでした。");
+        renderTimeSlots(data.slots);
     } catch (error) {
         reservationStatus.innerHTML = "";
         timeMessage.textContent = "空き状況を取得できませんでした";
@@ -115,153 +113,86 @@ async function chooseDate(key) {
     }
 }
 
-function renderTimeSlots(reservedTimes, closedTimes) {
+function renderTimeSlots(slots) {
     reservationStatus.innerHTML = "";
     reservationStatus.classList.remove("is-disabled");
-
-    for (let totalMinutes = 9 * 60; totalMinutes < 21 * 60; totalMinutes += 30) {
-        const time = minutesToTime(totalMinutes);
+    unavailableTimes = new Set(slots.filter((slot) => slot.state !== "available").map((slot) => slot.start_time));
+    const labels = {full: "満席", unset: "未設定", closed: "受付終了"};
+    slots.forEach((data) => {
         const slot = document.createElement("div");
-        slot.className = "reservation-time";
-        slot.dataset.time = time;
-
+        slot.className = `reservation-time ${data.state}`;
+        slot.dataset.time = data.start_time;
         const label = document.createElement("span");
         label.className = "reservation-time-label";
-        label.textContent = time;
-        const slotBody = document.createElement("div");
-        slotBody.className = "reservation-slot-body";
+        label.textContent = data.start_time;
+        const body = document.createElement("div");
+        body.className = "reservation-slot-body";
         const status = document.createElement("span");
         status.className = "reservation-slot-status";
-
-        if (reservedTimes.has(time)) {
-            slot.classList.add("reserved");
-            status.textContent = "予約済み";
-        } else if (closedTimes.has(time)) {
-            slot.classList.add("closed");
-            status.textContent = "受付終了";
-        } else {
-            slot.classList.add("available");
-            status.textContent = "空き";
-        }
-
-        slotBody.append(status);
-        slot.append(label, slotBody);
+        status.textContent = data.state === "available" ? `空き（残り${data.remaining}）` : labels[data.state];
+        body.append(status);
+        slot.append(label, body);
         addTimeEvents(slot);
         reservationStatus.append(slot);
-    }
-
-    const endMarker = document.createElement("div");
-    endMarker.className = "reservation-timeline-end";
-    const endTime = document.createElement("span");
-    endTime.className = "reservation-time-label";
-    endTime.textContent = "21:00";
-    const endLine = document.createElement("span");
-    endLine.className = "reservation-timeline-end-line";
-    endMarker.append(endTime, endLine);
-    reservationStatus.append(endMarker);
-
-    timeMessage.textContent = "空いている時間を開始から終了までドラッグしてください";
-}
-
-function addTimeEvents(slot) {
-    slot.addEventListener("mousedown", (event) => {
-        if (event.button !== 0 || !slot.classList.contains("available")) {
-            return;
-        }
-        event.preventDefault();
-        isDragging = true;
-        dragStartTime = slot.dataset.time;
-        resetTimeSelection();
-        isDragging = true;
-        dragStartTime = slot.dataset.time;
-        slot.classList.add("drag-start");
-        selectedStart.textContent = dragStartTime;
-        timeMessage.textContent = "終了時間までドラッグしてください";
     });
-
-    slot.addEventListener("mouseenter", () => {
-        if (isDragging) {
-            updateSelection(slot.dataset.time);
-        }
-    });
-
-    slot.addEventListener("mouseup", (event) => {
-        if (event.button !== 0 || !isDragging) {
-            return;
-        }
-        updateSelection(slot.dataset.time);
-        if (checkSelection(slot.dataset.time)) {
-            selectedEnd.textContent = slot.dataset.time;
-            submitButton.disabled = false;
-            timeMessage.textContent = "予約時間を確認してください";
-        }
-        isDragging = false;
-    });
+    const marker = document.createElement("div");
+    marker.className = "reservation-timeline-end";
+    marker.innerHTML = '<span class="reservation-time-label">22:00</span><span class="reservation-timeline-end-line"></span>';
+    reservationStatus.append(marker);
+    timeMessage.textContent = slots.some((slot) => slot.state === "available")
+        ? "空いている時間を開始から終了までドラッグしてください"
+        : "この日に予約できる時間はありません";
 }
 
 function rangeIsAvailable(startMinutes, endMinutes) {
-    for (let time = startMinutes; time < endMinutes; time += 30) {
-        if (unavailableTimes.has(minutesToTime(time))) {
-            return false;
-        }
+    for (let value = startMinutes; value < endMinutes; value += 30) {
+        if (unavailableTimes.has(minutesToTime(value))) return false;
     }
     return true;
 }
 
 function updateSelection(currentTime) {
     const startMinutes = timeToMinutes(dragStartTime);
-    const currentMinutes = timeToMinutes(currentTime);
-    if (currentMinutes < startMinutes || currentMinutes - startMinutes > 180 || !rangeIsAvailable(startMinutes, currentMinutes)) {
-        return;
-    }
-
+    const endMinutes = timeToMinutes(currentTime) + 30;
+    if (endMinutes <= startMinutes || endMinutes - startMinutes > 180 || !rangeIsAvailable(startMinutes, endMinutes)) return false;
     reservationStatus.querySelectorAll(".reservation-time").forEach((slot) => {
-        const slotMinutes = timeToMinutes(slot.dataset.time);
-        slot.classList.toggle("selected", slotMinutes >= startMinutes && slotMinutes <= currentMinutes);
+        const value = timeToMinutes(slot.dataset.time);
+        slot.classList.toggle("selected", value >= startMinutes && value < endMinutes);
         slot.classList.remove("drag-start");
     });
     reservationStatus.querySelector(`[data-time="${dragStartTime}"]`).classList.add("drag-start");
     selectedStart.textContent = dragStartTime;
-    selectedEnd.textContent = currentTime;
-}
-
-function checkSelection(endTime) {
-    const startMinutes = timeToMinutes(dragStartTime);
-    const endMinutes = timeToMinutes(endTime);
-    if (endMinutes <= startMinutes) {
-        showMessage("終了時間は開始時間より後にしてください。");
-        resetTimeSelection();
-        return false;
-    }
-    if (endMinutes - startMinutes > 180) {
-        showMessage("予約は3時間までです。");
-        resetTimeSelection();
-        return false;
-    }
-    if (!rangeIsAvailable(startMinutes, endMinutes)) {
-        showMessage("予約済み、または受付終了の時間を含むため選択できません。");
-        resetTimeSelection();
-        return false;
-    }
-    clearMessage();
+    selectedEnd.textContent = minutesToTime(endMinutes);
     return true;
 }
 
-document.addEventListener("mouseup", () => {
-    isDragging = false;
-});
+function addTimeEvents(slot) {
+    slot.addEventListener("mousedown", (event) => {
+        if (event.button !== 0 || !slot.classList.contains("available")) return;
+        event.preventDefault();
+        resetTimeSelection();
+        isDragging = true;
+        dragStartTime = slot.dataset.time;
+        updateSelection(slot.dataset.time);
+        timeMessage.textContent = "終了時間までドラッグしてください";
+    });
+    slot.addEventListener("mouseenter", () => {
+        if (isDragging) updateSelection(slot.dataset.time);
+    });
+    slot.addEventListener("mouseup", (event) => {
+        if (event.button !== 0 || !isDragging) return;
+        if (updateSelection(slot.dataset.time)) {
+            submitButton.disabled = false;
+            clearMessage();
+            timeMessage.textContent = "予約時間を確認してください";
+        }
+        isDragging = false;
+    });
+}
 
-prevMonthButton.addEventListener("click", () => {
-    if (!prevMonthButton.disabled) {
-        cursor.setMonth(cursor.getMonth() - 1);
-        renderCalendar();
-    }
-});
-
-nextMonthButton.addEventListener("click", () => {
-    cursor.setMonth(cursor.getMonth() + 1);
-    renderCalendar();
-});
+document.addEventListener("mouseup", () => { isDragging = false; });
+prevMonthButton.addEventListener("click", () => { cursor.setMonth(cursor.getMonth() - 1); renderCalendar(); });
+nextMonthButton.addEventListener("click", () => { cursor.setMonth(cursor.getMonth() + 1); renderCalendar(); });
 
 submitButton.addEventListener("click", async () => {
     if (!selectedDay || selectedStart.textContent === "未選択" || selectedEnd.textContent === "未選択") {
@@ -272,34 +203,27 @@ submitButton.addEventListener("click", async () => {
         showMessage("使用目的を入力してください。");
         return;
     }
-
     const formData = new FormData();
     formData.append("day", selectedDay);
     formData.append("start_time", selectedStart.textContent);
     formData.append("end_time", selectedEnd.textContent);
     formData.append("purpose", purpose.value);
-
+    formData.append("csrf_token", csrfToken);
     submitButton.disabled = true;
     try {
         const response = await fetch("/reservation/date", {method: "POST", body: formData});
         const data = await response.json();
-        if (!response.ok || !data.result) {
-            throw new Error(data.message || "予約を登録できませんでした。");
-        }
-        alert(data.message);
+        if (!response.ok || !data.result) throw new Error(data.message || "予約を登録できませんでした。");
         purpose.value = "";
-        showMessage(data.message, "success");
         await chooseDate(selectedDay);
         showMessage(data.message, "success");
     } catch (error) {
-        showMessage(error.message);
         await chooseDate(selectedDay);
         showMessage(error.message);
     }
 });
 
-renderCalendar();
 reservationStatus.innerHTML = '<p class="status-placeholder">日付を選択すると空き状況が表示されます。</p>';
-if (initialDay) {
-    chooseDate(initialDay);
-}
+renderCalendar().then(() => {
+    if (initialDay && availableDays.has(initialDay)) chooseDate(initialDay);
+});

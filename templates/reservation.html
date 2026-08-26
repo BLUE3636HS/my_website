@@ -9,6 +9,7 @@
     id="reservation-page"
     data-today="{{ today }}"
     data-initial-day="{{ initial_day }}"
+    data-csrf-token="{{ csrf_token }}"
 >
     <section class="reservation-hero">
         <p class="reservation-eyebrow">TEKNE RESERVATION</p>
@@ -24,7 +25,7 @@
                 <span>1</span>
                 <div>
                     <h2>利用日を選択</h2>
-                    <p>本日以降の日付を選択できます</p>
+                    <p>予約可能な日付だけ選択できます</p>
                 </div>
             </div>
 
@@ -58,7 +59,7 @@
                 <p>開始時間：<span id="selected-start">未選択</span></p>
                 <p>終了時間：<span id="selected-end">未選択</span></p>
             </div>
-            <p class="reservation-note">予約は30分単位、最大3時間までです。</p>
+            <p class="reservation-note">予約は9:00〜22:00の30分単位、最大3時間までです。</p>
         </section>
     </div>
 
