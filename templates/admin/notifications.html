@@ -39,8 +39,8 @@
     <section class="admin-card">
         <h2>送信履歴</h2>
         <div class="table-container"><table class="admin-table">
-            <thead><tr><th>送信日時</th><th>タイトル・本文</th><th>送信対象</th><th>作成件数</th></tr></thead>
-            <tbody>{% for batch in batches %}<tr><td>{{ batch[1] }}</td><td><strong>{{ batch[2] }}</strong><p>{{ batch[3] }}</p></td><td>{{ batch[5] }}</td><td>{{ batch[6] }}件</td></tr>{% else %}<tr><td colspan="4" class="no-data">送信履歴はありません。</td></tr>{% endfor %}</tbody>
+            <thead><tr><th>送信日時</th><th>送信者</th><th>タイトル・本文</th><th>送信対象</th><th>作成件数</th></tr></thead>
+            <tbody>{% for batch in batches %}<tr><td>{{ batch[1] }}</td><td>{{ "管理者" if batch[2] == "admin" else "先生" }}: {{ batch[3] or "不明" }}</td><td><strong>{{ batch[4] }}</strong><p>{{ batch[5] }}</p></td><td>{{ batch[7] }}</td><td>{{ batch[8] }}件</td></tr>{% else %}<tr><td colspan="5" class="no-data">送信履歴はありません。</td></tr>{% endfor %}</tbody>
         </table></div>
         <nav class="admin-pagination">{% if has_previous %}<a href="?page={{ page - 1 }}">前へ</a>{% endif %}<span>{{ page }}ページ</span>{% if has_next %}<a href="?page={{ page + 1 }}">次へ</a>{% endif %}</nav>
     </section>

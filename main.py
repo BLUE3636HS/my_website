@@ -1152,7 +1152,8 @@ async def AdminNotifications(request: Request, page: int = 1):
         schools = [row[0] for row in db.execute("SELECT DISTINCT school FROM student ORDER BY school")]
         total = db.execute("SELECT COUNT(*) FROM notification_batch").fetchone()[0]
         batches = db.execute("""
-            SELECT id, created_at, title, body, target_type, target_label, notification_count
+            SELECT id, created_at, sender_type, sender_id, title, body,
+                   target_type, target_label, notification_count
             FROM notification_batch ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
         """, (page_size, (page - 1) * page_size)).fetchall()
     return templates.TemplateResponse(request=request, name="admin/notifications.html", context={
@@ -1196,12 +1197,16 @@ async def AdminSendNotification(
             request.session["admin_notification_notice"] = {"type": "error", "message": "送信対象が見つかりませんでした。"}
             return RedirectResponse("/admin/notifications", status_code=303)
         now = notification_now()
+        admin_id = request.session.get("admin_id")
         batch_id = db.execute("""
             INSERT INTO notification_batch
                 (target_type, target_value, target_label, title, body, sender_type,
-                 sender_name, notification_count, created_at)
-            VALUES (?, ?, ?, ?, ?, 'admin', '管理者', ?, ?)
-        """, (target_type, target_value, target_label, clean_title, clean_body, len(recipients), now)).lastrowid
+                 sender_name, sender_id, notification_count, created_at)
+            VALUES (?, ?, ?, ?, ?, 'admin', '管理者', ?, ?, ?)
+        """, (
+            target_type, target_value, target_label, clean_title, clean_body,
+            admin_id, len(recipients), now
+        )).lastrowid
         for recipient in recipients:
             create_notification(db, recipient, clean_title, clean_body, batch_id=batch_id)
         db.commit()
@@ -2555,6 +2560,147 @@ async def Edit(request: Request):
             "teacher_school": teacher[0] if teacher else ""
         }
     )
+
+
+@app.get("/teacher/notifications", response_class=HTMLResponse)
+async def TeacherNotifications(request: Request, page: int = 1):
+    teacher_id = request.session.get("teacher_id")
+    page = max(1, page)
+    page_size = 20
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        teacher = db.execute(
+            "SELECT school FROM teacher WHERE id = ?", (teacher_id,)
+        ).fetchone()
+        if teacher is None:
+            return RedirectResponse("/login", status_code=303)
+        teacher_school = teacher[0]
+        students = db.execute(
+            "SELECT id FROM student WHERE school = ? ORDER BY id", (teacher_school,)
+        ).fetchall()
+        total = db.execute("""
+            SELECT COUNT(*) FROM notification_batch
+            WHERE sender_type = 'teacher' AND sender_school = ?
+        """, (teacher_school,)).fetchone()[0]
+        batches = db.execute("""
+            SELECT id, created_at, sender_id, title, body, target_label,
+                   notification_count
+            FROM notification_batch
+            WHERE sender_type = 'teacher' AND sender_school = ?
+            ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
+        """, (teacher_school, page_size, (page - 1) * page_size)).fetchall()
+    return templates.TemplateResponse(
+        request=request,
+        name="teacher/notifications.html",
+        context={
+            "request": request,
+            "teacher_login": request.session.get("teacher_login"),
+            "teacher_id": teacher_id,
+            "students": students,
+            "batches": batches,
+            "page": page,
+            "has_previous": page > 1,
+            "has_next": page * page_size < total,
+            "csrf_token": notification_csrf_token(
+                request, "teacher_notification_csrf_token"
+            ),
+            "notice": request.session.pop("teacher_notification_notice", None),
+        }
+    )
+
+
+@app.post("/teacher/notifications/send")
+async def TeacherSendNotification(
+    request: Request,
+    target_type: str = Form(...),
+    student_id: str = Form(""),
+    title: str = Form(...),
+    body: str = Form(...),
+    csrf_token: str = Form(...),
+):
+    if not valid_notification_csrf(
+        request, csrf_token, "teacher_notification_csrf_token"
+    ):
+        raise HTTPException(status_code=403, detail="操作を確認できませんでした。")
+
+    redirect = RedirectResponse("/teacher/notifications", status_code=303)
+    clean_title, clean_body = title.strip(), body.strip()
+    if (
+        not clean_title or not clean_body
+        or len(clean_title) > 200 or len(clean_body) > 5000
+    ):
+        request.session["teacher_notification_notice"] = {
+            "type": "error",
+            "message": "タイトルは200文字、本文は5000文字以内で入力してください。",
+        }
+        return redirect
+
+    teacher_id = request.session.get("teacher_id")
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        teacher = db.execute(
+            "SELECT school FROM teacher WHERE id = ?", (teacher_id,)
+        ).fetchone()
+        if teacher is None:
+            return RedirectResponse("/login", status_code=303)
+        teacher_school = teacher[0]
+
+        if target_type == "student":
+            clean_student_id = student_id.strip()
+            recipients = [row[0] for row in db.execute(
+                "SELECT id FROM student WHERE id = ? AND school = ?",
+                (clean_student_id, teacher_school),
+            )]
+            target_value = clean_student_id
+            target_label = f"個人: {clean_student_id}"
+        elif target_type == "all":
+            recipients = [row[0] for row in db.execute(
+                "SELECT id FROM student WHERE school = ? ORDER BY id",
+                (teacher_school,),
+            )]
+            target_value = teacher_school
+            target_label = "自校の全生徒"
+        else:
+            recipients, target_value, target_label = [], None, ""
+
+        if not recipients:
+            request.session["teacher_notification_notice"] = {
+                "type": "error",
+                "message": "送信対象が見つかりませんでした。",
+            }
+            return redirect
+
+        try:
+            now = notification_now()
+            batch_id = db.execute("""
+                INSERT INTO notification_batch
+                    (target_type, target_value, target_label, title, body,
+                     sender_type, sender_name, notification_count, created_at,
+                     sender_school, sender_id)
+                VALUES (?, ?, ?, ?, ?, 'teacher', '先生', ?, ?, ?, ?)
+            """, (
+                target_type, target_value, target_label, clean_title, clean_body,
+                len(recipients), now, teacher_school, teacher_id,
+            )).lastrowid
+            for recipient in recipients:
+                create_notification(
+                    db,
+                    recipient,
+                    clean_title,
+                    clean_body,
+                    batch_id=batch_id,
+                    sender_type="teacher",
+                    sender_name=f"先生: {teacher_id}",
+                )
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+
+    request.session["teacher_notification_notice"] = {
+        "type": "success",
+        "message": f"{len(recipients)}人へ通知を送信しました。",
+    }
+    request.session["teacher_notification_csrf_token"] = secrets.token_urlsafe(32)
+    return redirect
 
 @app.get("/teacher/studylist", response_class = HTMLResponse)
 async def StudyList(request: Request):

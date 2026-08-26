@@ -49,19 +49,38 @@ def initialize_notification_tables(db):
                             related_reservation_id, recipient_user_id)
             WHERE notification_type = 'reservation_reminder';
     """)
+    batch_columns = {
+        row[1] for row in db.execute("PRAGMA table_info(notification_batch)").fetchall()
+    }
+    if "sender_school" not in batch_columns:
+        db.execute("ALTER TABLE notification_batch ADD COLUMN sender_school TEXT")
+    if "sender_id" not in batch_columns:
+        db.execute("ALTER TABLE notification_batch ADD COLUMN sender_id TEXT")
+        db.execute("""
+            UPDATE notification_batch
+            SET sender_id = sender_name
+            WHERE sender_type = 'teacher'
+               OR (sender_type = 'admin' AND sender_name <> '管理者')
+        """)
+    db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_notification_batch_teacher_school
+        ON notification_batch(sender_type, sender_school, created_at DESC, id DESC)
+    """)
 
 
 def create_notification(db, recipient_user_id, title, body,
                         notification_type="manual", related_reservation_type=None,
-                        related_reservation_id=None, batch_id=None):
+                        related_reservation_id=None, batch_id=None,
+                        sender_type="admin", sender_name="管理者"):
     return db.execute("""
         INSERT INTO notification (
             recipient_user_id, title, body, sender_type, sender_name,
             is_read, created_at, notification_type,
             related_reservation_type, related_reservation_id, batch_id
-        ) VALUES (?, ?, ?, 'admin', '管理者', 0, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
     """, (
-        recipient_user_id, title, body, notification_now(), notification_type,
+        recipient_user_id, title, body, sender_type, sender_name,
+        notification_now(), notification_type,
         related_reservation_type, related_reservation_id, batch_id
     )).lastrowid
 

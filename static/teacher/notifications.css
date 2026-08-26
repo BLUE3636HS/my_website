@@ -1,0 +1,23 @@
+.teacher-notification-page { display: grid; gap: 24px; }
+.teacher-notification-card { padding: 30px; border: 1px solid #ead8cf; border-radius: 16px; background: #fff; box-shadow: 0 8px 26px rgba(184,92,56,.08); }
+.teacher-notification-card h1, .teacher-notification-card h2 { margin: 0 0 12px; }
+.teacher-notification-card > p { color: #78665d; }
+.teacher-notification-form { display: grid; max-width: 760px; gap: 17px; margin-top: 24px; }
+.teacher-notification-form label { display: grid; gap: 7px; font-weight: 700; }
+.teacher-notification-form label[hidden] { display: none; }
+.teacher-notification-form input, .teacher-notification-form select, .teacher-notification-form textarea { width: 100%; padding: 11px; border: 1px solid #d9c3b8; border-radius: 7px; color: inherit; font: inherit; }
+.teacher-notification-form textarea { resize: vertical; }
+.teacher-notification-form button { width: fit-content; padding: 12px 24px; border: 0; border-radius: 7px; background: #b85c38; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.teacher-field-help { color: #876e62; font-size: 13px; font-weight: 400; }
+.teacher-notice { padding: 12px 15px; border-radius: 8px; font-weight: 700; }
+.teacher-notice-success { background: #eaf6ed; color: #25613e !important; }
+.teacher-notice-error { background: #fff0ec; color: #9c3d24 !important; }
+.teacher-notification-table-wrap { margin-top: 20px; overflow-x: auto; }
+.teacher-notification-table-wrap table { width: 100%; border-collapse: collapse; }
+.teacher-notification-table-wrap th, .teacher-notification-table-wrap td { padding: 13px 12px; border-bottom: 1px solid #ead8cf; text-align: left; vertical-align: top; }
+.teacher-notification-table-wrap th { background: #fdf8f3; white-space: nowrap; }
+.teacher-notification-table-wrap td p { max-width: 420px; margin: 6px 0 0; color: #78665d; white-space: pre-line; }
+.teacher-no-data { text-align: center !important; color: #876e62; }
+.teacher-notification-pagination { display: flex; justify-content: center; gap: 18px; margin-top: 22px; }
+.teacher-notification-pagination a { color: #b85c38; font-weight: 700; }
+@media (max-width: 700px) { .teacher-notification-card { padding: 22px; } }

@@ -15,7 +15,9 @@ from notifications import create_notification, create_reservation_reminders, ini
 
 SCHEMA = """
 CREATE TABLE student (id TEXT NOT NULL, pwd TEXT NOT NULL, school TEXT NOT NULL, profile_image TEXT);
-CREATE TABLE reservation (id INTEGER PRIMARY KEY AUTOINCREMENT, userid TEXT NOT NULL, day TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, purpose TEXT NOT NULL);
+CREATE TABLE teacher (id TEXT NOT NULL, pwd TEXT NOT NULL, school TEXT NOT NULL);
+CREATE TABLE reservation (id INTEGER PRIMARY KEY AUTOINCREMENT, userid TEXT NOT NULL, day TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, purpose TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', created_at TEXT, cancelled_at TEXT, cancelled_by_type TEXT, cancelled_by_id TEXT);
+CREATE TABLE reservation_available_slot (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id TEXT NOT NULL, day TEXT NOT NULL, start_time TEXT NOT NULL);
 CREATE TABLE equipment_reservation (id INTEGER PRIMARY KEY AUTOINCREMENT, userid TEXT NOT NULL, equipment TEXT NOT NULL, start_day TEXT NOT NULL, end_day TEXT NOT NULL, quantity INTEGER NOT NULL, purpose TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', equipment_id TEXT, returned INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE equipment_room_reservation (id INTEGER PRIMARY KEY AUTOINCREMENT, userid TEXT NOT NULL, equipment_id TEXT NOT NULL, equipment TEXT NOT NULL, use_day TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, quantity INTEGER NOT NULL, purpose TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', returned INTEGER NOT NULL DEFAULT 0);
 """
@@ -38,6 +40,10 @@ class NotificationTests(unittest.TestCase):
             initialize_notification_tables(db)
             db.executemany("INSERT INTO student (id, pwd, school) VALUES (?, 'x', ?)", [
                 ("a", "school-1"), ("b", "school-1"), ("c", "school-2")
+            ])
+            db.executemany("INSERT INTO teacher (id, pwd, school) VALUES (?, 'x', ?)", [
+                ("teacher-1", "school-1"), ("teacher-2", "school-1"),
+                ("teacher-3", "school-2")
             ])
             db.commit()
         self.patch = patch.object(main, "DATABASE_PATH", self.db_path)
@@ -64,6 +70,10 @@ class NotificationTests(unittest.TestCase):
         with closing(sqlite3.connect(self.db_path)) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM notification_batch").fetchone()[0], 3)
             self.assertEqual(db.execute("SELECT notification_count FROM notification_batch ORDER BY id").fetchall(), [(1,), (2,), (3,)])
+            self.assertEqual(
+                db.execute("SELECT DISTINCT sender_type, sender_name, sender_id FROM notification_batch").fetchall(),
+                [("admin", "管理者", "admin")],
+            )
             self.assertEqual(db.execute("SELECT recipient_user_id, COUNT(*) FROM notification GROUP BY recipient_user_id ORDER BY recipient_user_id").fetchall(), [("a", 3), ("b", 2), ("c", 1)])
 
     def test_admin_notification_page_requires_admin_session(self):
@@ -73,6 +83,69 @@ class NotificationTests(unittest.TestCase):
         ))
         self.assertEqual(response.status_code, 303)
         self.assertEqual(response.headers["location"], "/admin/login")
+
+    def teacher_send(self, teacher_id, target_type, student_id="", token="token"):
+        session = {
+            "teacher_login": True,
+            "teacher_id": teacher_id,
+            "teacher_notification_csrf_token": "token",
+        }
+        return self.await_result(main.TeacherSendNotification(
+            request("/teacher/notifications/send", session, "POST"),
+            target_type, student_id, "先生からのお知らせ", "本文", token
+        ))
+
+    def test_teacher_individual_and_all_targets_are_school_scoped(self):
+        self.teacher_send("teacher-1", "student", "a")
+        self.teacher_send("teacher-1", "all")
+        rejected = self.teacher_send("teacher-1", "student", "c")
+        self.assertEqual(rejected.status_code, 303)
+        with closing(sqlite3.connect(self.db_path)) as db:
+            self.assertEqual(
+                db.execute("SELECT recipient_user_id, COUNT(*) FROM notification GROUP BY recipient_user_id ORDER BY recipient_user_id").fetchall(),
+                [("a", 2), ("b", 1)],
+            )
+            self.assertEqual(
+                db.execute("SELECT sender_type, sender_name FROM notification ORDER BY id LIMIT 1").fetchone(),
+                ("teacher", "先生: teacher-1"),
+            )
+            self.assertEqual(
+                db.execute("SELECT target_label, notification_count, sender_school, sender_id FROM notification_batch ORDER BY id").fetchall(),
+                [("個人: a", 1, "school-1", "teacher-1"), ("自校の全生徒", 2, "school-1", "teacher-1")],
+            )
+
+    def test_teacher_history_is_shared_only_with_same_school(self):
+        self.teacher_send("teacher-1", "student", "a")
+        self.teacher_send("teacher-2", "student", "b")
+        self.teacher_send("teacher-3", "student", "c")
+        session = {
+            "teacher_login": True, "teacher_id": "teacher-1",
+            "teacher_notification_csrf_token": "token",
+        }
+        response = self.await_result(main.TeacherNotifications(
+            request("/teacher/notifications", session), 1
+        ))
+        html = response.body.decode("utf-8")
+        self.assertIn("teacher-1", html)
+        self.assertIn("teacher-2", html)
+        self.assertNotIn("teacher-3", html)
+
+    def test_teacher_send_rejects_invalid_csrf_and_target_type(self):
+        with self.assertRaises(main.HTTPException) as error:
+            self.teacher_send("teacher-1", "all", token="wrong")
+        self.assertEqual(error.exception.status_code, 403)
+        self.teacher_send("teacher-1", "school")
+        with closing(sqlite3.connect(self.db_path)) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM notification").fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM notification_batch").fetchone()[0], 0)
+
+    def test_notification_schema_migration_is_idempotent(self):
+        with closing(sqlite3.connect(self.db_path)) as db:
+            initialize_notification_tables(db)
+            initialize_notification_tables(db)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(notification_batch)")}
+        self.assertIn("sender_school", columns)
+        self.assertIn("sender_id", columns)
 
     def test_read_ownership_and_read_all_scope(self):
         with closing(sqlite3.connect(self.db_path)) as db:
@@ -107,17 +180,29 @@ class NotificationTests(unittest.TestCase):
 
     def test_tekne_create_and_cancel_notifications(self):
         future = (datetime.datetime.now(main.JST).date() + datetime.timedelta(days=3)).isoformat()
-        student = request("/reservation/date", {"user_login": True, "user_id": "a"}, "POST")
-        response = self.await_result(main.ReservationDate(student, future, "10:00", "11:00", "研究"))
+        with closing(sqlite3.connect(self.db_path)) as db:
+            db.executemany(
+                "INSERT INTO reservation_available_slot (admin_id, day, start_time) VALUES ('admin', ?, ?)",
+                [(future, "10:00"), (future, "10:30")],
+            )
+            db.commit()
+        student = request("/reservation/date", {
+            "user_login": True, "user_id": "a", "reservation_csrf_token": "token"
+        }, "POST")
+        response = self.await_result(main.ReservationDate(
+            student, future, "10:00", "11:00", "研究", "token"
+        ))
         self.assertTrue(response["result"])
         with closing(sqlite3.connect(self.db_path)) as db:
             created = db.execute("SELECT notification_type FROM notification WHERE recipient_user_id = 'a'").fetchall()
+            reservation_id = db.execute("SELECT id FROM reservation").fetchone()[0]
         self.assertEqual(created, [("reservation_created",)])
-        self.await_result(main.DelReservation(student, future, "10:00"))
+        student.session["mypage_reservation_csrf_token"] = "cancel-token"
+        self.await_result(main.CancelReservation(student, reservation_id, "cancel-token"))
         with closing(sqlite3.connect(self.db_path)) as db:
             types = db.execute("SELECT notification_type FROM notification WHERE recipient_user_id = 'a' ORDER BY id").fetchall()
             self.assertEqual(types, [("reservation_created",), ("reservation_cancelled",)])
-            self.assertEqual(db.execute("SELECT COUNT(*) FROM reservation").fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT status FROM reservation").fetchone()[0], "cancelled")
 
     def test_equipment_create_and_cancel_notifications(self):
         future = (datetime.datetime.now(main.JST).date() + datetime.timedelta(days=3)).isoformat()
