@@ -113,31 +113,26 @@
         header.className = "community-post-header";
         const author = document.createElement("span");
         author.className = "community-author";
-        if (post.is_deleted) {
-            author.textContent = "削除済み";
-        } else {
-            const avatar = document.createElement("img");
-            avatar.className = "community-avatar";
-            avatar.src = post.profile_image_url;
-            avatar.alt = "";
-            avatar.width = 28;
-            avatar.height = 28;
-            const authorId = document.createElement("span");
-            authorId.textContent = post.user_id;
-            author.append(avatar, authorId);
-        }
+        const avatar = document.createElement("img");
+        avatar.className = "community-avatar";
+        avatar.src = post.profile_image_url;
+        avatar.alt = "";
+        avatar.width = 28;
+        avatar.height = 28;
+        const authorId = document.createElement("span");
+        authorId.textContent = post.user_id;
+        author.append(avatar, authorId);
         const time = document.createElement("time");
         time.textContent = post.created_at;
         header.append(author, time);
         const body = document.createElement("p");
-        body.className = post.is_deleted ? "community-content community-deleted" : "community-content";
-        body.textContent = post.is_deleted ? "この投稿は削除されました" : post.content;
+        body.className = "community-content";
+        body.textContent = post.content;
         article.append(header, body);
 
-        if (!post.is_deleted) {
-            const actions = document.createElement("div");
-            actions.className = "community-actions";
-            const like = makeButton(`♡ ${post.like_count}`, `community-like${post.liked ? " is-liked" : ""}`, async () => {
+        const actions = document.createElement("div");
+        actions.className = "community-actions";
+        const like = makeButton(`♡ ${post.like_count}`, `community-like${post.liked ? " is-liked" : ""}`, async () => {
                 like.disabled = true;
                 const requestBody = new FormData();
                 requestBody.append("csrf_token", csrfToken);
@@ -149,29 +144,38 @@
                 } catch (error) { window.alert(error.message); }
                 finally { like.disabled = false; }
             });
-            like.setAttribute("aria-pressed", String(post.liked));
-            const reply = makeButton("返信する", "community-reply", () => {
+        like.setAttribute("aria-pressed", String(post.liked));
+        const reply = makeButton("返信する", "community-reply", () => {
                 const existing = article.querySelector(":scope > .community-reply-form");
                 if (existing) existing.remove();
                 else article.insertBefore(createReplyForm(post.id, article), article.querySelector(":scope > .community-replies"));
             });
-            actions.append(like, reply);
-            if (post.can_delete) {
+        actions.append(like, reply);
+        if (post.can_delete) {
                 actions.append(makeButton("削除", "community-delete", async () => {
-                    if (!window.confirm("この投稿を削除しますか？")) return;
+                    if (!window.confirm("この投稿と返信を削除しますか？")) return;
                     const requestBody = new FormData();
                     requestBody.append("csrf_token", csrfToken);
                     try {
                         await request(`/community/posts/${post.id}/delete`, {method: "POST", body: requestBody});
-                        author.replaceChildren("削除済み");
-                        body.textContent = "この投稿は削除されました";
-                        body.className = "community-content community-deleted";
-                        actions.remove();
+                        const replies = article.parentElement;
+                        article.remove();
+                        if (replies?.classList.contains("community-replies")) {
+                            const parent = replies.parentElement;
+                            if (replies.children.length === 0) {
+                                parent.querySelector(":scope > .community-actions .community-replies-toggle")?.remove();
+                                replies.remove();
+                            } else {
+                                ensureReplyToggle(parent, replies);
+                            }
+                        } else {
+                            empty.hidden = timeline.children.length !== 0;
+                            if (timeline.children.length === 0) end.hidden = true;
+                        }
                     } catch (error) { window.alert(error.message); }
                 }));
-            }
-            article.append(actions);
         }
+        article.append(actions);
         if (post.replies.length) {
             const replies = document.createElement("div");
             replies.className = "community-replies";

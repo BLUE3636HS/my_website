@@ -11,13 +11,13 @@
             <thead><tr><th>ID / 種別</th><th>投稿者</th><th>本文</th><th>投稿日時</th><th>いいね</th><th>操作</th></tr></thead>
             <tbody>
             {% for post in posts %}
-                <tr class="{% if post[5] %}is-deleted{% endif %}">
+                <tr>
                     <td>#{{ post[0] }}<br><small>{% if post[2] %}#{{ post[2] }} への返信{% else %}トップ投稿{% endif %}</small></td>
-                    <td>{% if post[5] %}—{% else %}{{ post[1] }}{% endif %}</td>
-                    <td class="admin-community-content">{% if post[5] %}この投稿は削除されました{% else %}{{ post[3] }}{% endif %}</td>
+                    <td>{{ post[1] }}</td>
+                    <td class="admin-community-content">{{ post[3] }}</td>
                     <td>{{ post[4][:16].replace('-', '/').replace('T', ' ') }}</td>
-                    <td>{{ post[6] }}</td>
-                    <td>{% if not post[5] %}<form method="post" action="/admin/community/{{ post[0] }}/delete" onsubmit="return confirm('この投稿を削除しますか？');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_page" value="{{ page }}"><button class="admin-community-delete" type="submit">削除</button></form>{% else %}—{% endif %}</td>
+                    <td>{{ post[5] }}</td>
+                    <td><form method="post" action="/admin/community/{{ post[0] }}/delete" onsubmit="return confirm('この投稿と返信を削除しますか？');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="return_page" value="{{ page }}"><button class="admin-community-delete" type="submit">削除</button></form></td>
                 </tr>
             {% else %}<tr><td class="no-data" colspan="6">投稿はありません。</td></tr>{% endfor %}
             </tbody>

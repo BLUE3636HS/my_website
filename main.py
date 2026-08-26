@@ -200,6 +200,51 @@ def community_now():
     return datetime.datetime.now(JST).isoformat(timespec="seconds")
 
 
+def delete_community_subtrees(db, root_ids):
+    root_ids = list(dict.fromkeys(root_ids))
+    if not root_ids:
+        return 0
+    placeholders = ",".join("?" for _ in root_ids)
+    rows = db.execute(
+        f"""
+        WITH RECURSIVE tree(id, depth) AS (
+            SELECT id, 0 FROM community_post WHERE id IN ({placeholders})
+            UNION ALL
+            SELECT p.id, tree.depth + 1
+            FROM community_post p JOIN tree ON p.parent_id = tree.id
+        )
+        SELECT id, MAX(depth) FROM tree GROUP BY id ORDER BY MAX(depth) DESC
+        """,
+        root_ids
+    ).fetchall()
+    post_ids = [row[0] for row in rows]
+    if not post_ids:
+        return 0
+    delete_placeholders = ",".join("?" for _ in post_ids)
+    db.execute(
+        f"DELETE FROM community_like WHERE post_id IN ({delete_placeholders})",
+        post_ids
+    )
+    for post_id in post_ids:
+        db.execute("DELETE FROM community_post WHERE id = ?", (post_id,))
+    return len(post_ids)
+
+
+def cleanup_deleted_community_posts(db):
+    deleted_ids = [
+        row[0] for row in db.execute(
+            "SELECT id FROM community_post WHERE deleted_at IS NOT NULL"
+        ).fetchall()
+    ]
+    return delete_community_subtrees(db, deleted_ids)
+
+
+with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as community_cleanup_db:
+    community_cleanup_db.execute("BEGIN IMMEDIATE")
+    cleanup_deleted_community_posts(community_cleanup_db)
+    community_cleanup_db.commit()
+
+
 def profile_image_url(filename):
     if not filename:
         return "/static/images/default_profile.svg"
@@ -287,15 +332,16 @@ def community_post_payloads(db, root_ids, user_id=None):
     placeholders = ",".join("?" for _ in root_ids)
     rows = db.execute(
         f"""
-        WITH RECURSIVE tree(id, user_id, parent_id, content, created_at, deleted_at) AS (
-            SELECT id, user_id, parent_id, content, created_at, deleted_at
-            FROM community_post WHERE id IN ({placeholders})
+        WITH RECURSIVE tree(id, user_id, parent_id, content, created_at) AS (
+            SELECT id, user_id, parent_id, content, created_at
+            FROM community_post WHERE id IN ({placeholders}) AND deleted_at IS NULL
             UNION ALL
-            SELECT p.id, p.user_id, p.parent_id, p.content, p.created_at, p.deleted_at
+            SELECT p.id, p.user_id, p.parent_id, p.content, p.created_at
             FROM community_post p JOIN tree t ON p.parent_id = t.id
+            WHERE p.deleted_at IS NULL
         )
         SELECT tree.id, tree.user_id, tree.parent_id, tree.content,
-               tree.created_at, tree.deleted_at,
+               tree.created_at,
                COUNT(community_like.id) AS like_count,
                MAX(CASE WHEN community_like.user_id = ? THEN 1 ELSE 0 END) AS liked,
                (SELECT student.profile_image FROM student
@@ -308,22 +354,20 @@ def community_post_payloads(db, root_ids, user_id=None):
     ).fetchall()
     by_id = {}
     for row in rows:
-        deleted = row[5] is not None
         try:
             displayed_at = datetime.datetime.fromisoformat(row[4]).astimezone(JST).strftime("%Y/%m/%d %H:%M")
         except ValueError:
             displayed_at = row[4]
         by_id[row[0]] = {
             "id": row[0],
-            "user_id": None if deleted else row[1],
+            "user_id": row[1],
             "parent_id": row[2],
-            "content": None if deleted else row[3],
+            "content": row[3],
             "created_at": displayed_at,
-            "is_deleted": deleted,
-            "like_count": row[6],
-            "liked": bool(row[7]),
-            "profile_image_url": None if deleted else profile_image_url(row[8]),
-            "can_delete": bool(user_id and not deleted and row[1] == user_id),
+            "like_count": row[5],
+            "liked": bool(row[6]),
+            "profile_image_url": profile_image_url(row[7]),
+            "can_delete": bool(user_id and row[1] == user_id),
             "replies": []
         }
     roots = []
@@ -1266,12 +1310,12 @@ async def CommunityPosts(request: Request, before_id: int = None):
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
         if before_id is None:
             rows = db.execute(
-                "SELECT id FROM community_post WHERE parent_id IS NULL ORDER BY id DESC LIMIT ?",
+                "SELECT id FROM community_post WHERE parent_id IS NULL AND deleted_at IS NULL ORDER BY id DESC LIMIT ?",
                 (COMMUNITY_PAGE_SIZE + 1,)
             ).fetchall()
         else:
             rows = db.execute(
-                "SELECT id FROM community_post WHERE parent_id IS NULL AND id < ? ORDER BY id DESC LIMIT ?",
+                "SELECT id FROM community_post WHERE parent_id IS NULL AND deleted_at IS NULL AND id < ? ORDER BY id DESC LIMIT ?",
                 (before_id, COMMUNITY_PAGE_SIZE + 1)
             ).fetchall()
         has_more = len(rows) > COMMUNITY_PAGE_SIZE
@@ -1372,14 +1416,14 @@ async def DeleteCommunityPost(
         return JSONResponse({"error": "操作を確認できませんでした。"}, status_code=403)
     with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
         db.execute("BEGIN IMMEDIATE")
-        changed = db.execute(
-            "UPDATE community_post SET deleted_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
-            (community_now(), post_id, user_id)
-        ).rowcount
-        if changed != 1:
+        target = db.execute(
+            "SELECT id FROM community_post WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+            (post_id, user_id)
+        ).fetchone()
+        if target is None:
             db.rollback()
             return JSONResponse({"error": "削除できる投稿が見つかりません。"}, status_code=403)
-        db.execute("DELETE FROM community_like WHERE post_id = ?", (post_id,))
+        delete_community_subtrees(db, [post_id])
         db.commit()
     return JSONResponse({"deleted": True})
 
@@ -1391,12 +1435,15 @@ async def AdminCommunityPage(request: Request, page: int = 1):
     safe_page = max(page, 1)
     per_page = 50
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
-        total = db.execute("SELECT COUNT(*) FROM community_post").fetchone()[0]
+        total = db.execute(
+            "SELECT COUNT(*) FROM community_post WHERE deleted_at IS NULL"
+        ).fetchone()[0]
         posts = db.execute(
             """
-            SELECT p.id, p.user_id, p.parent_id, p.content, p.created_at, p.deleted_at,
+            SELECT p.id, p.user_id, p.parent_id, p.content, p.created_at,
                    COUNT(l.id) AS like_count
             FROM community_post p LEFT JOIN community_like l ON l.post_id = p.id
+            WHERE p.deleted_at IS NULL
             GROUP BY p.id ORDER BY p.id DESC LIMIT ? OFFSET ?
             """,
             (per_page, (safe_page - 1) * per_page)
@@ -1432,12 +1479,13 @@ async def AdminDeleteCommunityPost(
         return RedirectResponse(redirect_url, status_code=303)
     with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
         db.execute("BEGIN IMMEDIATE")
-        changed = db.execute(
-            "UPDATE community_post SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
-            (community_now(), post_id)
-        ).rowcount
+        target = db.execute(
+            "SELECT id FROM community_post WHERE id = ? AND deleted_at IS NULL",
+            (post_id,)
+        ).fetchone()
+        changed = bool(target)
         if changed:
-            db.execute("DELETE FROM community_like WHERE post_id = ?", (post_id,))
+            delete_community_subtrees(db, [post_id])
         db.commit()
     request.session["community_admin_notice"] = {
         "type": "success" if changed else "error",
