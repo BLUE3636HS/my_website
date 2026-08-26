@@ -90,6 +90,21 @@ class NotificationTests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT is_read FROM notification WHERE id = ?", (own_id,)).fetchone()[0], 1)
             self.assertEqual(db.execute("SELECT is_read FROM notification WHERE id = ?", (other_id,)).fetchone()[0], 0)
 
+    def test_dashboard_shows_only_current_students_unread_notifications(self):
+        with closing(sqlite3.connect(self.db_path)) as db:
+            create_notification(db, "a", "表示する未読通知", "body")
+            read_id = create_notification(db, "a", "表示しない既読通知", "body")
+            create_notification(db, "b", "他の生徒の通知", "body")
+            db.execute("UPDATE notification SET is_read = 1 WHERE id = ?", (read_id,))
+            db.commit()
+        response = self.await_result(main.Dashboard(
+            request("/dashboard", {"user_login": True, "user_id": "a"})
+        ))
+        html = response.body.decode("utf-8")
+        self.assertIn("表示する未読通知", html)
+        self.assertNotIn("表示しない既読通知", html)
+        self.assertNotIn("他の生徒の通知", html)
+
     def test_tekne_create_and_cancel_notifications(self):
         future = (datetime.datetime.now(main.JST).date() + datetime.timedelta(days=3)).isoformat()
         student = request("/reservation/date", {"user_login": True, "user_id": "a"}, "POST")

@@ -62,7 +62,12 @@ body {
     background: rgba(255, 255, 255, .16);
 }
 
-.student-notification-link { margin-top: auto; }
+.student-notification-link {
+    margin-top: auto;
+    border-top: 1px solid rgba(255, 255, 255, .25);
+    border-radius: 0;
+    padding-top: 20px;
+}
 .student-notification-link + .student-logout-link { margin-top: 0; }
 .notification-badge {
     display: inline-flex; min-width: 22px; height: 22px; align-items: center; justify-content: center;
@@ -71,9 +76,6 @@ body {
 
 .student-logout-link {
     margin-top: auto;
-    border-top: 1px solid rgba(255, 255, 255, .25);
-    border-radius: 0;
-    padding-top: 20px;
 }
 
 .student-main {

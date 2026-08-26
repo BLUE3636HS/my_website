@@ -622,33 +622,42 @@ async def Dashboard(request: Request):
     today = now.date().isoformat()
     current_time = now.strftime("%H:%M")
 
-    cursor.execute(
-        """
-        SELECT day, start_time, end_time, purpose
-        FROM reservation
-        WHERE userid = ?
-          AND (day > ? OR (day = ? AND end_time > ?))
-        ORDER BY day ASC, start_time ASC, end_time ASC, id ASC
-        LIMIT 1
-        """,
-        (user_id, today, today, current_time)
-    )
-    next_reservation = cursor.fetchone()
-    cursor.execute(
-        """
-        SELECT equipment, start_day, end_day, quantity
-        FROM equipment_reservation
-        WHERE userid = ? AND end_day >= ?
-        ORDER BY
-            CASE WHEN start_day <= ? THEN 0 ELSE 1 END ASC,
-            start_day ASC,
-            end_day ASC,
-            id ASC
-        LIMIT 1
-        """,
-        (user_id, today, today)
-    )
-    next_equipment_reservation = cursor.fetchone()
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        next_reservation = db.execute(
+            """
+            SELECT day, start_time, end_time, purpose
+            FROM reservation
+            WHERE userid = ?
+              AND (day > ? OR (day = ? AND end_time > ?))
+            ORDER BY day ASC, start_time ASC, end_time ASC, id ASC
+            LIMIT 1
+            """,
+            (user_id, today, today, current_time)
+        ).fetchone()
+        next_equipment_reservation = db.execute(
+            """
+            SELECT equipment, start_day, end_day, quantity
+            FROM equipment_reservation
+            WHERE userid = ? AND end_day >= ?
+            ORDER BY
+                CASE WHEN start_day <= ? THEN 0 ELSE 1 END ASC,
+                start_day ASC,
+                end_day ASC,
+                id ASC
+            LIMIT 1
+            """,
+            (user_id, today, today)
+        ).fetchone()
+        unread_notifications = db.execute(
+            """
+            SELECT id, title, created_at
+            FROM notification
+            WHERE recipient_user_id = ? AND is_read = 0
+            ORDER BY created_at DESC, id DESC
+            LIMIT 5
+            """,
+            (user_id,)
+        ).fetchall()
 
     return templates.TemplateResponse(
         request = request,
@@ -657,6 +666,7 @@ async def Dashboard(request: Request):
             "request": request,
             "user_login": request.session.get("user_login"),
             "user_id": user_id,
+            "unread_notifications": unread_notifications,
             "next_reservation": next_reservation,
             "next_equipment_reservation": next_equipment_reservation
         }

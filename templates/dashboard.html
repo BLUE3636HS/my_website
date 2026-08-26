@@ -11,6 +11,26 @@
         <p>次の予約を確認できます。</p>
     </section>
 
+    <section class="student-panel dashboard-notifications" aria-labelledby="dashboard-notifications-title">
+        <div class="dashboard-notifications-heading">
+            <div>
+                <p class="dashboard-card-label">UNREAD NOTIFICATIONS</p>
+                <h2 id="dashboard-notifications-title">通知</h2>
+            </div>
+            <a href="/notifications">通知をすべて確認する</a>
+        </div>
+        <div class="dashboard-notification-list">
+            {% for notification in unread_notifications %}
+            <a href="/notifications/{{ notification[0] }}">
+                <strong>{{ notification[1] }}</strong>
+                <time>{{ notification[2] }}</time>
+            </a>
+            {% else %}
+            <p class="dashboard-notification-empty">未読の通知はありません。</p>
+            {% endfor %}
+        </div>
+    </section>
+
     <div class="dashboard-grid">
         <section class="student-panel dashboard-card">
             <p class="dashboard-card-label">NEXT RESERVATION</p>
