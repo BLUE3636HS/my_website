@@ -73,7 +73,46 @@
 }
 
 .equipment-reservation-table {
-    min-width: 760px;
+    min-width: 1040px;
+    table-layout: fixed;
+}
+
+.equipment-col-usage-type { width: 12%; }
+.equipment-col-name { width: 21%; }
+.equipment-col-date { width: 19%; }
+.equipment-col-time { width: 14%; }
+.equipment-col-quantity { width: 6%; }
+.equipment-col-purpose { width: 11%; }
+.equipment-col-return-status { width: 11%; }
+.equipment-col-cancel { width: 6%; }
+
+.equipment-purpose-cell {
+    text-align: left !important;
+}
+
+.equipment-purpose summary {
+    overflow: hidden;
+    color: #1f4e79;
+    cursor: pointer;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.equipment-purpose summary::marker {
+    color: #6f8192;
+}
+
+.equipment-purpose[open] summary {
+    margin-bottom: 8px;
+    color: #526475;
+    font-size: 0.8rem;
+}
+
+.equipment-purpose p {
+    margin: 0;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+    white-space: normal;
 }
 
 .usage-type {
