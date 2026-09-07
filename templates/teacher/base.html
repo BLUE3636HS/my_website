@@ -10,16 +10,17 @@
         {% endblock %}
     </head>
     <body>
+        {% set current_path = request.url.path %}
         <div class="teacher-layout">
             <aside class="teacher-sidebar">
                 <a class="teacher-brand" href="/teacher">
                     <img src="/static/top.png" alt="TEKNE工作室">
                 </a>
                 <nav class="teacher-nav" aria-label="先生用メニュー">
-                    <a class="teacher-nav-link" href="/teacher">ダッシュボード</a>
-                    <a class="teacher-nav-link" href="/teacher/studylist">自校提出物確認</a>
-                    <a class="teacher-nav-link" href="/teacher/notifications">通知送信</a>
-                    <a class="teacher-nav-link" href="/teacher/edit">マイページ</a>
+                    <a class="teacher-nav-link" href="/teacher"{% if current_path == '/teacher' %} aria-current="page"{% endif %}>ダッシュボード</a>
+                    <a class="teacher-nav-link" href="/teacher/studylist"{% if current_path == '/teacher/studylist' or current_path.startswith('/teacher/studylist/') %} aria-current="page"{% endif %}>自校提出物確認</a>
+                    <a class="teacher-nav-link" href="/teacher/notifications"{% if current_path == '/teacher/notifications' or current_path.startswith('/teacher/notifications/') %} aria-current="page"{% endif %}>通知送信</a>
+                    <a class="teacher-nav-link" href="/teacher/edit"{% if current_path == '/teacher/edit' or current_path.startswith('/teacher/edit/') %} aria-current="page"{% endif %}>マイページ</a>
                 </nav>
                 <a class="teacher-logout-link" href="/logout">Logout</a>
             </aside>

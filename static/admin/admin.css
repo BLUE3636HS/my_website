@@ -155,3 +155,19 @@ body {
     background: #fff;
     box-shadow: 0 5px 20px rgba(37, 97, 62, .1);
 }
+
+/* Keep the current section visible without shifting menu text. */
+.nav-link[aria-current="page"] {
+    background: rgba(255, 255, 255, .16);
+    box-shadow: inset 4px 0 0 #fff;
+    border-radius: 7px;
+    color: #fff;
+    font-weight: 700;
+}
+
+.nav-link:focus-visible,
+.logout-link:focus-visible,
+.brand:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}

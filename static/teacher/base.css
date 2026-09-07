@@ -21,3 +21,19 @@ body { margin: 0; min-height: 100vh; font-family: "Segoe UI", "Noto Sans JP", sa
 .teacher-profile-summary dd { margin: 0; color: #4a3b32; font-weight: 700; overflow-wrap: anywhere; }
 @container (max-width: 640px) { .teacher-profile-summary { grid-template-columns: 1fr; } }
 @media (max-width: 700px) { .teacher-sidebar { flex-basis: 184px; } .teacher-header { padding: 0 20px; } .teacher-page { padding: 25px 16px 50px; } }
+
+/* Keep the current section visible without shifting menu text. */
+.teacher-nav-link[aria-current="page"] {
+    background: rgba(255, 255, 255, .16);
+    box-shadow: inset 4px 0 0 #fff;
+    border-radius: 7px;
+    color: #fff;
+    font-weight: 700;
+}
+
+.teacher-nav-link:focus-visible,
+.teacher-logout-link:focus-visible,
+.teacher-brand:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}
