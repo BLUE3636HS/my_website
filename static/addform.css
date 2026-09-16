@@ -11,6 +11,7 @@
 }
 
 .addform-panel input[type="text"],
+.addform-panel select,
 .addform-panel textarea,
 .addform-panel input[type="file"] {
     width: 100%;
@@ -27,6 +28,7 @@
 }
 
 .addform-panel input:focus,
+.addform-panel select:focus,
 .addform-panel textarea:focus {
     outline: 3px solid rgba(31, 78, 121, .18);
     border-color: #1f4e79;
@@ -39,3 +41,11 @@
     justify-content: center;
     margin-top: 22px;
 }
+
+.study-input-panel { display: grid; gap: 10px; }
+.study-input-panel[hidden] { display: none; }
+.study-modes { border: 1px solid #cbd6e2; border-radius: 9px; padding: 14px; }
+.study-modes label { display: inline-block; margin-right: 18px; }
+.study-modes legend { color: #334155; font-weight: 700; }
+.addform-panel button:disabled { opacity: .6; cursor: default; }
+#submission-status { overflow-wrap: anywhere; }

@@ -9,6 +9,9 @@ from pathlib import Path
 from uuid import uuid4
 
 import sqlite3, shutil, bcrypt, datetime, csv, secrets, io
+import hashlib, hmac, logging
+from starlette.datastructures import UploadFile as StarletteUploadFile
+from studies import connect_studies, initialize_studies, get_templates, study_pdf_path, validate_pdf
 from urllib.parse import urlencode
 from PIL import Image, ImageOps, UnidentifiedImageError
 from notifications import (
@@ -244,6 +247,8 @@ if "returned" not in equipment_room_reservation_columns:
     )
 initialize_notification_tables(conn)
 conn.commit()
+with closing(connect_studies(DATABASE_PATH)) as study_db:
+    initialize_studies(study_db)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/uploads/profile", StaticFiles(directory=str(PROFILE_UPLOADS_DIR)), name="profile_uploads")
@@ -833,10 +838,20 @@ async def Dashboard(request: Request):
 
 @app.get("/addform", response_class = HTMLResponse)
 async def AddForm(request: Request):
+    if request.session.get("user_login") is not True or not request.session.get("user_id"):
+        return RedirectResponse("/login", status_code=303)
+    csrf = request.session.setdefault("study_csrf_token", secrets.token_urlsafe(32))
+    nonce = secrets.token_hex(32)
+    submission_token = nonce + "." + hmac.new(csrf.encode(), nonce.encode(), hashlib.sha256).hexdigest()
+    with closing(connect_studies(DATABASE_PATH)) as db:
+        study_templates = get_templates(db)
     return templates.TemplateResponse(
         request = request,
         name = "addform.html",
         context = {
+            "study_templates": study_templates,
+            "csrf_token": csrf,
+            "submission_token": submission_token,
             "request": request,
             "user_login": request.session.get("user_login"),
             "user_id": request.session.get("user_id")
@@ -845,8 +860,8 @@ async def AddForm(request: Request):
 
 @app.get("/studylist", response_class = HTMLResponse)
 async def StudyList(request: Request):    
-    cursor.execute("SELECT * FROM study")
-    studies = cursor.fetchall()
+    with closing(connect_studies(DATABASE_PATH)) as db:
+        studies = db.execute("SELECT * FROM study ORDER BY id").fetchall()
 
     return templates.TemplateResponse(
         request = request,
@@ -861,17 +876,17 @@ async def StudyList(request: Request):
 
 @app.get("/uploads/{id}.pdf")
 async def pdf(id: int):
-    pdf_path = f"uploads/{id}.pdf"
-
-    cursor.execute(
-        "SELECT filename FROM study WHERE id = ?",
-        (id,)
-    )
-
-    return FileResponse(
-        path = pdf_path,
-        media_type = "application/pdf"
-    )
+    with closing(connect_studies(DATABASE_PATH)) as db:
+        study = db.execute("SELECT pdfpath FROM study WHERE id = ? AND registration_type = 'pdf'", (id,)).fetchone()
+    if not study:
+        raise HTTPException(404, "PDFが見つかりません。")
+    try:
+        target = study_pdf_path(UPLOADS_DIR, study[0])
+    except ValueError:
+        raise HTTPException(404, "PDFが見つかりません。")
+    if not target.is_file():
+        raise HTTPException(404, "PDFが見つかりません。")
+    return FileResponse(target, media_type="application/pdf")
 
 @app.get("/reservation", response_class = HTMLResponse)
 async def ReservationPage(request: Request, day: str = None):
@@ -1620,7 +1635,8 @@ async def AdminStudiesPage(request: Request):
                 study.userid,
                 study.time,
                 student.id,
-                student.school
+                student.school,
+                study.registration_type
             FROM study
             LEFT JOIN student ON study.userid = student.id
             ORDER BY study.id ASC
@@ -1642,7 +1658,7 @@ async def AdminDeleteStudy(request: Request, study_id: int):
     if request.session.get("admin_login") != True:
         return RedirectResponse("/admin/login", status_code=303)
 
-    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+    with closing(connect_studies(DATABASE_PATH)) as db:
         try:
             study = db.execute(
                 "SELECT pdfpath FROM study WHERE id = ?",
@@ -1660,17 +1676,15 @@ async def AdminDeleteStudy(request: Request, study_id: int):
 
     pdfpath = study[0]
     if pdfpath:
-        target_path = (UPLOADS_DIR / pdfpath).resolve()
         try:
-            target_path.relative_to(UPLOADS_DIR)
+            target_path = study_pdf_path(UPLOADS_DIR, pdfpath)
         except ValueError:
             pass
         else:
             try:
                 target_path.unlink(missing_ok=True)
             except OSError:
-                # DB deletion has completed; leave an undeleted file for manual cleanup.
-                pass
+                logging.exception("Failed to delete research PDF %s", target_path)
 
     return RedirectResponse("/admin/studies", status_code=303)
 
@@ -2764,7 +2778,7 @@ async def TeacherDeleteStudy(
 
     teacher_id = request.session.get("teacher_id")
     study = None
-    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+    with closing(connect_studies(DATABASE_PATH)) as db:
         try:
             teacher = db.execute(
                 "SELECT school FROM teacher WHERE id = ?",
@@ -2809,16 +2823,15 @@ async def TeacherDeleteStudy(
     request.session["teacher_studylist_csrf_token"] = secrets.token_urlsafe(32)
     pdfpath = study[0]
     if pdfpath:
-        target_path = (UPLOADS_DIR / pdfpath).resolve()
         try:
-            target_path.relative_to(UPLOADS_DIR)
+            target_path = study_pdf_path(UPLOADS_DIR, pdfpath)
         except ValueError:
             pass
         else:
             try:
                 target_path.unlink(missing_ok=True)
             except OSError:
-                pass
+                logging.exception("Failed to delete research PDF %s", target_path)
 
     request.session["teacher_studylist_delete_succeeded"] = True
     return redirect
@@ -2988,33 +3001,93 @@ async def Registration(
             return {"result": 1}
 
 @app.post("/addform")
-async def Add(
-    request: Request,
-    name: str = Form(...),
-    introduce: str = Form(...),
-    pdf: UploadFile = File(...)
-):
-    #dbに保存
-    cursor.execute(
-        """
-        INSERT INTO study (name, introduce, filename, pdfpath, userid, time)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (name, introduce, pdf.filename, "", request.session.get("user_id"), datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    )
-    id = cursor.lastrowid
-    cursor.execute(
-        "UPDATE study SET pdfpath = ? WHERE id = ?",
-        (f"{id}.pdf", id)
-    )
-    conn.commit()
+async def Add(request: Request):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        raise HTTPException(401, "ログインしてください。")
+    async with request.form(max_part_size=2**63 - 1) as form:
+        def text_value(key, default=""):
+            value = form.get(key, default)
+            if not isinstance(value, str) or len(form.getlist(key)) > 1:
+                raise HTTPException(422, "入力形式が不正です。")
+            return value
 
-    #pdfファイルを保存
-    pdf_path = f"uploads/{id}.pdf"
-    with open(pdf_path, "wb") as f:
-        shutil.copyfileobj(pdf.file, f)
-    
-    print("dbに情報を追加,ファイルを保存")
+        csrf = request.session.get("study_csrf_token", "")
+        if not csrf or not secrets.compare_digest(csrf.encode(), text_value("csrf_token").encode()):
+            raise HTTPException(403, "画面を再読み込みして登録してください。")
+        token = text_value("submission_token")
+        nonce, separator, signature = token.partition(".")
+        expected = hmac.new(csrf.encode(), nonce.encode(), hashlib.sha256).hexdigest()
+        if len(nonce) != 64 or not separator or not secrets.compare_digest(signature.encode(), expected.encode()):
+            raise HTTPException(403, "送信情報が不正です。画面を再読み込みしてください。")
+        submission_key = hashlib.sha256((str(user_id) + ":" + token).encode()).hexdigest()
+        mode = text_value("registration_type")
+        if mode not in ("pdf", "template"):
+            raise HTTPException(422, "登録方式を選択してください。")
+        temporary = final = None
+        try:
+            with closing(connect_studies(DATABASE_PATH)) as db:
+                # Serialize duplicate requests before checking the unique key.
+                with db:
+                    db.execute("BEGIN IMMEDIATE")
+                    previous = db.execute("SELECT id FROM study WHERE submission_key = ?", (submission_key,)).fetchone()
+                    if previous:
+                        return JSONResponse({"ok": True, "id": previous[0]})
+                    if not db.execute("SELECT 1 FROM student WHERE id = ?", (user_id,)).fetchone():
+                        raise HTTPException(401, "ログインし直してください。")
+                    template_id, values, filename, pdfpath = None, [], "", ""
+                    if mode == "template":
+                        try:
+                            template_id = int(text_value("template_id"))
+                        except ValueError:
+                            raise HTTPException(422, "テンプレートを選択してください。")
+                        template = db.execute("SELECT id FROM study_template WHERE id = ? AND active = 1", (template_id,)).fetchone()
+                        if not template:
+                            raise HTTPException(422, "選択されたテンプレートは利用できません。")
+                        fields = db.execute("SELECT id, label, required FROM study_template_field WHERE template_id = ? ORDER BY position, id", (template_id,)).fetchall()
+                        allowed = {f"field_{field[0]}" for field in fields}
+                        if any(key.startswith("field_") and key not in allowed for key in form):
+                            raise HTTPException(422, "テンプレートに存在しない項目が含まれています。")
+                        for field_id, label, required in fields:
+                            value = text_value(f"field_{field_id}")
+                            if required and not value.strip():
+                                raise HTTPException(422, f"「{label}」を入力してください。")
+                            values.append((field_id, value))
+                    else:
+                        upload = form.get("pdf")
+                        if not isinstance(upload, StarletteUploadFile) or len(form.getlist("pdf")) != 1:
+                            raise HTTPException(422, "PDFファイルを選択してください。")
+                        try:
+                            validate_pdf(upload)
+                        except ValueError as exc:
+                            raise HTTPException(422, str(exc))
+                        filename = upload.filename.replace("\\", "/").rsplit("/", 1)[-1]
+                        pdfpath = uuid4().hex + ".pdf"
+                        final = study_pdf_path(UPLOADS_DIR, pdfpath)
+                        temporary = final.with_suffix(".tmp")
+                        with temporary.open("xb") as output:
+                            shutil.copyfileobj(upload.file, output)
+                        temporary.replace(final)
+                    result = db.execute("""INSERT INTO study
+                        (name, introduce, filename, pdfpath, userid, time, registration_type, template_id, submission_key)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
+                            text_value("name"), text_value("introduce"), filename, pdfpath, user_id,
+                            datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"), mode, template_id, submission_key))
+                    study_id = result.lastrowid
+                    db.executemany("INSERT INTO study_field_value(study_id, field_id, value) VALUES (?, ?, ?)",
+                                   [(study_id, field_id, value) for field_id, value in values])
+            return JSONResponse({"ok": True, "id": study_id}, status_code=201)
+        except Exception as exc:
+            for path in (temporary, final):
+                if path is not None:
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError:
+                        logging.exception("Failed to clean research file %s", path)
+            if isinstance(exc, HTTPException):
+                raise
+            logging.exception("Research submission failed")
+            raise HTTPException(500, "登録に失敗しました。時間をおいて再度お試しください。")
 
 @app.post("/reservation/date")
 async def ReservationDate(

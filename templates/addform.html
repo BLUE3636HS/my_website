@@ -8,22 +8,42 @@
     <section class="student-page-hero">
         <p class="student-page-eyebrow">RESEARCH SUBMISSION</p>
         <h1>研究成果追加フォーム</h1>
-        <p>研究成果の題名と紹介文を入力し、PDFファイルを登録してください。</p>
+        <p>PDFのアップロード、またはテンプレートへの文字入力で研究成果を登録できます。</p>
     </section>
-    <section class="addform-panel">
+    <form class="addform-panel" id="study-form" method="post" action="/addform" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="submission_token" value="{{ submission_token }}">
         <label for="name">名前</label>
-        <input type="text" id="name" maxlength="50">
+        <input type="text" id="name" name="name">
         <label for="introduce">紹介文</label>
-        <textarea id="introduce" maxlength="100"></textarea>
-        <label for="pdf_file">研究成果ファイル</label>
-        <input type="file" id="pdf_file" accept=".pdf">
+        <textarea id="introduce" name="introduce"></textarea>
+        <fieldset class="study-modes">
+            <legend>登録方式</legend>
+            <label><input type="radio" name="registration_type" value="pdf" checked> PDFをアップロード</label>
+            <label><input type="radio" name="registration_type" value="template"> テンプレートから作成</label>
+        </fieldset>
+        <div id="pdf-panel" class="study-input-panel">
+            <label for="pdf_file">研究成果ファイル</label>
+            <input type="file" id="pdf_file" name="pdf" accept=".pdf,application/pdf" required>
+        </div>
+        <div id="template-panel" class="study-input-panel" hidden>
+            <label for="template-id">テンプレート</label>
+            <select id="template-id" name="template_id" disabled>
+                {% for template in study_templates %}
+                <option value="{{ template.id }}">{{ template.name }}</option>
+                {% else %}<option value="">利用可能なテンプレートがありません</option>{% endfor %}
+            </select>
+            <div id="template-fields" class="study-input-panel"></div>
+        </div>
+        <p id="submission-status" role="status" aria-live="polite"></p>
         <div class="addform-actions">
-            <button type="button" id="add_btn" class="student-primary-button">追加</button>
+            <button type="submit" id="add_btn" class="student-primary-button">研究成果を追加</button>
             <a href="/dashboard" class="student-secondary-link">ダッシュボードへ戻る</a>
         </div>
-    </section>
+    </form>
 </div>
 {% endblock %}
 {% block script %}
+    <script type="application/json" id="study-templates">{{ study_templates | tojson }}</script>
     <script src="/static/addform.js"></script>
 {% endblock %}

@@ -23,7 +23,7 @@
         <tr>
             <td>{{study[1]}}</td>
             <td>{{study[2]}}</td>
-            <td><a href="/uploads/{{study[4]}}">{{study[3]}}</a></td>
+            <td>{% if study[7] == "pdf" %}<a href="/uploads/{{study[0]}}.pdf">{{study[3]}}</a>{% else %}<span>テンプレート形式（本文表示機能は未実装）</span>{% endif %}</td>
             <td class="teacher-study-action-column">
                 <form method="post" action="/teacher/studylist/{{ study[0] }}/delete" class="teacher-study-delete-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

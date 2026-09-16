@@ -39,7 +39,7 @@
                         <td class="studies-name-cell">{{ study[1] }}</td>
                         <td class="studies-introduce-cell">{{ study[2] }}</td>
                         <td class="studies-filename-cell">
-                            <a class="studies-filename-link" href="/uploads/{{ study[4] }}" target="_blank" rel="noopener">{{ study[3] }}</a>
+                            {% if study[9] == "pdf" %}<a class="studies-filename-link" href="/uploads/{{ study[0] }}.pdf" target="_blank" rel="noopener">{{ study[3] }}</a>{% else %}<span>テンプレート形式（本文表示機能は未実装）</span>{% endif %}
                         </td>
                         <td>
                             <button
