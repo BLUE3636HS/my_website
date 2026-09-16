@@ -13,10 +13,10 @@
     <form class="addform-panel" id="study-form" method="post" action="/addform" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="submission_token" value="{{ submission_token }}">
-        <label for="name">名前</label>
-        <input type="text" id="name" name="name">
-        <label for="introduce">紹介文</label>
-        <textarea id="introduce" name="introduce"></textarea>
+        <label for="name">名前（必須）</label>
+        <input type="text" id="name" name="name" required>
+        <label for="introduce">紹介文（必須）</label>
+        <textarea id="introduce" name="introduce" required></textarea>
         <fieldset class="study-modes">
             <legend>登録方式</legend>
             <label><input type="radio" name="registration_type" value="pdf" checked> PDFをアップロード</label>

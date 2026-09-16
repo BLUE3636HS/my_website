@@ -3024,6 +3024,12 @@ async def Add(request: Request):
         mode = text_value("registration_type")
         if mode not in ("pdf", "template"):
             raise HTTPException(422, "登録方式を選択してください。")
+        name = text_value("name")
+        introduce = text_value("introduce")
+        if not name.strip():
+            raise HTTPException(422, "名前を入力してください。")
+        if not introduce.strip():
+            raise HTTPException(422, "紹介文を入力してください。")
         temporary = final = None
         try:
             with closing(connect_studies(DATABASE_PATH)) as db:
@@ -3071,7 +3077,7 @@ async def Add(request: Request):
                     result = db.execute("""INSERT INTO study
                         (name, introduce, filename, pdfpath, userid, time, registration_type, template_id, submission_key)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
-                            text_value("name"), text_value("introduce"), filename, pdfpath, user_id,
+                            name, introduce, filename, pdfpath, user_id,
                             datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"), mode, template_id, submission_key))
                     study_id = result.lastrowid
                     db.executemany("INSERT INTO study_field_value(study_id, field_id, value) VALUES (?, ?, ?)",

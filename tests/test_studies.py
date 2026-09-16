@@ -76,6 +76,7 @@ class StudyTests(unittest.TestCase):
 
     def submit(self, mode='template', token=None, session=None, **values):
         data = {'registration_type': mode, 'template_id': str(self.template['id']),
+                'name': '研究名', 'introduce': '紹介文',
                 'csrf_token': 'csrf', 'submission_token': token or self.token(), **values}
         req = request('/addform', self.session if session is None else session)
         req._form = FormData(data)
@@ -84,13 +85,36 @@ class StudyTests(unittest.TestCase):
     def test_empty_template_and_independent_name_and_values(self):
         self.assertEqual(self.submit().status_code, 201)
         self.assertEqual(self.rows('SELECT name, introduce, registration_type, template_id FROM study'),
-                         [('', '', 'template', self.template['id'])])
+                         [('研究名', '紹介文', 'template', self.template['id'])])
         self.assertEqual(self.rows('SELECT value FROM study_field_value'), [('',)] * 9)
         values = {f"field_{field['id']}": f"長文\n{field['label']} <script>" for field in self.template['fields']}
         self.submit(name='独立した研究名', introduce='紹介文', **values)
         self.assertEqual(dict(self.rows('SELECT field_id, value FROM study_field_value WHERE study_id=2')),
                          {field['id']: values[f"field_{field['id']}"] for field in self.template['fields']})
         self.assertEqual(self.rows('SELECT name FROM study WHERE id=2'), [('独立した研究名',)])
+
+    def test_name_and_introduction_required_for_both_modes(self):
+        for mode in ('pdf', 'template'):
+            for field, label in [('name', '名前'), ('introduce', '紹介文')]:
+                for value in ('', ' \t\n　', None):
+                    with self.subTest(mode=mode, field=field, value=value):
+                        data = {'registration_type': mode, 'template_id': str(self.template['id']),
+                                'name': '研究名', 'introduce': '紹介文', 'csrf_token': 'csrf',
+                                'submission_token': self.token()}
+                        if value is None:
+                            del data[field]
+                        else:
+                            data[field] = value
+                        if mode == 'pdf':
+                            data['pdf'] = UploadFile(io.BytesIO(sample_pdf()), filename='test.pdf')
+                        req = request('/addform', self.session)
+                        req._form = FormData(data)
+                        with self.assertRaises(HTTPException) as error:
+                            asyncio.run(main.Add(req))
+                        self.assertEqual(error.exception.status_code, 422)
+                        self.assertEqual(error.exception.detail, f'{label}を入力してください。')
+        self.assertEqual(self.rows('SELECT id FROM study'), [])
+        self.assertEqual(list(self.uploads.iterdir()), [])
 
     def test_seed_is_idempotent_and_does_not_touch_other_tables(self):
         with closing(connect_studies(self.path)) as db:
@@ -209,6 +233,7 @@ class StudyTests(unittest.TestCase):
 
     def test_real_multipart_request(self):
         fields = {'registration_type': 'template', 'template_id': str(self.template['id']),
+                  'name': '研究名', 'introduce': '紹介文',
                   'csrf_token': 'csrf', 'submission_token': self.token(),
                   'field_1': '日本語の本文\n2行目'}
         body = b''
@@ -239,6 +264,8 @@ class StudyTests(unittest.TestCase):
             if path == '/addform':
                 self.assertIn('研究レポート（基本）', html)
                 self.assertIn('study-templates', html)
+                self.assertIn('id="name" name="name" required', html)
+                self.assertIn('id="introduce" name="introduce" required', html)
                 self.assertLess(html.index('id="introduce"'), html.index('class="study-modes"'))
                 self.assertEqual(len(response.context['study_templates'][0]['fields']), 9)
             else:
