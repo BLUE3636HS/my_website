@@ -1,5 +1,7 @@
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse, Response
+from starlette.concurrency import run_in_threadpool
+from study_pdf import render_study_pdf
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -875,18 +877,45 @@ async def StudyList(request: Request):
     )
 
 @app.get("/uploads/{id}.pdf")
-async def pdf(id: int):
+async def pdf(id: int, request: Request):
+    authenticated = False
+    for role in ("user", "teacher", "admin"):
+        try:
+            age = datetime.datetime.now() - datetime.datetime.strptime(
+                request.session.get(f"{role}_time", ""), "%Y-%m-%d %H:%M:%S")
+            authenticated |= (request.session.get(f"{role}_login") is True
+                              and bool(request.session.get(f"{role}_id"))
+                              and datetime.timedelta(0) <= age < datetime.timedelta(days=1))
+        except (ValueError, TypeError):
+            pass
+    headers = {"Cache-Control": "private, no-store"}
+    if not authenticated:
+        return RedirectResponse("/login", status_code=303, headers=headers)
     with closing(connect_studies(DATABASE_PATH)) as db:
-        study = db.execute("SELECT pdfpath FROM study WHERE id = ? AND registration_type = 'pdf'", (id,)).fetchone()
+        study = db.execute("SELECT pdfpath, registration_type, template_id, userid FROM study WHERE id = ?", (id,)).fetchone()
+        sections = []
+        if study and study[1] == 'template':
+            sections = db.execute("""SELECT f.label, COALESCE(v.value, '')
+                FROM study_template_field f
+                LEFT JOIN study_field_value v ON v.field_id = f.id AND v.study_id = ?
+                WHERE f.template_id = ? ORDER BY f.position, f.id""", (id, study[2])).fetchall()
     if not study:
         raise HTTPException(404, "PDFが見つかりません。")
+    headers["Content-Disposition"] = f'inline; filename="study-{id}.pdf"'
+    if study[1] == 'template':
+        try:
+            content = await run_in_threadpool(render_study_pdf, sections, study[3])
+        except Exception:
+            logging.exception("Failed to render research PDF %s", id)
+            raise HTTPException(500, "PDFの生成に失敗しました。", headers=headers)
+        return Response(content, media_type="application/pdf", headers=headers)
     try:
         target = study_pdf_path(UPLOADS_DIR, study[0])
     except ValueError:
         raise HTTPException(404, "PDFが見つかりません。")
     if not target.is_file():
         raise HTTPException(404, "PDFが見つかりません。")
-    return FileResponse(target, media_type="application/pdf")
+    return FileResponse(target, media_type="application/pdf", headers=headers)
 
 @app.get("/reservation", response_class = HTMLResponse)
 async def ReservationPage(request: Request, day: str = None):

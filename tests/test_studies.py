@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import hashlib
 import hmac
 import io
@@ -64,7 +65,7 @@ class StudyTests(unittest.TestCase):
             p = patch.object(main, name, value)
             p.start()
             self.addCleanup(p.stop)
-        self.session = {'user_login': True, 'user_id': 'a', 'study_csrf_token': 'csrf'}
+        self.session = {'user_login': True, 'user_id': 'a', 'study_csrf_token': 'csrf', 'user_time': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
     def rows(self, sql, args=()):
         with closing(connect_studies(self.path)) as db:
@@ -178,10 +179,9 @@ class StudyTests(unittest.TestCase):
         self.assertEqual(filename, 'test.pdf')
         self.assertEqual(user, 'a')
         self.assertEqual((self.uploads / path).read_bytes(), sample_pdf())
-        self.assertEqual(Path(asyncio.run(main.pdf(1)).path), self.uploads / path)
+        self.assertEqual(Path(asyncio.run(main.pdf(1, request('/uploads/1.pdf', self.session))).path), self.uploads / path)
         self.submit()
-        with self.assertRaises(HTTPException):
-            asyncio.run(main.pdf(2))
+        self.assertEqual(asyncio.run(main.pdf(2, request('/uploads/2.pdf', self.session))).status_code, 200)
 
     def test_file_write_failure_rolls_back(self):
         with patch.object(main.shutil, 'copyfileobj', side_effect=OSError('disk full')):
@@ -270,8 +270,8 @@ class StudyTests(unittest.TestCase):
                 self.assertEqual(len(response.context['study_templates'][0]['fields']), 9)
             else:
                 self.assertIn('/uploads/1.pdf', html)
-                self.assertNotIn('/uploads/2.pdf', html)
-                self.assertIn('本文表示機能は未実装', html)
+                self.assertIn('/uploads/2.pdf', html)
+                self.assertIn('PDFを開く', html)
 
 
 if __name__ == '__main__':

@@ -22,7 +22,7 @@
         <tr>
             <td>{{study[1]}}</td>
             <td>{{study[2]}}</td>
-            <td>{% if study[7] == "pdf" %}<a href="/uploads/{{study[0]}}.pdf">{{study[3]}}</a>{% else %}<span>テンプレート形式（本文表示機能は未実装）</span>{% endif %}</td>
+            <td>{% if study[7] == "pdf" %}<a href="/uploads/{{study[0]}}.pdf">{{study[3]}}</a>{% else %}<a href="/uploads/{{ study[0] }}.pdf" target="_blank" rel="noopener">PDFを開く</a>{% endif %}</td>
         </tr>
         {% endfor %}
     </table>
