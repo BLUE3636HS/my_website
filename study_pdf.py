@@ -8,7 +8,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, CondPageBreak
 
 
 FONT = 'ResearchJapanese'
@@ -22,7 +22,7 @@ def render_study_pdf(sections, user_id=None):
     body = ParagraphStyle('body', fontName=FONT, fontSize=11, leading=17,
                           wordWrap='CJK', splitLongWords=True)
     heading = ParagraphStyle('heading', parent=body, fontSize=13, leading=19,
-                             spaceBefore=12, spaceAfter=6, keepWithNext=True)
+                             spaceBefore=12, spaceAfter=6, keepWithNext=False)
     story = []
     if user_id is not None:
         story.append(Paragraph('ユーザーID：' + escape(str(user_id)), body))
@@ -35,7 +35,12 @@ def render_study_pdf(sections, user_id=None):
         field_body = ParagraphStyle('field-body', parent=body, fontSize=body_size, leading=body_size * 17 / 11)
         field_heading = ParagraphStyle('field-heading', parent=heading, fontSize=heading_size, leading=heading_size * 19 / 13)
         if not hide_heading:
-            story.append(Paragraph(escape(label), field_heading))
+            title = Paragraph(escape(label), field_heading)
+            _, title_height = title.wrap(A4[0] - 40*mm, A4[1] - 40*mm)
+            # Reserve room for the heading and the first body lines, rather than
+            # keeping a potentially multi-page paragraph together with its heading.
+            story.append(CondPageBreak(title_height + 18 + 2 * field_body.leading))
+            story.append(title)
         # Escaping precedes the insertion of our own line-break markup.
         text = escape(value.replace('\r\n', '\n').replace('\r', '\n')).replace('\n', '<br/>')
         story.append(Paragraph(text, field_body))

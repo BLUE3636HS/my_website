@@ -34,7 +34,7 @@
     let dragging = null;
     let saving = false;
     let dirty = false;
-    const sample = 'ここに生徒が入力した文章が表示されます。\n研究の内容や結果を、文章でまとめます。';
+    const sample = 'ここに生徒が入力した文章が表示されます。';
     function settings() {
         return {label: byId('field-label').value.trim(), heading_font_size: Number(byId('heading-size').value),
             body_font_size: Number(byId('body-size').value), hide_heading: byId('hide-heading').checked,
@@ -49,10 +49,10 @@
         byId('field-label').setCustomValidity('');
         byId('editor-title').textContent = '項目を追加';
         byId('field-apply').textContent = '項目を追加';
-        byId('field-cancel').hidden = true;
+        byId('field-cancel').textContent = '入力をクリア';
     }
     function edit(field) {
-        if (dirty) { status.textContent = '現在の項目を反映するか、「編集を終了」してから別の項目を選択してください。'; return; }
+        if (dirty) { status.textContent = '現在の項目を反映するか、入力をクリア／編集を終了してから別の項目を選択してください。'; return; }
         selected = field; dirty = false;
         byId('field-label').value = field.label;
         byId('heading-size').value = field.heading_font_size;
@@ -63,7 +63,7 @@
         byId('field-label').setCustomValidity('');
         byId('editor-title').textContent = '項目を編集';
         byId('field-apply').textContent = '項目を更新';
-        byId('field-cancel').hidden = false;
+        byId('field-cancel').textContent = '編集を終了';
         render(); byId('field-label').focus();
     }
     function preview() {

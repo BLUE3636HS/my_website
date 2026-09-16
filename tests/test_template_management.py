@@ -5,7 +5,7 @@ import sqlite3
 import unittest
 from contextlib import closing
 
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from pydantic import ValidationError
 from pypdf import PdfReader
 
@@ -138,6 +138,39 @@ class TemplateManagementTests(unittest.TestCase):
         sizes = set()
         reader.pages[0].extract_text(visitor_text=lambda text, cm, tm, font, size: sizes.add(size) if text.strip() else None)
         self.assertTrue({24, 18, 8}.issubset(sizes))
+
+    def test_http_json_api_checks_auth_validation_and_csrf(self):
+        app = FastAPI()
+        app.include_router(create_template_router(lambda: self.path, main.templates))
+
+        async def send(session, payload):
+            messages = []
+            async def receive():
+                return {'type': 'http.request', 'body': json.dumps(payload).encode(), 'more_body': False}
+            async def output(message):
+                messages.append(message)
+            scope = {'type': 'http', 'asgi': {'version': '3.0'}, 'method': 'POST',
+                     'path': '/admin/study-templates', 'raw_path': b'/admin/study-templates',
+                     'root_path': '', 'scheme': 'http', 'server': ('test', 80), 'client': ('test', 1),
+                     'headers': [(b'content-type', b'application/json')], 'query_string': b'', 'session': session}
+            await app(scope, receive, output)
+            return next(message['status'] for message in messages if message['type'] == 'http.response.start')
+
+        session = {'admin_login': True, 'study_template_csrf_token': 'token'}
+        payload = {'csrf_token': 'token', 'name': 'API作成', 'fields': [{'label': '項目'}]}
+        self.assertEqual(asyncio.run(send({}, payload)), 403)
+        self.assertEqual(asyncio.run(send(session, {**payload, 'csrf_token': 'wrong'})), 403)
+        self.assertEqual(asyncio.run(send(session, {**payload, 'fields': []})), 422)
+        self.assertEqual(asyncio.run(send(session, payload)), 201)
+
+    def test_long_body_uses_remaining_page_space(self):
+        reader = PdfReader(io.BytesIO(render_study_pdf([
+            ('テーマ', '短い導入文', 24, 16, False),
+            ('実験結果', '記録した本文を表示します。\n' * 150, 13, 11, False)], 'student-1')))
+        self.assertGreater(len(reader.pages), 1)
+        first_page = reader.pages[0].extract_text()
+        self.assertIn('実験結果', first_page)
+        self.assertIn('記録した本文を表示します。', first_page)
 
 
 if __name__ == '__main__':
