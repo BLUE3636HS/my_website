@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 from study_pdf import render_study_pdf
+from template_management import create_template_router
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -268,6 +269,7 @@ def student_template_context(request):
 
 
 templates = Jinja2Templates(directory="templates", context_processors=[student_template_context])
+app.include_router(create_template_router(lambda: DATABASE_PATH, templates))
 
 COMMUNITY_PAGE_SIZE = 20
 
@@ -895,7 +897,7 @@ async def pdf(id: int, request: Request):
         study = db.execute("SELECT pdfpath, registration_type, template_id, userid FROM study WHERE id = ?", (id,)).fetchone()
         sections = []
         if study and study[1] == 'template':
-            sections = db.execute("""SELECT f.label, COALESCE(v.value, '')
+            sections = db.execute("""SELECT f.label, COALESCE(v.value, ''), f.heading_font_size, f.body_font_size, f.hide_heading
                 FROM study_template_field f
                 LEFT JOIN study_field_value v ON v.field_id = f.id AND v.study_id = ?
                 WHERE f.template_id = ? ORDER BY f.position, f.id""", (id, study[2])).fetchall()
@@ -3079,14 +3081,16 @@ async def Add(request: Request):
                         template = db.execute("SELECT id FROM study_template WHERE id = ? AND active = 1", (template_id,)).fetchone()
                         if not template:
                             raise HTTPException(422, "選択されたテンプレートは利用できません。")
-                        fields = db.execute("SELECT id, label, required FROM study_template_field WHERE template_id = ? ORDER BY position, id", (template_id,)).fetchall()
+                        fields = db.execute("SELECT id, label, required, max_length FROM study_template_field WHERE template_id = ? ORDER BY position, id", (template_id,)).fetchall()
                         allowed = {f"field_{field[0]}" for field in fields}
                         if any(key.startswith("field_") and key not in allowed for key in form):
                             raise HTTPException(422, "テンプレートに存在しない項目が含まれています。")
-                        for field_id, label, required in fields:
-                            value = text_value(f"field_{field_id}")
+                        for field_id, label, required, max_length in fields:
+                            value = text_value(f"field_{field_id}").replace('\r\n', '\n').replace('\r', '\n')
                             if required and not value.strip():
                                 raise HTTPException(422, f"「{label}」を入力してください。")
+                            if max_length and len(value) > max_length:
+                                raise HTTPException(422, f"「{label}」は{max_length}文字以内で入力してください。")
                             values.append((field_id, value))
                     else:
                         upload = form.get("pdf")

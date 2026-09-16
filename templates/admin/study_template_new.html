@@ -1,0 +1,28 @@
+{% extends 'admin/base.html' %}
+{% block title %}テンプレート追加{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/admin/study_templates.css">{% endblock %}
+{% block content %}
+<div class="template-manager" data-csrf="{{ csrf_token }}">
+    <div class="template-toolbar"><h1>テンプレート追加</h1><a href="/admin/study-templates">一覧へ戻る</a></div>
+    <label for="template-name">テンプレート名（必須）</label>
+    <input id="template-name" type="text" required>
+    <p>保存すると全生徒に公開されます。保存後の項目編集・削除はできません。</p>
+    <div class="template-builder">
+        <form id="field-editor" class="template-card">
+            <h2 id="editor-title">項目を追加</h2>
+            <label for="field-label">見出し（必須）</label><input id="field-label" required>
+            <label for="heading-size">見出し文字サイズ（pt）</label><input id="heading-size" type="number" min="6" max="36" step="1" value="13" required>
+            <label class="template-check"><input id="hide-heading" type="checkbox"> PDFで見出しを非表示にする</label>
+            <label for="body-size">内容文字サイズ（pt）</label><input id="body-size" type="number" min="6" max="36" step="1" value="11" required>
+            <label for="max-length">文字数制限（0は無制限）</label><input id="max-length" type="number" min="0" max="9007199254740991" step="1" value="0" required>
+            <label class="template-check"><input id="field-required" type="checkbox"> 記入必須にする</label>
+            <button id="field-apply" type="submit">項目を追加</button><button id="field-cancel" type="button" hidden>編集を終了</button>
+        </form>
+        <section class="template-card"><h2>項目</h2><p>⋮⋮をドラッグ、または↑↓で並び替えできます。</p><ol id="field-list"></ol></section>
+        <section class="template-preview"><h2>PDF簡易プレビュー</h2><p>実際のPDFとは改ページ等が異なる場合があります。</p><div class="preview-paper" id="preview-paper"></div></section>
+    </div>
+    <p id="template-status" role="status" aria-live="polite"></p>
+    <button id="save-template" class="template-button" type="button">テンプレートを保存</button>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/admin/study_templates.js" defer></script>{% endblock %}

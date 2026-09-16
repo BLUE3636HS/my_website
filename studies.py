@@ -25,6 +25,15 @@ def initialize_studies(db):
             id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
             introduce TEXT NOT NULL, filename TEXT NOT NULL, pdfpath TEXT NOT NULL,
             userid TEXT NOT NULL, time TEXT NOT NULL)""")
+        field_columns = {row[1] for row in db.execute('PRAGMA table_info(study_template_field)')}
+        for name, definition in {
+            'heading_font_size': 'INTEGER NOT NULL DEFAULT 13 CHECK(heading_font_size BETWEEN 6 AND 36)',
+            'body_font_size': 'INTEGER NOT NULL DEFAULT 11 CHECK(body_font_size BETWEEN 6 AND 36)',
+            'hide_heading': 'INTEGER NOT NULL DEFAULT 0 CHECK(hide_heading IN (0,1))',
+            'max_length': 'INTEGER NOT NULL DEFAULT 0 CHECK(max_length >= 0)',
+        }.items():
+            if name not in field_columns:
+                db.execute(f'ALTER TABLE study_template_field ADD COLUMN {name} {definition}')
         columns = {row[1] for row in db.execute("PRAGMA table_info(study)")}
         additions = {
             "registration_type": "TEXT NOT NULL DEFAULT 'pdf' CHECK(registration_type IN ('pdf', 'template'))",
@@ -49,12 +58,14 @@ def initialize_studies(db):
                 VALUES (?, ?, ?, 0)""", [(inserted.lastrowid, label, i) for i, label in enumerate(labels)])
 
 
-def get_templates(db):
-    return [{"id": row[0], "name": row[1], "fields": [
-        {"id": field[0], "label": field[1], "required": bool(field[2])}
-        for field in db.execute("""SELECT id, label, required FROM study_template_field
+def get_templates(db, include_inactive=False):
+    return [{"id": row[0], "name": row[1], "active": bool(row[2]), "fields": [
+        {"id": field[0], "label": field[1], "required": bool(field[2]),
+         "heading_font_size": field[3], "body_font_size": field[4],
+         "hide_heading": bool(field[5]), "max_length": field[6]}
+        for field in db.execute("""SELECT id, label, required, heading_font_size, body_font_size, hide_heading, max_length FROM study_template_field
             WHERE template_id = ? ORDER BY position, id""", (row[0],))
-    ]} for row in db.execute("SELECT id, name FROM study_template WHERE active = 1 ORDER BY id")]
+    ]} for row in db.execute("SELECT id, name, active FROM study_template WHERE active = 1 OR ? ORDER BY id", (include_inactive,))]
 
 
 def study_pdf_path(uploads, filename):

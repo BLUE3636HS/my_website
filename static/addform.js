@@ -23,9 +23,18 @@ function generateFields() {
         input.id = input.name = `field_${field.id}`;
         input.required = field.required;
         input.value = drafts.get(currentTemplate)?.[input.name] || "";
+        if (field.max_length > 0) {
+            const validateLength = () => {
+                const count = Array.from(input.value.replace(/\r\n?/g, '\n')).length;
+                input.setCustomValidity(count > field.max_length ? `${field.label}は${field.max_length}文字以内で入力してください。` : '');
+            };
+            input.addEventListener('input', validateLength);
+            validateLength();
+        }
         const label = document.createElement("label");
         label.htmlFor = input.id;
         label.textContent = field.label + (field.required ? "（必須）" : "（任意）");
+        if (field.max_length > 0) label.textContent += `［${field.max_length}文字以内］`;
         fields.append(label, input);
     }
     updateMode();

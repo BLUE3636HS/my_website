@@ -12,6 +12,7 @@ class Element {
     addEventListener(event, callback) { this.listeners[event] = callback; }
     setAttribute() {}
     removeAttribute() {}
+    setCustomValidity(message) { this.validationMessage = message; }
 }
 
 function setup(fetch) {
@@ -19,7 +20,7 @@ function setup(fetch) {
         'template-id', 'template-fields', 'pdf-panel', 'pdf_file', 'template-panel'].map(id => [id, new Element()]));
     ids['study-templates'].textContent = JSON.stringify([
         { id: 1, fields: Array.from({ length: 9 }, (_, i) => ({ id: i + 1, label: `項目${i}`, required: false })) },
-        { id: 2, fields: Array.from({ length: 20 }, (_, i) => ({ id: i + 20, label: `別項目${i}`, required: i === 0 })) }
+        { id: 2, fields: Array.from({ length: 20 }, (_, i) => ({ id: i + 20, label: `別項目${i}`, required: i === 0, max_length: i === 0 ? 5 : 0 })) }
     ]);
     ids['template-id'].value = '1';
     const form = ids['study-form'];
@@ -52,6 +53,17 @@ test('PDF/template switching and arbitrary DB field counts', () => {
     assert.equal(inputs.length, 20);
     assert.equal(inputs[0].required, true);
     assert.equal(inputs[1].required, false);
+});
+
+test('field limit counts codepoints and normalizes CRLF', () => {
+    const {ids} = setup();
+    ids['template-id'].value = '2';
+    ids['template-id'].listeners.change();
+    const input = ids['template-fields'].querySelectorAll('textarea')[0];
+    input.value = 'あ😀\r\n b'; input.listeners.input();
+    assert.equal(input.validationMessage, '');
+    input.value += 'c'; input.listeners.input();
+    assert.notEqual(input.validationMessage, '');
 });
 
 for (const mode of ['pdf', 'template']) {

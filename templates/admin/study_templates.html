@@ -1,0 +1,20 @@
+{% extends 'admin/base.html' %}
+{% block title %}テンプレート管理{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/admin/study_templates.css">{% endblock %}
+{% block content %}
+<div class="template-manager" data-csrf="{{ csrf_token }}">
+    <div class="template-toolbar"><div><h1>テンプレート管理</h1><p>研究成果の入力項目と公開状態を確認できます。</p></div><a class="template-button" href="/admin/study-templates/new">新規作成</a></div>
+    <p id="template-status" role="status" aria-live="polite"></p>
+    {% for item in study_templates %}
+    <section class="template-card">
+        <div class="template-toolbar"><h2>{{ item.name }}</h2><span>{{ item.fields|length }}項目 · <strong data-state="{{ item.id }}">{{ '公開' if item.active else '非公開' }}</strong></span>
+        <button type="button" data-visibility="{{ item.id }}" data-active="{{ 'true' if item.active else 'false' }}">{{ '非公開にする' if item.active else '公開する' }}</button></div>
+        <details><summary>項目の定義を確認</summary><ol class="template-definitions">
+        {% for field in item.fields %}<li><strong>{{ field.label }}</strong>
+            <p>{{ '必須' if field.required else '任意' }} · {{ (field.max_length|string + '文字以内') if field.max_length else '文字数無制限' }} · 見出し {{ field.heading_font_size }}pt{{ '（PDFでは非表示）' if field.hide_heading else '' }} · 本文 {{ field.body_font_size }}pt</p>
+        </li>{% endfor %}</ol></details>
+    </section>
+    {% else %}<p>テンプレートはありません。</p>{% endfor %}
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/admin/study_templates.js" defer></script>{% endblock %}

@@ -1,0 +1,26 @@
+.template-manager { color: #243c30; max-width: 1600px; margin: auto; }
+.template-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.template-manager h1 { font-size: 26px; }
+.template-manager h2 { font-size: 19px; overflow-wrap: anywhere; }
+.template-manager p { color: #5c6d63; line-height: 1.6; }
+.template-card { border: 1px solid #d7e3db; background: white; padding: 20px; border-radius: 12px; margin: 16px 0; min-width: 0; }
+.template-manager input:not([type=checkbox]) { width: 100%; box-sizing: border-box; border: 1px solid #b7c9be; border-radius: 6px; padding: 10px; font: inherit; }
+.template-manager label { display: block; margin: 14px 0 7px; }
+.template-manager button, .template-button { border: 1px solid #25613e; border-radius: 7px; padding: 8px 12px; font: inherit; cursor: pointer; background: white; color: #25613e; text-decoration: none; }
+.template-manager .template-button { background: #25613e; color: white; }
+.template-manager button:disabled { opacity: .5; cursor: default; }
+.template-manager :focus-visible { outline: 3px solid #7dbb93; outline-offset: 2px; }
+.template-builder { display: grid; grid-template-columns: minmax(210px, 1fr) minmax(220px, 1fr) minmax(260px, 1.3fr); gap: 18px; align-items: start; }
+.template-builder .template-card { margin-top: 0; }
+#field-list { list-style: none; padding: 0; }
+.field-row { border: 1px solid #d7e3db; border-radius: 8px; padding: 10px; margin-bottom: 10px; overflow-wrap: anywhere; }
+.field-row.selected { background: #edf7f0; border-color: #25613e; }
+.field-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.field-handle { cursor: grab !important; touch-action: none; }
+.field-row.drop-target { border: 2px dashed #25613e; }
+.preview-paper { background: white; color: #111; aspect-ratio: 210 / 297; padding: 9.52%; box-shadow: 0 2px 12px #0002; box-sizing: border-box; overflow-wrap: anywhere; }
+.preview-paper p { color: #111; line-height: 1.55; white-space: pre-wrap; margin: 0 0 12px; }
+.preview-paper h3 { font-weight: normal; margin: 12px 0 6px; line-height: 1.46; }
+.template-definitions li { margin-bottom: 15px; overflow-wrap: anywhere; }
+.template-manager [hidden] { display: none !important; }
+@media(max-width: 1150px) { .template-builder { grid-template-columns: 1fr; } .preview-paper { max-width: 600px; } }

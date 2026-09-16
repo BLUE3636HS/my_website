@@ -27,13 +27,20 @@ def render_study_pdf(sections, user_id=None):
     if user_id is not None:
         story.append(Paragraph('ユーザーID：' + escape(str(user_id)), body))
         story.append(Spacer(1, 8))
-    for label, value in sections:
+    for section in sections:
+        label, value = section[:2]
+        heading_size, body_size, hide_heading = section[2:] if len(section) > 2 else (13, 11, False)
         if not value.strip():
             continue
-        story.append(Paragraph(escape(label), heading))
+        field_body = ParagraphStyle('field-body', parent=body, fontSize=body_size, leading=body_size * 17 / 11)
+        field_heading = ParagraphStyle('field-heading', parent=heading, fontSize=heading_size, leading=heading_size * 19 / 13)
+        if not hide_heading:
+            story.append(Paragraph(escape(label), field_heading))
         # Escaping precedes the insertion of our own line-break markup.
         text = escape(value.replace('\r\n', '\n').replace('\r', '\n')).replace('\n', '<br/>')
-        story.append(Paragraph(text, body))
+        story.append(Paragraph(text, field_body))
+        if hide_heading:
+            story.append(Spacer(1, 8))
     # A flowable ensures even an empty submission produces a valid, blank page.
     document.build(story or [Spacer(1, 1)])
     return output.getvalue()
