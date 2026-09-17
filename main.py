@@ -15,6 +15,7 @@ import sqlite3, shutil, bcrypt, datetime, csv, secrets, io
 import hashlib, hmac, logging
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from studies import connect_studies, initialize_studies, get_templates, study_pdf_path, validate_pdf
+from study_images import normalize_study_image, study_image_path
 from urllib.parse import urlencode
 from PIL import Image, ImageOps, UnidentifiedImageError
 from notifications import (
@@ -26,7 +27,9 @@ BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "database" / "database.db"
 UPLOADS_DIR = (BASE_DIR / "uploads").resolve()
 PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "profile").resolve()
+STUDY_IMAGE_UPLOADS_DIR = (UPLOADS_DIR / "study-images").resolve()
 PROFILE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+STUDY_IMAGE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 PROFILE_MAX_BYTES = 5 * 1024 * 1024
 PROFILE_MAX_PIXELS = 25_000_000
 PROFILE_IMAGE_SIZE = (512, 512)
@@ -897,10 +900,27 @@ async def pdf(id: int, request: Request):
         study = db.execute("SELECT pdfpath, registration_type, template_id, userid FROM study WHERE id = ?", (id,)).fetchone()
         sections = []
         if study and study[1] == 'template':
-            sections = db.execute("""SELECT f.label, COALESCE(v.value, ''), f.heading_font_size, f.body_font_size, f.hide_heading
+            field_rows = db.execute("""SELECT f.id, f.label, COALESCE(v.value, ''), f.heading_font_size, f.body_font_size, f.hide_heading,
+                    f.heading_alignment, f.body_alignment, f.heading_bold, f.body_bold,
+                    f.field_type, f.image_size, f.image_alignment
                 FROM study_template_field f
                 LEFT JOIN study_field_value v ON v.field_id = f.id AND v.study_id = ?
                 WHERE f.template_id = ? ORDER BY f.position, f.id""", (id, study[2])).fetchall()
+            for field in field_rows:
+                if field[10] == 'text':
+                    sections.append((field[1], field[2], *field[3:10]))
+                    continue
+                images = db.execute("""SELECT stored_name, caption FROM study_field_image
+                    WHERE study_id=? AND field_id=? ORDER BY position,id""", (id, field[0])).fetchall()
+                sections.append({
+                    'type': 'image', 'label': field[1], 'heading_font_size': field[3],
+                    'body_font_size': field[4], 'hide_heading': bool(field[5]),
+                    'heading_alignment': field[6], 'body_alignment': field[7],
+                    'heading_bold': bool(field[8]), 'body_bold': bool(field[9]),
+                    'image_size': field[11], 'image_alignment': field[12],
+                    'images': [(str(study_image_path(STUDY_IMAGE_UPLOADS_DIR, name)), caption)
+                               for name, caption in images]
+                })
     if not study:
         raise HTTPException(404, "PDFが見つかりません。")
     headers["Content-Disposition"] = f'inline; filename="study-{id}.pdf"'
@@ -1689,6 +1709,7 @@ async def AdminDeleteStudy(request: Request, study_id: int):
     if request.session.get("admin_login") != True:
         return RedirectResponse("/admin/login", status_code=303)
 
+    image_names = []
     with closing(connect_studies(DATABASE_PATH)) as db:
         try:
             study = db.execute(
@@ -1699,6 +1720,8 @@ async def AdminDeleteStudy(request: Request, study_id: int):
             if study is None:
                 return RedirectResponse("/admin/studies", status_code=303)
 
+            image_names = [row[0] for row in db.execute(
+                "SELECT stored_name FROM study_field_image WHERE study_id=?", (study_id,)).fetchall()]
             db.execute("DELETE FROM study WHERE id = ?", (study_id,))
             db.commit()
         except sqlite3.Error:
@@ -1716,6 +1739,11 @@ async def AdminDeleteStudy(request: Request, study_id: int):
                 target_path.unlink(missing_ok=True)
             except OSError:
                 logging.exception("Failed to delete research PDF %s", target_path)
+    for stored_name in image_names:
+        try:
+            study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name).unlink(missing_ok=True)
+        except (ValueError, OSError):
+            logging.exception("Failed to delete research image %s", stored_name)
 
     return RedirectResponse("/admin/studies", status_code=303)
 
@@ -2809,6 +2837,7 @@ async def TeacherDeleteStudy(
 
     teacher_id = request.session.get("teacher_id")
     study = None
+    image_names = []
     with closing(connect_studies(DATABASE_PATH)) as db:
         try:
             teacher = db.execute(
@@ -2833,6 +2862,8 @@ async def TeacherDeleteStudy(
             if study is None:
                 return redirect
 
+            image_names = [row[0] for row in db.execute(
+                "SELECT stored_name FROM study_field_image WHERE study_id=?", (study_id,)).fetchall()]
             deleted_count = db.execute("""
                 DELETE FROM study
                 WHERE id = ?
@@ -2863,6 +2894,11 @@ async def TeacherDeleteStudy(
                 target_path.unlink(missing_ok=True)
             except OSError:
                 logging.exception("Failed to delete research PDF %s", target_path)
+    for stored_name in image_names:
+        try:
+            study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name).unlink(missing_ok=True)
+        except (ValueError, OSError):
+            logging.exception("Failed to delete research image %s", stored_name)
 
     request.session["teacher_studylist_delete_succeeded"] = True
     return redirect
@@ -3062,6 +3098,7 @@ async def Add(request: Request):
         if not introduce.strip():
             raise HTTPException(422, "紹介文を入力してください。")
         temporary = final = None
+        created_image_paths = []
         try:
             with closing(connect_studies(DATABASE_PATH)) as db:
                 # Serialize duplicate requests before checking the unique key.
@@ -3072,7 +3109,7 @@ async def Add(request: Request):
                         return JSONResponse({"ok": True, "id": previous[0]})
                     if not db.execute("SELECT 1 FROM student WHERE id = ?", (user_id,)).fetchone():
                         raise HTTPException(401, "ログインし直してください。")
-                    template_id, values, filename, pdfpath = None, [], "", ""
+                    template_id, values, image_values, filename, pdfpath = None, [], [], "", ""
                     if mode == "template":
                         try:
                             template_id = int(text_value("template_id"))
@@ -3081,17 +3118,54 @@ async def Add(request: Request):
                         template = db.execute("SELECT id FROM study_template WHERE id = ? AND active = 1", (template_id,)).fetchone()
                         if not template:
                             raise HTTPException(422, "選択されたテンプレートは利用できません。")
-                        fields = db.execute("SELECT id, label, required, max_length FROM study_template_field WHERE template_id = ? ORDER BY position, id", (template_id,)).fetchall()
-                        allowed = {f"field_{field[0]}" for field in fields}
-                        if any(key.startswith("field_") and key not in allowed for key in form):
+                        fields = db.execute("SELECT id, label, required, max_length, field_type FROM study_template_field WHERE template_id = ? ORDER BY position, id", (template_id,)).fetchall()
+                        allowed = set()
+                        for field_id, _label, _required, _max_length, field_type in fields:
+                            allowed.add(("field_" if field_type == "text" else "image_") + str(field_id))
+                            if field_type == "image":
+                                allowed.add(f"caption_{field_id}")
+                        if any((key.startswith("field_") or key.startswith("image_") or key.startswith("caption_")) and key not in allowed for key in form):
                             raise HTTPException(422, "テンプレートに存在しない項目が含まれています。")
-                        for field_id, label, required, max_length in fields:
-                            value = text_value(f"field_{field_id}").replace('\r\n', '\n').replace('\r', '\n')
-                            if required and not value.strip():
-                                raise HTTPException(422, f"「{label}」を入力してください。")
-                            if max_length and len(value) > max_length:
-                                raise HTTPException(422, f"「{label}」は{max_length}文字以内で入力してください。")
-                            values.append((field_id, value))
+                        for field_id, label, required, max_length, field_type in fields:
+                            if field_type == "text":
+                                value = text_value(f"field_{field_id}").replace('\r\n', '\n').replace('\r', '\n')
+                                if required and not value.strip():
+                                    raise HTTPException(422, f"「{label}」を入力してください。")
+                                if max_length and len(value) > max_length:
+                                    raise HTTPException(422, f"「{label}」は{max_length}文字以内で入力してください。")
+                                values.append((field_id, value))
+                                continue
+                            uploads = form.getlist(f"image_{field_id}")
+                            captions = form.getlist(f"caption_{field_id}")
+                            if required and not uploads:
+                                raise HTTPException(422, f"「{label}」の画像を1枚以上選択してください。")
+                            if len(uploads) > 4:
+                                raise HTTPException(422, f"「{label}」の画像は最大4枚です。")
+                            if len(uploads) != len(captions):
+                                raise HTTPException(422, f"「{label}」の画像と説明の数が一致しません。")
+                            for position, (upload, caption) in enumerate(zip(uploads, captions)):
+                                if not isinstance(upload, StarletteUploadFile) or not isinstance(caption, str):
+                                    raise HTTPException(422, "画像の入力形式が不正です。")
+                                caption = caption.strip()
+                                if not caption:
+                                    raise HTTPException(422, f"「{label}」の画像説明を入力してください。")
+                                if len(caption) > 50:
+                                    raise HTTPException(422, f"「{label}」の画像説明は50文字以内で入力してください。")
+                                try:
+                                    content, image_format, width, height, suffix, original_name = normalize_study_image(upload)
+                                except ValueError as exc:
+                                    raise HTTPException(422, f"「{label}」: {exc}")
+                                stored_name = uuid4().hex + suffix
+                                image_final = study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name)
+                                image_temporary = image_final.with_name("." + image_final.name + ".tmp")
+                                created_image_paths.append(image_temporary)
+                                with image_temporary.open("xb") as output:
+                                    output.write(content)
+                                image_temporary.replace(image_final)
+                                created_image_paths.remove(image_temporary)
+                                created_image_paths.append(image_final)
+                                image_values.append((field_id, position, stored_name, original_name,
+                                                     caption, image_format, width, height))
                     else:
                         upload = form.get("pdf")
                         if not isinstance(upload, StarletteUploadFile) or len(form.getlist("pdf")) != 1:
@@ -3115,6 +3189,10 @@ async def Add(request: Request):
                     study_id = result.lastrowid
                     db.executemany("INSERT INTO study_field_value(study_id, field_id, value) VALUES (?, ?, ?)",
                                    [(study_id, field_id, value) for field_id, value in values])
+                    db.executemany("""INSERT INTO study_field_image
+                        (study_id,field_id,position,stored_name,original_name,caption,image_format,width,height)
+                        VALUES (?,?,?,?,?,?,?,?,?)""",
+                        [(study_id, *value) for value in image_values])
             return JSONResponse({"ok": True, "id": study_id}, status_code=201)
         except Exception as exc:
             for path in (temporary, final):
@@ -3123,6 +3201,11 @@ async def Add(request: Request):
                         path.unlink(missing_ok=True)
                     except OSError:
                         logging.exception("Failed to clean research file %s", path)
+            for path in created_image_paths:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    logging.exception("Failed to clean research image %s", path)
             if isinstance(exc, HTTPException):
                 raise
             logging.exception("Research submission failed")

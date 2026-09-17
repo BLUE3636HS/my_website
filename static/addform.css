@@ -49,3 +49,12 @@
 .study-modes legend { color: #334155; font-weight: 700; }
 .addform-panel button:disabled { opacity: .6; cursor: default; }
 #submission-status { overflow-wrap: anywhere; }
+.study-image-field { border: 1px solid #cbd6e2; border-radius: 9px; padding: 14px; min-width: 0; }
+.study-image-field legend { color: #334155; font-weight: 700; padding: 0 6px; }
+.study-image-field > p { color: #64748b; margin: 0 0 6px; }
+.study-image-list { display: grid; gap: 12px; margin-top: 10px; }
+.study-image-card { display: grid; gap: 7px; padding: 12px; border: 1px solid #dbe3eb; border-radius: 9px; background: #f8fafc; }
+.study-image-card img { display: block; max-width: 220px; max-height: 160px; object-fit: contain; border-radius: 6px; background: #fff; }
+.study-image-card p { margin: 0; overflow-wrap: anywhere; color: #475569; }
+.study-image-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.study-image-actions button { border: 1px solid #1f4e79; border-radius: 7px; padding: 7px 10px; background: #fff; color: #1f4e79; cursor: pointer; }

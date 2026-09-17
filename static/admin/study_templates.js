@@ -35,10 +35,66 @@
     let saving = false;
     let dirty = false;
     const sample = 'ここに生徒が入力した文章が表示されます。';
+    function setHeadingAlignment(value) {
+        byId('heading-alignment').value = value;
+        root.querySelectorAll('[data-heading-alignment]').forEach(button => {
+            button.setAttribute('aria-pressed', String(button.dataset.headingAlignment === value));
+        });
+    }
+    root.querySelectorAll('[data-heading-alignment]').forEach(button => {
+        button.addEventListener('click', () => {
+            if (saving) return;
+            setHeadingAlignment(button.dataset.headingAlignment);
+            dirty = true;
+            preview();
+        });
+    });
+    function setBodyAlignment(value) {
+        byId('body-alignment').value = value;
+        root.querySelectorAll('[data-body-alignment]').forEach(button => {
+            button.setAttribute('aria-pressed', String(button.dataset.bodyAlignment === value));
+        });
+    }
+    root.querySelectorAll('[data-body-alignment]').forEach(button => {
+        button.addEventListener('click', () => {
+            if (saving) return;
+            setBodyAlignment(button.dataset.bodyAlignment);
+            dirty = true;
+            preview();
+        });
+    });
+    function setImageAlignment(value) {
+        byId('image-alignment').value = value;
+        root.querySelectorAll('[data-image-alignment]').forEach(button => {
+            button.setAttribute('aria-pressed', String(button.dataset.imageAlignment === value));
+        });
+    }
+    root.querySelectorAll('[data-image-alignment]').forEach(button => {
+        button.addEventListener('click', () => {
+            if (saving) return;
+            setImageAlignment(button.dataset.imageAlignment);
+            dirty = true;
+            preview();
+        });
+    });
+    function updateFieldType() {
+        const image = byId('field-type').value === 'image';
+        byId('image-settings-group').hidden = !image;
+        byId('body-settings-title').textContent = image ? 'キャプション設定' : '本文設定';
+        byId('body-size-label').textContent = image ? 'キャプション文字サイズ' : '内容文字サイズ';
+        byId('body-alignment-label').textContent = image ? 'キャプションの配置' : '本文の配置';
+        byId('body-bold-label').textContent = image ? 'キャプションを太字にする' : '本文を太字にする';
+        byId('max-length-setting').hidden = image;
+        byId('max-length').value = image ? '50' : (byId('max-length').value === '50' ? '0' : byId('max-length').value);
+    }
     function settings() {
         return {label: byId('field-label').value.trim(), heading_font_size: Number(byId('heading-size').value),
             body_font_size: Number(byId('body-size').value), hide_heading: byId('hide-heading').checked,
-            max_length: Number(byId('max-length').value), required: byId('field-required').checked};
+            max_length: Number(byId('max-length').value), required: byId('field-required').checked,
+            heading_alignment: byId('heading-alignment').value, body_alignment: byId('body-alignment').value,
+            heading_bold: byId('heading-bold').checked, body_bold: byId('body-bold').checked,
+            field_type: byId('field-type').value, image_size: byId('image-size').value,
+            image_alignment: byId('image-alignment').value};
     }
     function validate() {
         byId('field-label').setCustomValidity(byId('field-label').value.trim() ? '' : '見出しを入力してください。');
@@ -46,6 +102,10 @@
     }
     function resetEditor() {
         selected = null; dirty = false; editor.reset();
+        setHeadingAlignment('left');
+        setBodyAlignment('left');
+        setImageAlignment('center');
+        updateFieldType();
         byId('field-label').setCustomValidity('');
         byId('editor-title').textContent = '項目を追加';
         byId('field-apply').textContent = '項目を追加';
@@ -54,12 +114,20 @@
     function edit(field) {
         if (dirty) { status.textContent = '現在の項目を反映するか、入力をクリア／編集を終了してから別の項目を選択してください。'; return; }
         selected = field; dirty = false;
+        byId('field-type').value = field.field_type;
         byId('field-label').value = field.label;
         byId('heading-size').value = field.heading_font_size;
         byId('body-size').value = field.body_font_size;
         byId('hide-heading').checked = field.hide_heading;
+        setHeadingAlignment(field.heading_alignment);
+        setBodyAlignment(field.body_alignment);
+        byId('heading-bold').checked = field.heading_bold;
+        byId('body-bold').checked = field.body_bold;
         byId('max-length').value = field.max_length;
         byId('field-required').checked = field.required;
+        byId('image-size').value = field.image_size;
+        setImageAlignment(field.image_alignment);
+        updateFieldType();
         byId('field-label').setCustomValidity('');
         byId('editor-title').textContent = '項目を編集';
         byId('field-apply').textContent = '項目を更新';
@@ -74,11 +142,32 @@
         items.forEach(field => {
             if (!field.hide_heading) {
                 const title = document.createElement('h3'); title.textContent = field.label;
-                title.style.fontSize = `${Math.min(36, Math.max(6, field.heading_font_size || 13))}pt`; paper.append(title);
+                title.style.fontSize = `${Math.min(36, Math.max(6, field.heading_font_size || 11))}pt`;
+                title.style.textAlign = field.heading_alignment;
+                title.style.fontWeight = field.heading_bold ? '700' : '400'; paper.append(title);
             }
-            const text = document.createElement('p');
-            text.textContent = field.max_length > 0 ? Array.from(sample).slice(0, field.max_length).join('') : sample;
-            text.style.fontSize = `${Math.min(36, Math.max(6, field.body_font_size || 11))}pt`; paper.append(text);
+            if (field.field_type === 'image') {
+                const gallery = document.createElement('div');
+                gallery.className = `preview-images preview-images-${field.image_size}`;
+                gallery.dataset.alignment = field.image_alignment;
+                for (let index = 0; index < 3; index++) {
+                    const item = document.createElement('div'); item.className = 'preview-image-item';
+                    const placeholder = document.createElement('div'); placeholder.className = 'preview-image-placeholder';
+                    placeholder.textContent = '画像';
+                    const caption = document.createElement('p'); caption.textContent = `画像${index + 1}のキャプション`;
+                    caption.style.fontSize = `${Math.min(36, Math.max(6, field.body_font_size || 10))}pt`;
+                    caption.style.textAlign = field.body_alignment;
+                    caption.style.fontWeight = field.body_bold ? '700' : '400';
+                    item.append(placeholder, caption); gallery.append(item);
+                }
+                paper.append(gallery);
+            } else {
+                const text = document.createElement('p');
+                text.textContent = field.max_length > 0 ? Array.from(sample).slice(0, field.max_length).join('') : sample;
+                text.style.fontSize = `${Math.min(36, Math.max(6, field.body_font_size || 10))}pt`;
+                text.style.textAlign = field.body_alignment;
+                text.style.fontWeight = field.body_bold ? '700' : '400'; paper.append(text);
+            }
         });
     }
     function move(field, offset) {
@@ -107,7 +196,10 @@
                 move(dragging, fields.indexOf(field) - fields.indexOf(dragging)); dragging = null;
             });
             const label = document.createElement('strong'); label.textContent = ` ${index + 1}. ${field.label}`;
-            const details = document.createElement('p'); details.textContent = `${field.required ? '必須' : '任意'} / ${field.max_length ? field.max_length + '文字以内' : '文字数無制限'}`;
+            const details = document.createElement('p');
+            details.textContent = field.field_type === 'image'
+                ? `画像 / ${field.required ? '必須' : '任意'} / ${field.image_size === 'small' ? '小（2列）' : '大（1列）'}`
+                : `文章 / ${field.required ? '必須' : '任意'} / ${field.max_length ? field.max_length + '文字以内' : '文字数無制限'}`;
             const actions = document.createElement('div'); actions.className = 'field-actions';
             const up = action('↑', `${field.label}を上へ`, () => move(field, -1)); up.disabled = index === 0;
             const down = action('↓', `${field.label}を下へ`, () => move(field, 1)); down.disabled = index === fields.length - 1;
@@ -128,6 +220,7 @@
         resetEditor(); render(); status.textContent = '項目を反映しました。';
     });
     byId('field-cancel').addEventListener('click', () => { resetEditor(); render(); });
+    byId('field-type').addEventListener('change', () => { updateFieldType(); preview(); });
     byId('save-template').addEventListener('click', async () => {
         if (saving) return;
         const name = byId('template-name');
@@ -136,7 +229,7 @@
         if (dirty) { status.textContent = '左側の設定を「項目を追加」または「項目を更新」で反映してから保存してください。'; return; }
         if (!fields.length) { status.textContent = '項目を1つ以上追加してください。'; return; }
         saving = true; status.textContent = '保存しています…';
-        const controls = [...root.querySelectorAll('input, button')].map(control => [control, control.disabled]);
+        const controls = [...root.querySelectorAll('input, select, button')].map(control => [control, control.disabled]);
         controls.forEach(([control]) => { control.disabled = true; });
         try {
             await post('/admin/study-templates', {name: name.value.trim(), fields});

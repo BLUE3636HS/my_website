@@ -27,10 +27,17 @@ def initialize_studies(db):
             userid TEXT NOT NULL, time TEXT NOT NULL)""")
         field_columns = {row[1] for row in db.execute('PRAGMA table_info(study_template_field)')}
         for name, definition in {
-            'heading_font_size': 'INTEGER NOT NULL DEFAULT 13 CHECK(heading_font_size BETWEEN 6 AND 36)',
-            'body_font_size': 'INTEGER NOT NULL DEFAULT 11 CHECK(body_font_size BETWEEN 6 AND 36)',
+            'heading_font_size': 'INTEGER NOT NULL DEFAULT 11 CHECK(heading_font_size BETWEEN 6 AND 36)',
+            'body_font_size': 'INTEGER NOT NULL DEFAULT 10 CHECK(body_font_size BETWEEN 6 AND 36)',
             'hide_heading': 'INTEGER NOT NULL DEFAULT 0 CHECK(hide_heading IN (0,1))',
             'max_length': 'INTEGER NOT NULL DEFAULT 0 CHECK(max_length >= 0)',
+            'heading_alignment': "TEXT NOT NULL DEFAULT 'left' CHECK(heading_alignment IN ('left','center','right'))",
+            'body_alignment': "TEXT NOT NULL DEFAULT 'left' CHECK(body_alignment IN ('left','center','right'))",
+            'heading_bold': 'INTEGER NOT NULL DEFAULT 0 CHECK(heading_bold IN (0,1))',
+            'body_bold': 'INTEGER NOT NULL DEFAULT 0 CHECK(body_bold IN (0,1))',
+            'field_type': "TEXT NOT NULL DEFAULT 'text' CHECK(field_type IN ('text','image'))",
+            'image_size': "TEXT NOT NULL DEFAULT 'small' CHECK(image_size IN ('small','large'))",
+            'image_alignment': "TEXT NOT NULL DEFAULT 'center' CHECK(image_alignment IN ('left','center','right'))",
         }.items():
             if name not in field_columns:
                 db.execute(f'ALTER TABLE study_template_field ADD COLUMN {name} {definition}')
@@ -48,6 +55,18 @@ def initialize_studies(db):
             study_id INTEGER NOT NULL REFERENCES study(id) ON DELETE CASCADE,
             field_id INTEGER NOT NULL REFERENCES study_template_field(id) ON DELETE RESTRICT,
             value TEXT NOT NULL DEFAULT '', PRIMARY KEY(study_id, field_id))""")
+        db.execute("""CREATE TABLE IF NOT EXISTS study_field_image (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            study_id INTEGER NOT NULL REFERENCES study(id) ON DELETE CASCADE,
+            field_id INTEGER NOT NULL REFERENCES study_template_field(id) ON DELETE RESTRICT,
+            position INTEGER NOT NULL CHECK(position BETWEEN 0 AND 3),
+            stored_name TEXT NOT NULL UNIQUE,
+            original_name TEXT NOT NULL,
+            caption TEXT NOT NULL CHECK(length(caption) BETWEEN 1 AND 50),
+            image_format TEXT NOT NULL CHECK(image_format IN ('JPEG','PNG')),
+            width INTEGER NOT NULL CHECK(width > 0),
+            height INTEGER NOT NULL CHECK(height > 0),
+            UNIQUE(study_id, field_id, position))""")
         # Only seed fields when the template is first created, never overwrite edits.
         inserted = db.execute("""INSERT OR IGNORE INTO study_template(seed_key, name)
             VALUES ('basic-research-v1', '研究レポート（基本）')""")
@@ -62,8 +81,11 @@ def get_templates(db, include_inactive=False):
     return [{"id": row[0], "name": row[1], "active": bool(row[2]), "fields": [
         {"id": field[0], "label": field[1], "required": bool(field[2]),
          "heading_font_size": field[3], "body_font_size": field[4],
-         "hide_heading": bool(field[5]), "max_length": field[6]}
-        for field in db.execute("""SELECT id, label, required, heading_font_size, body_font_size, hide_heading, max_length FROM study_template_field
+         "hide_heading": bool(field[5]), "max_length": field[6],
+         "heading_alignment": field[7], "body_alignment": field[8],
+         "heading_bold": bool(field[9]), "body_bold": bool(field[10]),
+         "field_type": field[11], "image_size": field[12], "image_alignment": field[13]}
+        for field in db.execute("""SELECT id, label, required, heading_font_size, body_font_size, hide_heading, max_length, heading_alignment, body_alignment, heading_bold, body_bold, field_type, image_size, image_alignment FROM study_template_field
             WHERE template_id = ? ORDER BY position, id""", (row[0],))
     ]} for row in db.execute("SELECT id, name, active FROM study_template WHERE active = 1 OR ? ORDER BY id", (include_inactive,))]
 

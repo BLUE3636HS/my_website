@@ -10,12 +10,49 @@
     <div class="template-builder">
         <form id="field-editor" class="template-card">
             <h2 id="editor-title">項目を追加</h2>
-            <label for="field-label">見出し（必須）</label><input id="field-label" required>
-            <label for="heading-size">見出し文字サイズ（pt）</label><input id="heading-size" type="number" min="6" max="36" step="1" value="13" required>
-            <label class="template-check"><input id="hide-heading" type="checkbox"> PDFで見出しを非表示にする</label>
-            <label for="body-size">内容文字サイズ（pt）</label><input id="body-size" type="number" min="6" max="36" step="1" value="11" required>
-            <label for="max-length">文字数制限（0は無制限）</label><input id="max-length" type="number" min="0" max="9007199254740991" step="1" value="0" required>
-            <label class="template-check"><input id="field-required" type="checkbox"> 記入必須にする</label>
+            <label for="field-type">項目の種類</label>
+            <select id="field-type"><option value="text">文章</option><option value="image">画像</option></select>
+            <fieldset class="field-settings-group">
+                <legend>見出し設定</legend>
+                <label for="field-label">見出し（必須）</label><input id="field-label" required>
+                <label class="template-check"><input id="hide-heading" type="checkbox"> PDFで見出しを非表示にする</label>
+                <label for="heading-size">見出し文字サイズ</label><input id="heading-size" type="number" min="6" max="36" step="1" value="11" required>
+                <span id="heading-alignment-label" class="alignment-label">見出しの配置</span>
+                <input id="heading-alignment" type="hidden" value="left">
+                <div class="alignment-buttons" role="group" aria-labelledby="heading-alignment-label">
+                    <button type="button" class="alignment-button" data-heading-alignment="left" aria-label="見出しを左よせ" title="左よせ" aria-pressed="true"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M3 4h18 M3 8h12 M3 12h18 M3 16h12 M3 20h18"/></svg></button>
+                    <button type="button" class="alignment-button" data-heading-alignment="center" aria-label="見出しを中央よせ" title="中央よせ" aria-pressed="false"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M3 4h18 M6 8h12 M3 12h18 M6 16h12 M3 20h18"/></svg></button>
+                    <button type="button" class="alignment-button" data-heading-alignment="right" aria-label="見出しを右よせ" title="右よせ" aria-pressed="false"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M3 4h18 M9 8h12 M3 12h18 M9 16h12 M3 20h18"/></svg></button>
+                </div>
+                <label class="template-check"><input id="heading-bold" type="checkbox"> 見出しを太字にする</label>
+            </fieldset>
+            <fieldset class="field-settings-group" id="body-settings-group">
+                <legend id="body-settings-title">本文設定</legend>
+                <label for="body-size" id="body-size-label">内容文字サイズ</label><input id="body-size" type="number" min="6" max="36" step="1" value="10" required>
+                <span id="body-alignment-label" class="alignment-label">本文の配置</span>
+                <input id="body-alignment" type="hidden" value="left">
+                <div class="alignment-buttons" role="group" aria-labelledby="body-alignment-label">
+                    <button type="button" class="alignment-button" data-body-alignment="left" aria-label="本文を左よせ" title="左よせ" aria-pressed="true"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M3 4h18 M3 8h12 M3 12h18 M3 16h12 M3 20h18"/></svg></button>
+                    <button type="button" class="alignment-button" data-body-alignment="center" aria-label="本文を中央よせ" title="中央よせ" aria-pressed="false"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M3 4h18 M6 8h12 M3 12h18 M6 16h12 M3 20h18"/></svg></button>
+                    <button type="button" class="alignment-button" data-body-alignment="right" aria-label="本文を右よせ" title="右よせ" aria-pressed="false"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M3 4h18 M9 8h12 M3 12h18 M9 16h12 M3 20h18"/></svg></button>
+                </div>
+                <label class="template-check"><input id="body-bold" type="checkbox"> <span id="body-bold-label">本文を太字にする</span></label>
+                <div id="max-length-setting"><label for="max-length">文字数制限（0は無制限）</label><input id="max-length" type="number" min="0" max="9007199254740991" step="1" value="0" required></div>
+                <label class="template-check"><input id="field-required" type="checkbox"> 記入必須にする</label>
+            </fieldset>
+            <fieldset class="field-settings-group" id="image-settings-group" hidden>
+                <legend>画像設定</legend>
+                <label for="image-size">画像サイズ</label>
+                <select id="image-size"><option value="small">小（2列）</option><option value="large">大（1列）</option></select>
+                <span id="image-alignment-label" class="alignment-label">画像の配置</span>
+                <input id="image-alignment" type="hidden" value="center">
+                <div class="alignment-buttons" role="group" aria-labelledby="image-alignment-label">
+                    <button type="button" class="alignment-button" data-image-alignment="left" aria-label="画像を左よせ" title="左よせ" aria-pressed="false"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 4h18 M3 8h12 M3 12h18 M3 16h12 M3 20h18"/></svg></button>
+                    <button type="button" class="alignment-button" data-image-alignment="center" aria-label="画像を中央よせ" title="中央よせ" aria-pressed="true"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 4h18 M6 8h12 M3 12h18 M6 16h12 M3 20h18"/></svg></button>
+                    <button type="button" class="alignment-button" data-image-alignment="right" aria-label="画像を右よせ" title="右よせ" aria-pressed="false"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 4h18 M9 8h12 M3 12h18 M9 16h12 M3 20h18"/></svg></button>
+                </div>
+                <p>JPEG・PNGを最大4枚、各5MBまで追加できます。キャプションは各画像50文字以内で必須です。</p>
+            </fieldset>
             <button id="field-apply" type="button">項目を追加</button><button id="field-cancel" type="button">入力をクリア</button>
         </form>
         <section class="template-card"><h2>項目</h2><p>⋮⋮をドラッグ、または↑↓で並び替えできます。</p><ol id="field-list"></ol></section>

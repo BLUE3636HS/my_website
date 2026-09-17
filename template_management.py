@@ -3,10 +3,11 @@ import logging
 import secrets
 import sqlite3
 from contextlib import closing
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator, model_validator
 
 from studies import connect_studies, get_templates
 
@@ -14,11 +15,18 @@ from studies import connect_studies, get_templates
 class TemplateField(BaseModel):
     model_config = ConfigDict(extra='forbid')
     label: StrictStr
-    heading_font_size: StrictInt = Field(default=13, ge=6, le=36)
-    body_font_size: StrictInt = Field(default=11, ge=6, le=36)
+    heading_font_size: StrictInt = Field(default=11, ge=6, le=36)
+    body_font_size: StrictInt = Field(default=10, ge=6, le=36)
+    heading_alignment: Literal['left', 'center', 'right'] = 'left'
+    body_alignment: Literal['left', 'center', 'right'] = 'left'
+    heading_bold: StrictBool = False
+    body_bold: StrictBool = False
     hide_heading: StrictBool = False
     max_length: StrictInt = Field(default=0, ge=0, le=9007199254740991)
     required: StrictBool = False
+    field_type: Literal['text', 'image'] = 'text'
+    image_size: Literal['small', 'large'] = 'small'
+    image_alignment: Literal['left', 'center', 'right'] = 'center'
 
     @field_validator('label')
     @classmethod
@@ -26,6 +34,12 @@ class TemplateField(BaseModel):
         if not value.strip():
             raise ValueError('見出しを入力してください。')
         return value.strip()
+
+    @model_validator(mode='after')
+    def image_caption_limit(self):
+        if self.field_type == 'image' and self.max_length != 50:
+            raise ValueError('画像キャプションは50文字以内に設定してください。')
+        return self
 
 
 class TemplateCreate(BaseModel):
@@ -86,10 +100,12 @@ def create_template_router(database_path, templates):
             with closing(connect_studies(database_path())) as db, db:
                 template_id = db.execute('INSERT INTO study_template(name,active) VALUES (?,1)', (data.name,)).lastrowid
                 db.executemany('''INSERT INTO study_template_field
-                    (template_id,label,position,required,heading_font_size,body_font_size,hide_heading,max_length)
-                    VALUES (?,?,?,?,?,?,?,?)''', [
+                    (template_id,label,position,required,heading_font_size,body_font_size,hide_heading,max_length,heading_alignment,body_alignment,heading_bold,body_bold,field_type,image_size,image_alignment)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', [
                         (template_id, item.label, position, item.required, item.heading_font_size,
-                         item.body_font_size, item.hide_heading, item.max_length)
+                         item.body_font_size, item.hide_heading, item.max_length, item.heading_alignment,
+                         item.body_alignment, item.heading_bold, item.body_bold, item.field_type,
+                         item.image_size, item.image_alignment)
                         for position, item in enumerate(data.fields)])
         except sqlite3.Error:
             logging.exception('Failed to create study template')

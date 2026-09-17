@@ -39,9 +39,45 @@ class TemplateManagementTests(unittest.TestCase):
         self.assertEqual(self.create().status_code, 201)
         self.assertEqual(self.rows('SELECT seed_key,active FROM study_template WHERE id=2'), [(None, 1)])
         self.assertEqual(self.rows('SELECT label,position,heading_font_size,body_font_size,hide_heading,max_length,required FROM study_template_field WHERE template_id=2'),
-                         [('先頭', 0, 24, 16, 1, 5, 1), ('次の項目', 1, 13, 11, 0, 0, 0)])
+                         [('先頭', 0, 24, 16, 1, 5, 1), ('次の項目', 1, 11, 10, 0, 0, 0)])
         with closing(connect_studies(self.path)) as db:
             self.assertEqual(len(get_templates(db)), 2)
+
+    def test_independent_alignment_and_bold_saved_and_rendered(self):
+        self.create([{'label': '中央見出し', 'heading_alignment': 'center',
+                      'body_alignment': 'right', 'heading_bold': True, 'body_bold': False},
+                     {'label': '左見出し', 'heading_alignment': 'left',
+                      'body_alignment': 'center', 'heading_bold': False, 'body_bold': True}])
+        with closing(connect_studies(self.path)) as db:
+            fields = get_templates(db)[1]['fields']
+        self.assertEqual([(f['heading_alignment'], f['body_alignment'], f['heading_bold'], f['body_bold']) for f in fields],
+                         [('center', 'right', True, False), ('left', 'center', False, True)])
+        self.submit(template_id='2', **{f"field_{f['id']}": '本文' for f in fields})
+        response = asyncio.run(main.pdf(1, fixtures.request('/uploads/1.pdf', self.session)))
+        reader = PdfReader(io.BytesIO(response.body))
+        fonts = []
+        reader.pages[0].extract_text(visitor_text=lambda text, cm, tm, font, size:
+                                    fonts.append(str(font.get('/BaseFont'))) if text.strip() and font else None)
+        self.assertTrue(any('Bold' in font for font in fonts))
+        self.assertTrue(any('Regular' in font for font in fonts))
+        html = asyncio.run(self.endpoint('/admin/study-templates', 'GET')(self.admin_request())).body.decode()
+        self.assertIn('中央よせ・太字', html)
+        self.assertIn('右よせ・通常', html)
+
+    def test_alignment_and_bold_validation_and_migration_defaults(self):
+        for change in ({'heading_alignment': 'justify'}, {'body_alignment': ''},
+                       {'heading_bold': 1}, {'body_bold': 'true'}):
+            with self.subTest(change=change), self.assertRaises(ValidationError):
+                TemplateCreate(csrf_token='token', name='テスト', fields=[{'label': '項目', **change}])
+        self.submit(field_1='保持する本文')
+        with closing(connect_studies(self.path)) as db:
+            before = db.execute('SELECT * FROM study_field_value').fetchall()
+            initialize_studies(db)
+            initialize_studies(db)
+            self.assertEqual(db.execute('SELECT * FROM study_field_value').fetchall(), before)
+            field = get_templates(db)[0]['fields'][0]
+        self.assertEqual((field['heading_alignment'], field['body_alignment'], field['heading_bold'], field['body_bold']),
+                         ('left', 'left', False, False))
 
     def test_arbitrary_field_count_and_input_validation(self):
         self.create([{'label': f'項目{i}'} for i in range(20)])
@@ -54,6 +90,19 @@ class TemplateManagementTests(unittest.TestCase):
         for name, fields in [('　', [{'label': 'a'}]), ('test', [])]:
             with self.assertRaises(ValidationError):
                 TemplateCreate(csrf_token='token', name=name, fields=fields)
+
+    def test_image_field_settings_and_validation(self):
+        response = self.create([{'label': '実験写真', 'field_type': 'image', 'max_length': 50,
+                                 'image_size': 'large', 'image_alignment': 'right',
+                                 'body_font_size': 9, 'body_alignment': 'center', 'required': True}])
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(self.rows('''SELECT field_type,image_size,image_alignment,max_length,body_font_size,
+            body_alignment,required FROM study_template_field WHERE template_id=2'''),
+            [('image', 'large', 'right', 50, 9, 'center', 1)])
+        for change in ({'field_type': 'video'}, {'image_size': 'medium'},
+                       {'image_alignment': 'justify'}, {'field_type': 'image', 'max_length': 49}):
+            with self.subTest(change=change), self.assertRaises(ValidationError):
+                TemplateCreate(csrf_token='token', name='画像', fields=[{'label': '画像', **change}])
 
     def test_admin_and_csrf(self):
         for session in ({}, {'teacher_login': True}, {'user_login': True}):
@@ -123,8 +172,10 @@ class TemplateManagementTests(unittest.TestCase):
             initialize_studies(db)
             initialize_studies(db)
             self.assertEqual(db.execute('SELECT label,required,heading_font_size,body_font_size,hide_heading,max_length FROM study_template_field').fetchall(),
-                             [('元の項目', 1, 13, 11, 0, 0)])
+                             [('元の項目', 1, 11, 10, 0, 0)])
             self.assertEqual(db.execute('SELECT name FROM study_template').fetchall(), [('元の名前',)])
+            self.assertEqual(db.execute('SELECT heading_alignment,body_alignment,heading_bold,body_bold FROM study_template_field').fetchall(),
+                             [('left', 'left', 0, 0)])
 
     def test_pdf_field_styles_and_hidden_heading(self):
         reader = PdfReader(io.BytesIO(render_study_pdf([
