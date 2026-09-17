@@ -118,8 +118,12 @@
         preview();
     }
     editor.addEventListener('input', () => { dirty = true; byId('field-label').setCustomValidity(''); preview(); });
-    editor.addEventListener('submit', event => {
-        event.preventDefault(); if (saving || !validate()) return;
+    editor.addEventListener('submit', event => event.preventDefault());
+    editor.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && event.target.matches('input')) event.preventDefault();
+    });
+    byId('field-apply').addEventListener('click', () => {
+        if (saving || !validate()) return;
         if (selected) Object.assign(selected, settings()); else fields.push(settings());
         resetEditor(); render(); status.textContent = '項目を反映しました。';
     });

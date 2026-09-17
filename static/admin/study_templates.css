@@ -8,6 +8,8 @@
 .template-manager label { display: block; margin: 14px 0 7px; }
 .template-manager button, .template-button { border: 1px solid #25613e; border-radius: 7px; padding: 8px 12px; font: inherit; cursor: pointer; background: white; color: #25613e; text-decoration: none; }
 .template-manager .template-button { background: #25613e; color: white; }
+#field-apply { background: #25613e; color: white; }
+#field-apply:hover { background: #19472d; }
 .template-manager button:disabled { opacity: .5; cursor: default; }
 .template-manager :focus-visible { outline: 3px solid #7dbb93; outline-offset: 2px; }
 .template-builder { display: grid; grid-template-columns: minmax(210px, 1fr) minmax(220px, 1fr) minmax(260px, 1.3fr); gap: 18px; align-items: start; }

@@ -16,7 +16,7 @@
             <label for="body-size">内容文字サイズ（pt）</label><input id="body-size" type="number" min="6" max="36" step="1" value="11" required>
             <label for="max-length">文字数制限（0は無制限）</label><input id="max-length" type="number" min="0" max="9007199254740991" step="1" value="0" required>
             <label class="template-check"><input id="field-required" type="checkbox"> 記入必須にする</label>
-            <button id="field-apply" type="submit">項目を追加</button><button id="field-cancel" type="button">入力をクリア</button>
+            <button id="field-apply" type="button">項目を追加</button><button id="field-cancel" type="button">入力をクリア</button>
         </form>
         <section class="template-card"><h2>項目</h2><p>⋮⋮をドラッグ、または↑↓で並び替えできます。</p><ol id="field-list"></ol></section>
         <section class="template-preview"><h2>PDF簡易プレビュー</h2><p>実際のPDFとは改ページ等が異なる場合があります。</p><div class="preview-paper" id="preview-paper"></div></section>
