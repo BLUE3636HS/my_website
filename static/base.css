@@ -2,7 +2,8 @@
 
 body {
     margin: 0;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
     font-family: "Segoe UI", "Noto Sans JP", sans-serif;
     background: #f4f7fb;
     color: #333;
@@ -10,12 +11,11 @@ body {
 
 .student-layout {
     display: flex;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
 }
 
 .student-sidebar {
-    position: sticky;
-    top: 0;
     display: flex;
     flex: 0 0 240px;
     flex-direction: column;
@@ -23,7 +23,7 @@ body {
     padding: 28px 16px 20px;
     background: #1f4e79;
     box-shadow: 2px 0 10px rgba(0, 0, 0, .12);
-    overflow-y: auto;
+    overflow: hidden;
 }
 
 .student-brand {
@@ -79,8 +79,12 @@ body {
 }
 
 .student-main {
+    display: flex;
     flex: 1;
+    flex-direction: column;
+    height: 100vh;
     min-width: 0;
+    overflow: hidden;
     container-type: inline-size;
 }
 
@@ -106,7 +110,10 @@ body {
 }
 
 .student-content {
+    flex: 1;
     min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
 }
 
 .student-page {

@@ -1,18 +1,18 @@
 * { box-sizing: border-box; }
-body { margin: 0; min-height: 100vh; font-family: "Segoe UI", "Noto Sans JP", sans-serif; background: #fdf8f3; color: #4a3b32; }
-.teacher-layout { display: flex; min-height: 100vh; }
-.teacher-sidebar { position: sticky; top: 0; display: flex; flex: 0 0 240px; flex-direction: column; height: 100vh; padding: 28px 16px 20px; background: #b85c38; box-shadow: 2px 0 10px rgba(0,0,0,.12); overflow-y: auto; }
+body { margin: 0; height: 100vh; overflow: hidden; font-family: "Segoe UI", "Noto Sans JP", sans-serif; background: #fdf8f3; color: #4a3b32; }
+.teacher-layout { display: flex; height: 100vh; overflow: hidden; }
+.teacher-sidebar { display: flex; flex: 0 0 240px; flex-direction: column; height: 100vh; padding: 28px 16px 20px; background: #b85c38; box-shadow: 2px 0 10px rgba(0,0,0,.12); overflow: hidden; }
 .teacher-brand { display: flex; align-items: center; padding: 0 12px 28px; }
 .teacher-brand img { display: block; width: 140px; max-width: 100%; object-fit: contain; }
 .teacher-nav { border-top: 1px solid rgba(255,255,255,.28); padding-top: 16px; }
 .teacher-nav-link, .teacher-logout-link { display: block; border-radius: 7px; padding: 12px; color: #fff; font-weight: 600; line-height: 1.5; text-decoration: none; }
 .teacher-nav-link:hover, .teacher-logout-link:hover { background: rgba(255,255,255,.18); }
 .teacher-logout-link { margin-top: auto; border-top: 1px solid rgba(255,255,255,.28); border-radius: 0; padding-top: 20px; }
-.teacher-main { flex: 1; min-width: 0; container-type: inline-size; }
+.teacher-main { display: flex; flex: 1; flex-direction: column; height: 100vh; min-width: 0; overflow: hidden; container-type: inline-size; }
 .teacher-header { display: flex; align-items: center; justify-content: space-between; height: 70px; padding: 0 36px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.07); }
 .teacher-header p { margin: 0; color: #b85c38; font-weight: 700; }
 .teacher-header span { color: #78665d; font-size: 14px; }
-.teacher-content { min-width: 0; }
+.teacher-content { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; }
 .teacher-page { width: min(100%, 1120px); margin: 0 auto; padding: 42px 30px 72px; }
 .teacher-eyebrow { margin: 0 0 7px; color: #b85c38; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .teacher-profile-summary { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; margin: 28px 0 0; }

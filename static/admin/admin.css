@@ -2,21 +2,24 @@
 
 body {
     margin: 0;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
     font-family: "Segoe UI", "Noto Sans JP", sans-serif;
     background: #f3f8f4;
     color: #263b2f;
 }
 
-.admin-layout { display: flex; min-height: 100vh; }
+.admin-layout { display: flex; height: 100vh; overflow: hidden; }
 
 .sidebar {
     display: flex;
     flex: 0 0 240px;
     flex-direction: column;
+    height: 100vh;
     padding: 28px 16px 20px;
     background: #25613e;
     box-shadow: 2px 0 10px rgba(0, 0, 0, .12);
+    overflow: hidden;
 }
 
 .brand, .nav-link, .logout-link { color: #fff; text-decoration: none; }
@@ -26,7 +29,7 @@ body {
 .nav-link:hover, .logout-link:hover { background: rgba(255, 255, 255, .16); }
 .logout-link { margin-top: auto; border-top: 1px solid rgba(255,255,255,.25); border-radius: 0; padding-top: 20px; }
 
-.admin-main { flex: 1; min-width: 0; }
+.admin-main { display: flex; flex: 1; flex-direction: column; height: 100vh; min-width: 0; overflow: hidden; }
 .admin-header {
     display: flex;
     align-items: center;
@@ -38,13 +41,13 @@ body {
 }
 .admin-header p { margin: 0; color: #25613e; font-weight: 700; }
 .admin-header span { color: #5c7063; font-size: 14px; }
-.admin-content { padding: 40px; }
+.admin-content { flex: 1; min-height: 0; padding: 40px; overflow-y: auto; }
 .dashboard-card { max-width: 720px; padding: 36px; border-radius: 12px; background: #fff; box-shadow: 0 5px 20px rgba(37, 97, 62, .1); }
 .dashboard-eyebrow, .login-eyebrow { margin: 0 0 8px; color: #25613e; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .dashboard-card h1 { margin: 0 0 16px; font-size: 28px; }
 .dashboard-card p:last-child { margin: 0; color: #5c7063; }
 
-.login-page { display: grid; place-items: center; padding: 24px; }
+.login-page { display: grid; min-height: 100vh; height: auto; place-items: center; padding: 24px; overflow-y: auto; }
 .login-card { width: min(100%, 430px); padding: 40px; border-radius: 14px; background: #fff; box-shadow: 0 8px 28px rgba(37, 97, 62, .16); }
 .login-card h1 { margin: 0 0 10px; font-size: 28px; }
 .login-description { margin: 0 0 28px; color: #5c7063; font-size: 14px; }
