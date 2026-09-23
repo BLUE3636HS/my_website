@@ -17,7 +17,7 @@
                 <label class="equipment-card" data-equipment-id="{{ item.id }}" data-usage-type="{{ item.usage_type }}">
                     <input type="radio" name="equipment_id" value="{{ item.id }}" required>
                     <img src="{{ item.image }}" alt="{{ item.name }}"><span class="equipment-name">{{ item.name }}</span><span>{{ item.content }}</span>
-                    <span class="equipment-usage">{{ "持ち出し可能" if item.usage_type == "takeout" else "工作室内のみ" }}</span><strong class="equipment-stock">在庫 {{ item.count }}</strong>
+                    <span class="equipment-usage">{{ "持ち出し可能" if item.usage_type == "takeout" else "工作室内のみ" }}</span>
                 </label>
             {% endfor %}
             </div>

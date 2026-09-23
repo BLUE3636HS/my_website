@@ -83,10 +83,6 @@
     font-weight: 800;
 }
 
-.equipment-stock {
-    color: #1f4e79;
-}
-
 .equipment-usage { justify-self: start; padding: 4px 8px; border-radius: 999px; background: #e8eef5; color: #334155; font-size: 12px; font-weight: 800; }
 .equipment-card[data-usage-type="takeout"] .equipment-usage { background: #dbeafe; color: #1e40af; }
 .equipment-card[data-usage-type="in_room"] .equipment-usage { background: #ffedd5; color: #9a3412; }

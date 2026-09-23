@@ -217,7 +217,7 @@
         submitButton.disabled = true;
         try {
             await fetchJson(endpoint, {method: "POST", body: data});
-            showMessage("予約が完了しました。", "success");
+            window.alert("予約が確定しました。マイページで確認できます");
             window.location.href = "/mypage";
         } catch (error) {
             showMessage(error.message);
