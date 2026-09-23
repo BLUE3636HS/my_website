@@ -1,0 +1,11 @@
+{% extends "admin/base.html" %}
+{% block title %}メンター対応可能時間{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/mentor.css">{% endblock %}
+{% block content %}<div class="mentor-page"><header class="mentor-hero"><p class="eyebrow">MENTOR SCHEDULE</p><h1>対応可能時間</h1><p>翌日以降の30分枠をオンライン・オフライン別に設定します。</p></header>
+{% if notice %}<p class="mentor-notice is-{{ notice.type }}">{{ notice.message }}</p>{% endif %}
+<section class="mentor-panel"><form class="mentor-form" method="get"><label>日付<input type="date" name="day" min="{{ tomorrow }}" value="{{ selected_day }}"></label><button class="mentor-button" type="submit">表示</button></form></section>
+<form class="mentor-panel mentor-form" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="day" value="{{ selected_day }}">
+<div class="mentor-grid"><label>開始<select name="start_time">{% for s in slots %}<option>{{ s.start_time }}</option>{% endfor %}</select></label><label>終了<select name="end_time">{% for s in slots %}<option value="{{ s.end_time }}">{{ s.end_time }}</option>{% endfor %}</select></label></div>
+<fieldset><legend>利用形式（複数選択可）</legend><label class="mentor-check"><input type="checkbox" name="online" value="1">オンライン</label><label class="mentor-check"><input type="checkbox" name="offline" value="1">オフライン</label></fieldset>
+<fieldset><legend>操作</legend><label class="mentor-check"><input type="radio" name="action" value="add" checked>追加</label><label class="mentor-check"><input type="radio" name="action" value="remove">削除</label></fieldset><button class="mentor-button" type="submit">更新する</button></form>
+<section class="mentor-panel"><h2>{{ selected_day }} の設定状況</h2><div class="slot-list">{% for s in slots %}{% if s.online_available or s.offline_available %}<span><strong>{{ s.start_time }}〜{{ s.end_time }}</strong> {% if s.online_available %}オンライン{% endif %}{% if s.online_available and s.offline_available %} / {% endif %}{% if s.offline_available %}オフライン{% endif %}</span>{% endif %}{% endfor %}</div></section></div>{% endblock %}

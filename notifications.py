@@ -91,6 +91,12 @@ def reservation_body(reservation_type, row):
     if reservation_type == "equipment_takeout":
         return (f"器具名: {row['equipment']}\n利用区分: 持ち出し\n"
                 f"利用期間: {row['start_day']} ～ {row['end_day']}\n数量: {row['quantity']}")
+    if reservation_type == "mentor":
+        meeting_type = "オンライン" if row["meeting_type"] == "online" else "オフライン"
+        consultation = row["consultation"]
+        return (f"メンター: {row['mentor_name']}\n利用日: {row['day']}\n"
+                f"利用時間: {row['start_time']} ～ {row['end_time']}\n"
+                f"利用形式: {meeting_type}\n相談内容: {consultation}")
     return (f"器具名: {row['equipment']}\n利用区分: 工作室内\n利用日: {row['use_day']}\n"
             f"利用時間: {row['start_time']} ～ {row['end_time']}\n数量: {row['quantity']}")
 
@@ -106,13 +112,24 @@ def create_reservation_reminders(database_path, target_date=None):
             ("tekne", "reservation", "day", "明日はTEKNE工作室の予約日です"),
             ("equipment_takeout", "equipment_reservation", "start_day", "明日は実験器具の利用予定日です"),
             ("equipment_in_room", "equipment_room_reservation", "use_day", "明日は実験器具の利用予定日です"),
+            ("mentor", "mentor_reservation", "day", "明日は大学生メンターの予約日です"),
         ]
         for reservation_type, table, date_column, title in sources:
-            rows = db.execute(f"SELECT * FROM {table} WHERE {date_column} = ?", (day,)).fetchall()
+            if db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+            ).fetchone() is None:
+                continue
+            mentor_join = (" LEFT JOIN mentor_profile p ON p.admin_id = r.mentor_admin_id "
+                           "WHERE r.day = ? AND r.status = 'active'") if reservation_type == "mentor" else None
+            if mentor_join:
+                rows = db.execute("""SELECT r.*,COALESCE(NULLIF(p.display_name,''),r.mentor_admin_id) mentor_name
+                    FROM mentor_reservation r""" + mentor_join, (day,)).fetchall()
+            else:
+                rows = db.execute(f"SELECT * FROM {table} WHERE {date_column} = ?", (day,)).fetchall()
             for row in rows:
                 try:
                     create_notification(
-                        db, row["userid"], title, reservation_body(reservation_type, row),
+                        db, row["student_id"] if reservation_type == "mentor" else row["userid"], title, reservation_body(reservation_type, row),
                         "reservation_reminder", reservation_type, row["id"]
                     )
                     created += 1

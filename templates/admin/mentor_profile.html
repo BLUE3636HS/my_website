@@ -1,0 +1,9 @@
+{% extends "admin/base.html" %}
+{% block title %}大学生メンター情報{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/mentor.css">{% endblock %}
+{% block content %}<div class="mentor-page"><header class="mentor-hero"><p class="eyebrow">MENTOR PROFILE</p><h1>大学生メンター情報</h1><p>生徒に表示する名前と公開状態を設定します。</p></header>
+{% if notice %}<p class="mentor-notice is-{{ notice.type }}">{{ notice.message }}</p>{% endif %}
+<form class="mentor-panel mentor-form" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}">
+<label>メンター名<input name="display_name" maxlength="100" required value="{{ profile.display_name if profile else '' }}"></label>
+<fieldset><legend>生徒への公開</legend><label class="mentor-check"><input type="checkbox" name="is_published" value="1" {% if profile and profile.is_published %}checked{% endif %}> 生徒にメンターとして表示する</label></fieldset>
+<button class="mentor-button" type="submit">保存する</button></form></div>{% endblock %}

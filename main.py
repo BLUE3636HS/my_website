@@ -22,6 +22,12 @@ from notifications import (
     create_notification, initialize_notification_tables, notification_now,
     reservation_body
 )
+from mentor_reservations import (
+    build_router as build_mentor_router,
+    csrf_token as mentor_csrf_token,
+    initialize_mentor_tables,
+    mentor_reservations_for_student,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "database" / "database.db"
@@ -252,6 +258,7 @@ if "returned" not in equipment_room_reservation_columns:
         "ADD COLUMN returned INTEGER NOT NULL DEFAULT 0"
     )
 initialize_notification_tables(conn)
+initialize_mentor_tables(conn)
 conn.commit()
 with closing(connect_studies(DATABASE_PATH)) as study_db:
     initialize_studies(study_db)
@@ -273,6 +280,7 @@ def student_template_context(request):
 
 templates = Jinja2Templates(directory="templates", context_processors=[student_template_context])
 app.include_router(create_template_router(lambda: DATABASE_PATH, templates))
+app.include_router(build_mentor_router(DATABASE_PATH, templates))
 
 COMMUNITY_PAGE_SIZE = 20
 
@@ -2212,6 +2220,8 @@ async def Mypage(request: Request):
         equipment_reservations + equipment_room_reservations,
         key=lambda reservation: reservation["sort_key"]
     )
+    with closing(sqlite3.connect(DATABASE_PATH)) as mentor_db:
+        mentor_reservations = mentor_reservations_for_student(mentor_db, user_id)
 
     return templates.TemplateResponse(
         request = request,
@@ -2224,6 +2234,9 @@ async def Mypage(request: Request):
             "profile_image_url": profile_image_url(current_profile_image),
             "reservations": reservations,
             "equipment_reservations": all_equipment_reservations,
+            "mentor_reservations": mentor_reservations,
+            "mentor_reservation_csrf_token": mentor_csrf_token(request, "mypage_mentor_csrf"),
+            "mentor_reservation_notice": request.session.pop("mypage_mentor_notice", None),
             "reservation_csrf_token": reservation_csrf_token(request, "mypage_reservation_csrf_token"),
             "reservation_notice": request.session.pop("mypage_reservation_notice", None)
         }

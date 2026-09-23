@@ -24,10 +24,22 @@ body {
 
 .brand, .nav-link, .logout-link { color: #fff; text-decoration: none; }
 .brand { padding: 0 12px 28px; font-size: 25px; font-weight: 700; letter-spacing: .04em; }
-.nav-menu { border-top: 1px solid rgba(255,255,255,.25); padding-top: 16px; }
+.nav-menu {
+    flex: 1;
+    min-height: 0;
+    border-top: 1px solid rgba(255,255,255,.25);
+    padding-top: 16px;
+    padding-right: 4px;
+    overflow-y: auto;
+    scrollbar-color: rgba(255,255,255,.45) transparent;
+    scrollbar-width: thin;
+}
+.nav-menu::-webkit-scrollbar { width: 6px; }
+.nav-menu::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(255,255,255,.45); }
+.nav-menu::-webkit-scrollbar-track { background: transparent; }
 .nav-link, .logout-link { display: block; border-radius: 7px; padding: 12px; font-weight: 600; }
 .nav-link:hover, .logout-link:hover { background: rgba(255, 255, 255, .16); }
-.logout-link { margin-top: auto; border-top: 1px solid rgba(255,255,255,.25); border-radius: 0; padding-top: 20px; }
+.logout-link { flex: 0 0 auto; margin-top: 8px; border-top: 1px solid rgba(255,255,255,.25); border-radius: 0; padding-top: 20px; }
 
 .admin-main { display: flex; flex: 1; flex-direction: column; height: 100vh; min-width: 0; overflow: hidden; }
 .admin-header {

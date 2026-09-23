@@ -11,6 +11,23 @@
         <p>プロフィール情報と現在の予約内容を確認できます。</p>
     </section>
     <section class="student-panel">
+    <h2>大学生メンター 予約一覧</h2>
+    {% if mentor_reservation_notice %}<p class="mypage-notice is-{{ mentor_reservation_notice.type }}">{{ mentor_reservation_notice.message }}</p>{% endif %}
+    <div class="mypage-table-scroll"><table class="reservation-table" border="1">
+        <tr><th>メンター</th><th>日時</th><th>利用形式</th><th>相談内容</th><th>状態</th><th>キャンセル</th></tr>
+        {% for reservation in mentor_reservations %}
+        <tr>
+            <td>{{ reservation.mentor_name }}</td>
+            <td>{{ reservation.day }} {{ reservation.start_time }}〜{{ reservation.end_time }}</td>
+            <td>{{ 'オンライン' if reservation.meeting_type == 'online' else 'オフライン' }}</td>
+            <td>{{ reservation.consultation }}</td>
+            <td>{{ '有効' if reservation.status == 'active' else 'キャンセル済み' }}</td>
+            <td>{% if reservation.status == 'active' %}<form method="post" action="/mypage/mentor-reservation/{{ reservation.id }}/cancel" class="reservation-cancel-form"><input type="hidden" name="csrf" value="{{ mentor_reservation_csrf_token }}"><button class="del_reservation" type="submit" aria-label="メンター予約をキャンセル">X</button></form>{% else %}-{% endif %}</td>
+        </tr>
+        {% else %}<tr><td colspan="6">大学生メンターの予約はありません。</td></tr>{% endfor %}
+    </table></div>
+    </section>
+    <section class="student-panel">
     <h2>プロフィール情報</h2>
     <div class="mypage-profile-image-wrap">
         <img class="profile-image" src="{{ profile_image_url }}" alt="現在のプロフィール画像">

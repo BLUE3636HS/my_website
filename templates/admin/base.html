@@ -19,6 +19,9 @@
                     <a class="nav-link" href="/admin"{% if current_path == '/admin' %} aria-current="page"{% endif %}>ダッシュボード</a>
                     <a class="nav-link" href="/admin/reservation"{% if current_path == '/admin/reservation' or current_path.startswith('/admin/reservation/') %} aria-current="page"{% endif %}>TEKNE工作室予約確認</a>
                     <a class="nav-link" href="/admin/reservation-schedule"{% if current_path == '/admin/reservation-schedule' or current_path.startswith('/admin/reservation-schedule/') %} aria-current="page"{% endif %}>予約可能時間設定</a>
+                    <a class="nav-link" href="/admin/mentor-profile"{% if current_path.startswith('/admin/mentor-profile') %} aria-current="page"{% endif %}>大学生メンター情報</a>
+                    <a class="nav-link" href="/admin/mentor-schedule"{% if current_path.startswith('/admin/mentor-schedule') %} aria-current="page"{% endif %}>メンター対応可能時間</a>
+                    <a class="nav-link" href="/admin/mentor-reservations"{% if current_path.startswith('/admin/mentor-reservations') %} aria-current="page"{% endif %}>メンター予約確認</a>
                     <a class="nav-link" href="/admin/equipment-reservation"{% if current_path == '/admin/equipment-reservation' or current_path.startswith('/admin/equipment-reservation/') %} aria-current="page"{% endif %}>実験器具予約確認</a>
                     <a class="nav-link" href="/admin/studies"{% if current_path == '/admin/studies' or current_path.startswith('/admin/studies/') %} aria-current="page"{% endif %}>研究成果管理</a>
                     <a class="nav-link" href="/admin/study-templates"{% if current_path == '/admin/study-templates' or current_path.startswith('/admin/study-templates/') %} aria-current="page"{% endif %}>テンプレート管理</a>
