@@ -1,11 +1,93 @@
 {% extends "admin/base.html" %}
 {% block title %}メンター対応可能時間{% endblock %}
-{% block css %}<link rel="stylesheet" href="/static/mentor.css">{% endblock %}
-{% block content %}<div class="mentor-page"><header class="mentor-hero"><p class="eyebrow">MENTOR SCHEDULE</p><h1>対応可能時間</h1><p>翌日以降の30分枠をオンライン・オフライン別に設定します。</p></header>
-{% if notice %}<p class="mentor-notice is-{{ notice.type }}">{{ notice.message }}</p>{% endif %}
-<section class="mentor-panel"><form class="mentor-form" method="get"><label>日付<input type="date" name="day" min="{{ tomorrow }}" value="{{ selected_day }}"></label><button class="mentor-button" type="submit">表示</button></form></section>
-<form class="mentor-panel mentor-form" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="day" value="{{ selected_day }}">
-<div class="mentor-grid"><label>開始<select name="start_time">{% for s in slots %}<option>{{ s.start_time }}</option>{% endfor %}</select></label><label>終了<select name="end_time">{% for s in slots %}<option value="{{ s.end_time }}">{{ s.end_time }}</option>{% endfor %}</select></label></div>
-<fieldset><legend>利用形式（複数選択可）</legend><label class="mentor-check"><input type="checkbox" name="online" value="1">オンライン</label><label class="mentor-check"><input type="checkbox" name="offline" value="1">オフライン</label></fieldset>
-<fieldset><legend>操作</legend><label class="mentor-check"><input type="radio" name="action" value="add" checked>追加</label><label class="mentor-check"><input type="radio" name="action" value="remove">削除</label></fieldset><button class="mentor-button" type="submit">更新する</button></form>
-<section class="mentor-panel"><h2>{{ selected_day }} の設定状況</h2><div class="slot-list">{% for s in slots %}{% if s.online_available or s.offline_available %}<span><strong>{{ s.start_time }}〜{{ s.end_time }}</strong> {% if s.online_available %}オンライン{% endif %}{% if s.online_available and s.offline_available %} / {% endif %}{% if s.offline_available %}オフライン{% endif %}</span>{% endif %}{% endfor %}</div></section></div>{% endblock %}
+{% block css %}
+<link rel="stylesheet" href="/static/admin/reservation_schedule.css">
+<link rel="stylesheet" href="/static/admin/mentor_schedule.css">
+{% endblock %}
+{% block content %}
+<div class="schedule-page mentor-schedule-page" id="mentor-schedule-page" data-tomorrow="{{ tomorrow }}" data-selected-day="{{ selected_day }}">
+    <header class="schedule-header">
+        <p class="schedule-eyebrow">Mentor schedule</p>
+        <h1>メンター対応可能時間</h1>
+        <p>翌日以降の日付を選択し、オンライン・オフラインの対応可能時間を30分単位で設定します。</p>
+    </header>
+
+    {% if notice %}<div class="schedule-notice is-{{ notice.type }}" role="status" id="mentor-schedule-notice">{{ notice.message }}</div>{% endif %}
+    <div class="schedule-notice is-error" id="mentor-schedule-load-error" role="alert" hidden></div>
+
+    <div class="schedule-workspace">
+        <section class="schedule-calendar-card" aria-labelledby="mentor-calendar-title">
+            <div class="schedule-calendar-nav">
+                <button type="button" id="mentor-prev-month" aria-label="前月">‹</button>
+                <h2 id="mentor-calendar-title"></h2>
+                <button type="button" id="mentor-next-month" aria-label="翌月">›</button>
+            </div>
+            <div class="schedule-weekdays" aria-hidden="true">
+                <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+            </div>
+            <div class="schedule-calendar-days" id="mentor-calendar-days"></div>
+        </section>
+
+        <section class="schedule-settings-card" aria-labelledby="mentor-selected-title">
+            <h2 id="mentor-selected-title"><span id="mentor-selected-day">{{ selected_day }}</span> の設定</h2>
+            <form method="post" action="/admin/mentor-schedule" id="mentor-schedule-form">
+                <input type="hidden" name="csrf" value="{{ csrf_token }}">
+                <input type="hidden" name="day" id="mentor-form-day" value="{{ selected_day }}">
+                <input type="hidden" name="start_time" id="mentor-start-time" value="">
+                <input type="hidden" name="end_time" id="mentor-end-time" value="">
+
+                <h3>設定済みの時間帯</h3>
+                <p class="schedule-drag-help">開始枠から終了枠までドラッグしてください。1枠だけ選ぶ場合はクリックします。</p>
+                <div class="schedule-legend mentor-schedule-legend" aria-label="対応可能時間の凡例">
+                    <span class="is-online">オンライン</span>
+                    <span class="is-offline">オフライン</span>
+                    <span class="is-both">両方</span>
+                    <span class="is-unset">未設定</span>
+                    <span class="is-reserved">予約あり</span>
+                </div>
+
+                <div class="schedule-timeline-scroll" tabindex="0" aria-label="9時から22時までのメンター対応可能時間">
+                    <div class="schedule-timeline-stage">
+                        <div class="schedule-time-scale" id="mentor-time-scale"></div>
+                        <div class="schedule-timeline" id="mentor-timeline"></div>
+                    </div>
+                </div>
+                <p class="schedule-loading" id="mentor-schedule-loading" hidden>対応可能時間を読み込んでいます...</p>
+
+                <article class="schedule-slot-detail mentor-slot-detail" aria-live="polite">
+                    <div class="schedule-detail-heading">
+                        <strong id="mentor-detail-time">時間帯をドラッグして選択してください</strong>
+                        <span id="mentor-detail-reserved" hidden>予約あり</span>
+                    </div>
+                    <dl>
+                        <div><dt>オンライン</dt><dd id="mentor-detail-online">-</dd></div>
+                        <div><dt>オフライン</dt><dd id="mentor-detail-offline">-</dd></div>
+                        <div><dt>予約</dt><dd id="mentor-detail-booking">-</dd></div>
+                    </dl>
+                </article>
+
+                <div class="schedule-divider"></div>
+                <div class="mentor-schedule-controls">
+                    <fieldset class="mentor-mode-field">
+                        <legend>設定する利用形式</legend>
+                        <div class="mentor-mode-switch">
+                            <label><input type="checkbox" name="online" value="1"><span>オンライン</span></label>
+                            <label><input type="checkbox" name="offline" value="1"><span>オフライン</span></label>
+                        </div>
+                    </fieldset>
+                    <fieldset class="schedule-action-field">
+                        <legend>選択した時間帯の操作</legend>
+                        <div class="schedule-action-switch">
+                            <label><input type="radio" name="action" value="add" checked><span>追加</span></label>
+                            <label><input type="radio" name="action" value="remove"><span>削除</span></label>
+                        </div>
+                    </fieldset>
+                </div>
+                <button type="submit" class="schedule-submit" id="mentor-schedule-submit" disabled>時間帯と利用形式を選択してください</button>
+            </form>
+        </section>
+    </div>
+</div>
+<script type="application/json" id="mentor-initial-slots">{{ slots | tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/static/admin/mentor_schedule.js"></script>{% endblock %}

@@ -1,1 +1,128 @@
 .mentor-page{display:grid;gap:20px;color:#173226}.mentor-hero{padding:4px 2px}.mentor-hero h1{margin:5px 0 8px;font-size:clamp(28px,3vw,42px)}.eyebrow{margin:0;color:#25613e;font-size:12px;font-weight:800;letter-spacing:.18em}.mentor-panel,.mentor-card{padding:24px;border:1px solid #d6e2d9;border-radius:16px;background:#fff;box-shadow:0 12px 28px rgba(25,71,45,.08)}.mentor-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}.mentor-card{display:grid;gap:15px}.mentor-card h2{margin:0}.mentor-description{padding:15px;border-radius:10px;background:#f2f6f3}.mentor-form{display:grid;gap:18px;max-width:760px}.mentor-form label{display:grid;gap:7px;font-weight:700}.mentor-form input,.mentor-form select,.mentor-form textarea{box-sizing:border-box;width:100%;padding:11px;border:1px solid #aec4b4;border-radius:9px;background:#fff;font:inherit}.mentor-form fieldset{display:flex;gap:20px;border:1px solid #d6e2d9;border-radius:10px}.mentor-form .mentor-check{display:flex;align-items:center;gap:7px}.mentor-check input{width:auto}.mentor-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.mentor-button,.mentor-secondary,.mentor-danger,.mentor-tabs a{display:inline-block;width:max-content;padding:11px 18px;border:0;border-radius:9px;background:#25613e;color:#fff;text-decoration:none;font-weight:800;cursor:pointer}.mentor-button:disabled{opacity:.45}.mentor-secondary{background:#527161}.mentor-danger{background:#a73737}.mentor-notice{padding:14px 18px;border-radius:10px}.mentor-notice.is-success{background:#e6f4ea;color:#19472d}.mentor-notice.is-error{background:#fdecec;color:#9b2424}.slot-list{display:flex;flex-wrap:wrap;gap:8px}.slot-list span{padding:8px 10px;border-radius:8px;background:#e6f4ea}.mentor-tabs{display:flex;gap:8px}.mentor-tabs a{background:#dce8df;color:#173226}.mentor-tabs a.active{background:#25613e;color:#fff}.mentor-table-wrap{overflow:auto}.mentor-table{width:100%;border-collapse:collapse}.mentor-table th,.mentor-table td{padding:10px;border-bottom:1px solid #dce5df;text-align:left;vertical-align:top}.mentor-table small{display:block;color:#66766d}@media(max-width:650px){.mentor-grid{grid-template-columns:1fr}.mentor-panel,.mentor-card{padding:18px}}
+
+/* Student mentor pages follow the blue student UI; admin mentor pages stay green. */
+.student-content .mentor-page {
+    width: min(100%, 1120px);
+    margin: 0 auto;
+    padding: 42px 30px 72px;
+    gap: 28px;
+    color: #334155;
+}
+
+.student-content .mentor-hero {
+    padding: 0;
+}
+
+.student-content .mentor-hero .eyebrow {
+    margin: 0 0 6px;
+    color: #1f4e79;
+    letter-spacing: .14em;
+}
+
+.student-content .mentor-hero h1 {
+    margin: 0;
+    color: #243447;
+    font-size: clamp(28px, 4vw, 42px);
+}
+
+.student-content .mentor-hero > p:last-child {
+    margin: 7px 0 0;
+    color: #64748b;
+}
+
+.student-content .mentor-cards {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    gap: 22px;
+}
+
+.student-content .mentor-panel,
+.student-content .mentor-card {
+    padding: 28px;
+    border-color: #d6e0ea;
+    box-shadow: 0 8px 26px rgba(31, 78, 121, .08);
+}
+
+.student-content .mentor-card {
+    gap: 22px;
+}
+
+.student-content .mentor-card h2 {
+    color: #243447;
+    font-size: 23px;
+}
+
+.student-content .mentor-description {
+    margin: 0;
+    padding: 18px;
+    border: 1px solid #dce6f0;
+    background: #f3f7fb;
+    color: #526173;
+    line-height: 1.75;
+}
+
+.student-content .mentor-description strong {
+    color: #243447;
+}
+
+.student-content .mentor-form {
+    width: min(100%, 760px);
+    max-width: none;
+    gap: 24px;
+}
+
+.student-content .mentor-form fieldset {
+    padding: 16px 18px;
+    border-color: #d6e0ea;
+}
+
+.student-content .mentor-form input,
+.student-content .mentor-form select,
+.student-content .mentor-form textarea {
+    min-height: 46px;
+    padding: 12px 14px;
+    border-color: #b9c8d8;
+}
+
+.student-content .mentor-form textarea {
+    min-height: 150px;
+    resize: vertical;
+}
+
+.student-content .mentor-form input:focus,
+.student-content .mentor-form select:focus,
+.student-content .mentor-form textarea:focus {
+    outline: 3px solid rgba(31, 78, 121, .16);
+    border-color: #1f4e79;
+}
+
+.student-content .mentor-button,
+.student-content .mentor-secondary {
+    padding: 13px 22px;
+    border-radius: 8px;
+    background: #1f4e79;
+}
+
+.student-content .mentor-button:hover,
+.student-content .mentor-secondary:hover {
+    background: #163a5c;
+}
+
+.student-content #mentor-slot-help {
+    margin: -8px 0 0;
+    padding: 12px 14px;
+    border-radius: 9px;
+    background: #eef4fa;
+    color: #526b84;
+}
+
+@media (max-width: 700px) {
+    .student-content .mentor-page {
+        padding: 25px 16px 50px;
+        gap: 22px;
+    }
+
+    .student-content .mentor-panel,
+    .student-content .mentor-card {
+        padding: 20px;
+    }
+}

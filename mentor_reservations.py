@@ -163,10 +163,38 @@ def build_router(database_path, templates):
         existing = {row[0]: (bool(row[1]), bool(row[2])) for row in db.execute(
             "SELECT start_time,online_available,offline_available FROM mentor_available_slot WHERE admin_id=? AND day=?",
             (admin_id, day))}
-        return [{"start_time": minutes_to_time(value), "end_time": minutes_to_time(value + 30),
-                 "online_available": existing.get(minutes_to_time(value), (False, False))[0],
-                 "offline_available": existing.get(minutes_to_time(value), (False, False))[1]}
-                for value in range(OPEN_MINUTES, CLOSE_MINUTES, 30)]
+        booked = {minutes_to_time(value): {"online": False, "offline": False}
+                  for value in range(OPEN_MINUTES, CLOSE_MINUTES, 30)}
+        for start_time, end_time, meeting_type in db.execute(
+            """SELECT start_time,end_time,meeting_type FROM mentor_reservation
+               WHERE mentor_admin_id=? AND day=? AND status='active'""", (admin_id, day)
+        ):
+            for slot_time in slot_range(start_time, end_time):
+                if slot_time in booked:
+                    booked[slot_time][meeting_type] = True
+        rows = []
+        for value in range(OPEN_MINUTES, CLOSE_MINUTES, 30):
+            start_time = minutes_to_time(value)
+            online, offline = existing.get(start_time, (False, False))
+            if online and offline:
+                state = "both"
+            elif online:
+                state = "online"
+            elif offline:
+                state = "offline"
+            else:
+                state = "unset"
+            rows.append({
+                "start_time": start_time,
+                "end_time": minutes_to_time(value + 30),
+                "online_available": online,
+                "offline_available": offline,
+                "online_reserved": booked[start_time]["online"],
+                "offline_reserved": booked[start_time]["offline"],
+                "reserved": booked[start_time]["online"] or booked[start_time]["offline"],
+                "state": state,
+            })
+        return rows
 
     @router.get("/admin/mentor-schedule", response_class=HTMLResponse)
     async def admin_mentor_schedule(request: Request, day: str = None):
