@@ -1,0 +1,77 @@
+.meeting-type-fieldset {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+}
+
+.meeting-type-fieldset legend {
+    margin-bottom: 12px;
+    padding: 0;
+    color: #334155;
+    font-weight: 700;
+}
+
+.meeting-type-options {
+    display: inline-flex;
+    max-width: 100%;
+    gap: 4px;
+    padding: 3px;
+    border: 1px solid #b4cfc5;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.meeting-type-option {
+    position: relative;
+    min-width: 0;
+}
+
+.meeting-type-option input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.meeting-type-option span {
+    display: block;
+    padding: 9px 20px;
+    border-radius: 8px;
+    background: #fff;
+    color: #173226;
+    font-size: 16px;
+    font-weight: 800;
+    text-align: center;
+    cursor: pointer;
+}
+
+.meeting-type-option input:checked + span {
+    background: #3274b4;
+    color: #fff;
+}
+
+.meeting-type-option input[value="offline"]:checked + span {
+    background: #b77919;
+}
+
+.meeting-type-option input:focus-visible + span {
+    outline: 3px solid #173e67;
+    outline-offset: 2px;
+}
+
+.meeting-type-option input:disabled + span {
+    opacity: .55;
+    cursor: wait;
+}
+
+@media (max-width: 400px) {
+    .meeting-type-option span {
+        padding: 9px 12px;
+        font-size: 14px;
+    }
+}

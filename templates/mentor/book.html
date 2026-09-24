@@ -1,5 +1,106 @@
-{% extends "base.html" %}{% block title %}{{ mentor.display_name }}を予約{% endblock %}{% block css %}<link rel="stylesheet" href="/static/mentor.css">{% endblock %}
-{% block content %}<div class="mentor-page"><header class="mentor-hero"><p class="eyebrow">BOOK A MENTOR</p><h1>{{ mentor.display_name }}を予約</h1><p>利用形式と日付を選び、空いている連続時間を指定してください。</p></header><div id="mentor-book-error" class="mentor-notice is-error" hidden></div><form id="mentor-book-form" class="mentor-panel mentor-form" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}">
-<fieldset><legend>利用形式</legend><label class="mentor-check"><input type="radio" name="meeting_type" value="online" checked>オンライン</label><label class="mentor-check"><input type="radio" name="meeting_type" value="offline">オフライン</label></fieldset><label>日付<input type="date" name="day" min="{{ tomorrow }}" value="{{ tomorrow }}" required></label><button type="button" class="mentor-secondary" id="mentor-load-slots">空き時間を確認</button>
-<div class="mentor-grid"><label>開始<select name="start_time" required disabled></select></label><label>終了<select name="end_time" required disabled></select></label></div><p id="mentor-slot-help">日付と利用形式を選び、空き時間を確認してください。</p><label>相談内容<textarea name="consultation" maxlength="2000" required rows="6"></textarea></label><button class="mentor-button" type="submit" disabled>予約を確定する</button></form></div>{% endblock %}
-{% block script %}<script src="/static/mentor_booking.js"></script>{% endblock %}
+{% extends "base.html" %}
+{% block title %}{{ mentor.display_name }}を予約{% endblock %}
+{% block css %}
+    <link rel="stylesheet" href="/static/reservation.css">
+    <link rel="stylesheet" href="/static/mentor_booking.css">
+{% endblock %}
+{% block content %}
+<div
+    class="reservation-page"
+    id="reservation-page"
+    data-today="{{ tomorrow }}"
+    data-initial-day=""
+    data-csrf-token="{{ csrf_token }}"
+>
+    <section class="reservation-hero">
+        <p class="reservation-eyebrow">BOOK A MENTOR</p>
+        <h1>{{ mentor.display_name }}を予約</h1>
+        <p>利用形式と日付を選び、空いている時間と相談内容を入力してください。</p>
+    </section>
+
+    <div class="reservation-message" id="reservation-message" role="status" hidden></div>
+
+    <section class="reservation-panel" style="margin-bottom: 22px">
+        <fieldset class="meeting-type-fieldset">
+            <legend>利用形式</legend>
+            <div class="meeting-type-options">
+                <label class="meeting-type-option">
+                    <input type="radio" name="meeting_type" value="online" checked>
+                    <span>オンライン</span>
+                </label>
+                <label class="meeting-type-option">
+                    <input type="radio" name="meeting_type" value="offline">
+                    <span>オフライン</span>
+                </label>
+            </div>
+        </fieldset>
+    </section>
+    <div class="booking-grid">
+        <section class="reservation-panel">
+            <div class="section-title">
+                <span>1</span>
+                <div>
+                    <h2>利用日を選択</h2>
+                    <p>予約可能な日付だけ選択できます</p>
+                </div>
+            </div>
+
+            <div class="reservation-calendar">
+                <div class="calendar-nav">
+                    <button type="button" id="prev-month" aria-label="前月">‹</button>
+                    <strong id="month-title"></strong>
+                    <button type="button" id="next-month" aria-label="翌月">›</button>
+                </div>
+                <div class="weekdays" aria-hidden="true">
+                    <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+                </div>
+                <div id="calendar-days" class="calendar-days"></div>
+            </div>
+            <p id="selected-date" class="selection">日付を選択してください</p>
+        </section>
+
+        <section class="reservation-panel">
+            <div class="section-title">
+                <span>2</span>
+                <div>
+                    <h2>時間帯を選択</h2>
+                    <p>開始時間から終了時間までドラッグしてください</p>
+                </div>
+            </div>
+
+            <p id="time-message" class="time-message">日付を先に選択してください</p>
+            <div id="reservation-status" class="reservation-status is-disabled" aria-live="polite"></div>
+
+            <div id="selected-time" class="selected-time">
+                <p>開始時間：<span id="selected-start">未選択</span></p>
+                <p>終了時間：<span id="selected-end">未選択</span></p>
+            </div>
+            <p class="reservation-note">予約は翌日以降の9:00〜22:00の30分単位、最大3時間までです。</p>
+        </section>
+    </div>
+
+    <section class="reservation-panel reservation-form-panel">
+        <div class="section-title">
+            <span>3</span>
+            <div>
+                <h2>予約内容を入力</h2>
+                <p>相談内容を入力してください</p>
+            </div>
+        </div>
+
+        <div class="reservation-fields">
+            <label class="purpose-field" for="purpose">
+                相談内容（2000文字以内）
+                <textarea id="purpose" rows="7" maxlength="2000" required></textarea>
+            </label>
+        </div>
+
+        <button type="button" class="reservation-submit" id="reservation-submit" disabled>
+            予約する
+        </button>
+    </section>
+</div>
+{% endblock %}
+{% block script %}
+    <script src="/static/mentor_booking.js"></script>
+{% endblock %}

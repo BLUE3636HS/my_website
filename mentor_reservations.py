@@ -289,20 +289,51 @@ def build_router(database_path, templates):
             "csrf_token": csrf_token(request, "mentor_booking_csrf"),
         })
 
-    @router.get("/mentor-reservation/{admin_id}/availability")
-    async def mentor_availability(request: Request, admin_id: str, day: str, meeting_type: str):
-        validate_range(day, "09:00", "09:30")
+    def booking_slots(db, admin_id, day, meeting_type, student_id):
         if meeting_type not in {"online", "offline"}:
             raise HTTPException(400, "利用形式が正しくありません。")
+        if not db.execute("SELECT 1 FROM mentor_profile WHERE admin_id=? AND is_published=1", (admin_id,)).fetchone():
+            raise HTTPException(404, "メンターが見つかりません。")
         column = "online_available" if meeting_type == "online" else "offline_available"
+        available = {r[0] for r in db.execute(
+            f"SELECT start_time FROM mentor_available_slot WHERE admin_id=? AND day=? AND {column}=1", (admin_id, day))}
+        occupied = {slot for start, end in db.execute(
+            """SELECT start_time,end_time FROM mentor_reservation WHERE day=? AND status='active'
+               AND (mentor_admin_id=? OR student_id=?)""", (day, admin_id, student_id))
+            for slot in slot_range(start, end)}
+        return [{"start_time": minutes_to_time(value), "end_time": minutes_to_time(value + 30),
+                 "state": "unset" if minutes_to_time(value) not in available else
+                          "full" if minutes_to_time(value) in occupied else "available",
+                 "remaining": int(minutes_to_time(value) in available and minutes_to_time(value) not in occupied)}
+                for value in range(OPEN_MINUTES, CLOSE_MINUTES, 30)]
+
+    @router.get("/mentor-reservation/{admin_id}/available-days")
+    async def mentor_available_days(request: Request, admin_id: str, month: str, meeting_type: str):
+        try:
+            first = datetime.date.fromisoformat(f"{month}-01")
+            last = (first.replace(day=28) + datetime.timedelta(days=4)).replace(day=1)
+        except (ValueError, OverflowError):
+            raise HTTPException(400, "年月が正しくありません。")
+        tomorrow = datetime.datetime.now(JST).date() + datetime.timedelta(days=1)
         with closing(sqlite3.connect(database_path)) as db:
-            published = db.execute("SELECT 1 FROM mentor_profile WHERE admin_id=? AND is_published=1", (admin_id,)).fetchone()
-            if not published:
-                raise HTTPException(404, "メンターが見つかりません。")
-            slots = {row[0] for row in db.execute(f"SELECT start_time FROM mentor_available_slot WHERE admin_id=? AND day=? AND {column}=1", (admin_id, day))}
-            reservations = db.execute("SELECT start_time,end_time FROM mentor_reservation WHERE mentor_admin_id=? AND day=? AND status='active'", (admin_id, day)).fetchall()
-            occupied = {slot for start, end in reservations for slot in slot_range(start, end)}
-        return {"day": day, "slots": sorted(slots - occupied)}
+            # Validate the mentor and format even when no dates are configured.
+            booking_slots(db, admin_id, first.isoformat(), meeting_type, request.session.get("user_id"))
+            days = [r[0] for r in db.execute(
+                "SELECT DISTINCT day FROM mentor_available_slot WHERE admin_id=? AND day>=? AND day<? ORDER BY day",
+                (admin_id, max(first, tomorrow).isoformat(), last.isoformat()))]
+            available = [day for day in days if any(slot["state"] == "available" for slot in
+                booking_slots(db, admin_id, day, meeting_type, request.session.get("user_id")))]
+        return {"month": month, "available_days": available}
+
+    @router.get("/mentor-reservation/{admin_id}/availability")
+    async def mentor_availability(request: Request, admin_id: str, day: str, meeting_type: str):
+        try:
+            validate_range(day, "09:00", "09:30")
+        except ValueError as error:
+            raise HTTPException(400, str(error))
+        with closing(sqlite3.connect(database_path)) as db:
+            slots = booking_slots(db, admin_id, day, meeting_type, request.session.get("user_id"))
+        return {"day": day, "slots": slots}
 
     @router.post("/mentor-reservation/{admin_id}")
     async def create_mentor_reservation(request: Request, admin_id: str, day: str = Form(...),
