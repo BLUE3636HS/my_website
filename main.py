@@ -22,11 +22,11 @@ from notifications import (
     create_notification, initialize_notification_tables, notification_now,
     reservation_body
 )
+from mypage_calendar import calendar_reservations
 from mentor_reservations import (
     build_router as build_mentor_router,
     csrf_token as mentor_csrf_token,
     initialize_mentor_tables,
-    mentor_reservations_for_student,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -2154,74 +2154,10 @@ async def Mypage(request: Request):
     user_school = user[2]
     current_profile_image = user[3] if len(user) > 3 else None
 
-    #userの予約した情報を取得
-    cursor.execute(
-        """
-        SELECT id, day, start_time, end_time, purpose
-        FROM reservation
-        WHERE userid = ? AND day >= ? AND status = 'active'
-        ORDER BY day, start_time, end_time, id
-        """,
-        (
-            user_id,
-            datetime.datetime.now(
-                datetime.timezone(datetime.timedelta(hours=9))
-            ).date().isoformat()
-        )
-    )
-
-    reservations = [
-        {"id": row[0], "day": row[1], "start_time": row[2], "end_time": row[3], "purpose": row[4]}
-        for row in cursor.fetchall()
-    ]
-
-    cursor.execute("""SELECT id, equipment, start_day, end_day, quantity, purpose, returned
-        FROM equipment_reservation WHERE userid = ? ORDER BY start_day, end_day, id""", (user_id,))
-    equipment_reservations = [
-        {
-            "usage_type": "持ち出し",
-            "equipment": row[1],
-            "usage_date": f"{row[2]} ～ {row[3]}",
-            "usage_time": "-",
-            "quantity": row[4],
-            "purpose": row[5],
-            "return_status": "返却済み" if row[6] else "未返却",
-            "return_status_class": "returned" if row[6] else "unreturned",
-            "sort_key": (row[2], "", 0, row[0]),
-            "cancel_url": f"/mypage/equipment-reservation/{row[0]}/cancel",
-            "cancel_method": "get"
-        }
-        for row in cursor.fetchall()
-    ]
-
-    cursor.execute("""SELECT id, equipment, use_day, start_time, end_time, quantity, purpose
-        FROM equipment_room_reservation
-        WHERE userid = ?
-        ORDER BY use_day, start_time, end_time, id""", (
-            user_id,
-        ))
-    equipment_room_reservations = [
-        {
-            "usage_type": "工作室内",
-            "equipment": row[1],
-            "usage_date": row[2],
-            "usage_time": f"{row[3]} ～ {row[4]}",
-            "quantity": row[5],
-            "purpose": row[6],
-            "return_status": "対象外",
-            "return_status_class": "not-applicable",
-            "sort_key": (row[2], row[3], 1, row[0]),
-            "cancel_url": f"/mypage/equipment-room-reservation/{row[0]}/cancel",
-            "cancel_method": "post"
-        }
-        for row in cursor.fetchall()
-    ]
-    all_equipment_reservations = sorted(
-        equipment_reservations + equipment_room_reservations,
-        key=lambda reservation: reservation["sort_key"]
-    )
-    with closing(sqlite3.connect(DATABASE_PATH)) as mentor_db:
-        mentor_reservations = mentor_reservations_for_student(mentor_db, user_id)
+    calendar_now = datetime.datetime.now(JST)
+    today = calendar_now.date().isoformat()
+    with closing(sqlite3.connect(DATABASE_PATH)) as calendar_db:
+        events = calendar_reservations(calendar_db, user_id, calendar_now)
 
     return templates.TemplateResponse(
         request = request,
@@ -2232,9 +2168,8 @@ async def Mypage(request: Request):
             "user_id": user_id,
             "user_school": user_school,
             "profile_image_url": profile_image_url(current_profile_image),
-            "reservations": reservations,
-            "equipment_reservations": all_equipment_reservations,
-            "mentor_reservations": mentor_reservations,
+            "calendar_events": events,
+            "calendar_today": today,
             "mentor_reservation_csrf_token": mentor_csrf_token(request, "mypage_mentor_csrf"),
             "mentor_reservation_notice": request.session.pop("mypage_mentor_notice", None),
             "reservation_csrf_token": reservation_csrf_token(request, "mypage_reservation_csrf_token"),

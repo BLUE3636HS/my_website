@@ -1,186 +1,81 @@
-.mypage-page .student-panel h2 {
-    padding-bottom: 10px;
-    border-bottom: 2px solid #1f4e79;
-    color: #243447;
+.mypage-page .student-panel h2 { padding-bottom: 10px; border-bottom: 2px solid #1f4e79; color: #243447; }
+.mypage-page [hidden] { display: none !important; }
+.mypage-page .student-panel { min-width: 0; }
+.mypage-page table { width: 100%; border-collapse: collapse; border: 0; }
+.mypage-page th, .mypage-page td { padding: 14px; border: 0; border-bottom: 1px solid #dce3ea; overflow-wrap: anywhere; }
+.mypage-page th { width: 30%; background: #1f4e79; color: #fff; text-align: left; }
+.mypage-page td { background: #fff; }
+.mypage-profile-image-wrap { display: flex; justify-content: center; margin: 20px 0 24px; }
+.profile-image { width: 128px; height: 128px; border: 4px solid #e3eaf1; border-radius: 50%; object-fit: cover; }
+.mypage-actions { display: flex; justify-content: center; margin-top: 24px; }
+.mypage-notice { padding: 10px 14px; border-radius: 8px; }
+.mypage-notice.is-success { background: #e6f4ea; color: #19472d; }
+.mypage-notice.is-error { background: #fdecec; color: #9b2424; }
+.category-mentor { --category-bg: #eee5fa; --category-text: #613395; --category-border: #8450b9; }
+.category-room { --category-bg: #e1effc; --category-text: #174f87; --category-border: #307db7; }
+.category-equipment { --category-bg: #fff0da; --category-text: #874200; --category-border: #ca791d; }
+.calendar-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: .875rem; }
+.calendar-legend span, .detail-category { padding: 4px 9px; border-radius: 6px; background: var(--category-bg); color: var(--category-text); border-left: 4px solid var(--category-border); font-weight: 700; }
+.calendar-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 16px 0; }
+.calendar-toolbar h3 { margin: 0; font-size: 1.2rem; }
+.calendar-toolbar > div { display: flex; gap: 6px; }
+.calendar-toolbar button { min-width: 40px; min-height: 40px; padding: 6px 12px; border: 1px solid #b8c9da; border-radius: 7px; background: #fff; color: #244664; cursor: pointer; font: inherit; }
+#mypage-calendar { border: 1px solid #ccd8e4; border-radius: 8px; overflow: hidden; }
+.calendar-weekdays, .calendar-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.calendar-weekdays { background: #edf3f8; text-align: center; padding: 8px 0; font-size: .85rem; font-weight: 700; }
+.calendar-week { position: relative; grid-template-rows: 36px repeat(3, 26px) 28px; border-top: 1px solid #ccd8e4; isolation: isolate; }
+.calendar-cell { position: relative; grid-row: 1 / 6; min-width: 0; padding: 0; background: #fff; border: 0; border-right: 1px solid #e1e7ed; }
+.calendar-cell.is-outside { background: #f3f5f7; }
+.calendar-day-hit { z-index: 0; cursor: pointer; font: inherit; text-align: left; }
+.calendar-day-hit:hover { background: #f5f9fc; }
+.calendar-day-hit[aria-pressed="true"] { background: #edf5fb; box-shadow: inset 0 0 0 2px #174f87; }
+.calendar-date { position: absolute; top: 3px; left: 4px; display: grid; place-items: center; width: 30px; height: 30px; border: 2px solid transparent; border-radius: 50%; color: #334155; pointer-events: none; }
+.calendar-date-outside { color: #9aa5af; }
+.calendar-day-hit[aria-current="date"] .calendar-date { font-weight: 800; background: #e1effc; color: #174f87; }
+.calendar-day-hit[aria-pressed="true"] .calendar-date { border-color: #174f87; background: #174f87; color: #fff; }
+.calendar-event { min-width: 0; margin: 1px 3px; padding: 2px 5px; border: 1px solid var(--category-border); border-left-width: 3px; border-radius: 4px; background: var(--category-bg); color: var(--category-text); font: inherit; font-size: .75rem; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.calendar-event, .calendar-more { position: relative; z-index: 1; }
+.calendar-event.is-outside-event { cursor: default; opacity: .72; }
+.calendar-event.is-muted, .reservation-detail.is-muted { --category-bg: #eceff1; --category-text: #59636c; --category-border: #8c969f; }
+.calendar-event.continues-before { margin-left: 0; border-left-style: dashed; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.calendar-event.continues-after { margin-right: 0; border-right-style: dashed; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.calendar-more { grid-row: 5; min-width: 0; border: 0; background: transparent; color: #174f87; font: inherit; font-size: .75rem; text-align: left; padding: 2px 5px; cursor: pointer; }
+.calendar-more.is-outside-more { color: #7a8792; cursor: default; }
+.calendar-help { color: #526475; font-size: .85rem; line-height: 1.6; }
+.reservation-detail { border: 1px solid #d6e0ea; border-left: 5px solid var(--category-border); border-radius: 8px; padding: 18px; margin-top: 14px; overflow-wrap: anywhere; }
+.reservation-detail h3 { margin: 12px 0 6px; }
+.detail-category { display: inline-block; font-size: .8rem; }
+.detail-date { color: #465a6f; }
+.reservation-detail dl { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 8px 12px; margin: 16px 0; }
+.reservation-detail dt { font-weight: 700; color: #526475; }
+.reservation-detail dd { margin: 0; white-space: pre-wrap; }
+.reservation-cancel-form { margin: 16px 0 0; }
+.cancel-reservation { display: inline-block; border: 1px solid #c64747; border-radius: 6px; padding: 8px 12px; background: #fff; color: #a52a2a; font: inherit; font-size: .9rem; cursor: pointer; text-decoration: none; }
+.cancel-reservation:hover { background: #fff1f1; }
+.mypage-page button:focus-visible, .mypage-page a:focus-visible, .reservation-detail:focus, #calendar-detail-title:focus { outline: 3px solid #176ca5; outline-offset: 2px; }
+@media (max-width: 600px) {
+    /* Scope the compact navigation to My Page so seven calendar columns fit. */
+    .student-layout:has(.mypage-page) { display: block; overflow-y: auto; }
+    .student-layout:has(.mypage-page) .student-sidebar { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; height: auto; padding: 10px 12px; }
+    .student-layout:has(.mypage-page) .student-brand { padding: 0; margin-right: auto; }
+    .student-layout:has(.mypage-page) .student-brand img { width: 90px; }
+    .student-layout:has(.mypage-page) .student-nav { display: flex; order: 1; flex-basis: 100%; overflow-x: auto; padding-top: 6px; }
+    .student-layout:has(.mypage-page) .student-nav-link { flex-shrink: 0; padding: 8px 10px; font-size: .8rem; }
+    .student-layout:has(.mypage-page) .student-notification-link,
+    .student-layout:has(.mypage-page) .student-logout-link { margin: 0; padding: 8px; }
+    .student-layout:has(.mypage-page) .student-main { height: auto; overflow: visible; }
+    .student-layout:has(.mypage-page) .student-content { overflow: visible; }
+    .mypage-page { padding: 20px 8px 40px; }
+    .mypage-calendar-panel { padding: 12px !important; }
+    .calendar-legend { gap: 6px; font-size: .7rem; }
+    .calendar-legend span { padding: 4px; }
+    .calendar-toolbar h3 { font-size: 1rem; }
+    .calendar-toolbar button { min-width: 34px; padding: 5px 8px; }
+    .calendar-event { margin-inline: 1px; padding-inline: 2px; font-size: .65rem; }
+    .calendar-more { padding-inline: 2px; font-size: .65rem; }
+    .calendar-date { margin-left: 1px; }
+    .reservation-detail { padding: 12px; }
+    .reservation-detail dl { grid-template-columns: 1fr; gap: 4px; }
+    .reservation-detail dd { margin-bottom: 10px; }
 }
-
-.mypage-table-scroll {
-    max-width: 100%;
-    overflow-x: auto;
-    border: 1px solid #d6e0ea;
-    border-radius: 10px;
-}
-
-.mypage-page table {
-    width: 100%;
-    border-collapse: collapse;
-    border: 0;
-}
-
-.mypage-page th,
-.mypage-page td {
-    padding: 14px;
-    border: 0;
-    border-bottom: 1px solid #dce3ea;
-}
-
-.mypage-page th {
-    background: #1f4e79;
-    color: #fff;
-    font-weight: 700;
-    text-align: left;
-}
-
-.mypage-page td {
-    background: #fff;
-}
-
-.mypage-page tr:nth-child(even) td {
-    background: #f7f9fc;
-}
-
-.mypage-page .student-panel > table th {
-    width: 180px;
-}
-
-.mypage-profile-image-wrap {
-    display: flex;
-    justify-content: center;
-    margin: 20px 0 24px;
-}
-
-.profile-image {
-    width: 128px;
-    height: 128px;
-    border: 4px solid #e3eaf1;
-    border-radius: 50%;
-    object-fit: cover;
-}
-
-.reservation-table th,
-.reservation-table td,
-.equipment-reservation-table th,
-.equipment-reservation-table td {
-    text-align: center;
-}
-
-.reservation-table th:nth-child(3),
-.reservation-table td:nth-child(3),
-.equipment-reservation-table th:last-child,
-.equipment-reservation-table td:last-child {
-    width: 1%;
-    white-space: nowrap;
-}
-
-.equipment-reservation-table {
-    min-width: 1040px;
-    table-layout: fixed;
-}
-
-.equipment-col-usage-type { width: 12%; }
-.equipment-col-name { width: 21%; }
-.equipment-col-date { width: 19%; }
-.equipment-col-time { width: 14%; }
-.equipment-col-quantity { width: 6%; }
-.equipment-col-purpose { width: 11%; }
-.equipment-col-return-status { width: 11%; }
-.equipment-col-cancel { width: 6%; }
-
-.equipment-purpose-cell {
-    text-align: left !important;
-}
-
-.equipment-purpose summary {
-    overflow: hidden;
-    color: #1f4e79;
-    cursor: pointer;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.equipment-purpose summary::marker {
-    color: #6f8192;
-}
-
-.equipment-purpose[open] summary {
-    margin-bottom: 8px;
-    color: #526475;
-    font-size: 0.8rem;
-}
-
-.equipment-purpose p {
-    margin: 0;
-    overflow-wrap: anywhere;
-    line-height: 1.6;
-    white-space: normal;
-}
-
-.usage-type {
-    display: inline-block;
-    min-width: 72px;
-    padding: 4px 9px;
-    border-radius: 999px;
-    background: #e7f0f8;
-    color: #1f4e79;
-    font-size: 0.85rem;
-    font-weight: 700;
-    white-space: nowrap;
-}
-
-.usage-type-post {
-    background: #e8f3ec;
-    color: #25613e;
-}
-
-.return-status {
-    display: inline-block;
-    min-width: 68px;
-    padding: 4px 9px;
-    border-radius: 999px;
-    font-size: 13px;
-    font-weight: 700;
-    white-space: nowrap;
-}
-
-.return-status-returned {
-    background: #e2ebe5;
-    color: #4a6252;
-}
-
-.return-status-unreturned {
-    background: #fff1cc;
-    color: #795b08;
-}
-
-.return-status-not-applicable {
-    background: #edf1ee;
-    color: #708077;
-}
-
-.reservation-cancel-form { margin: 0; }
-.reservation-cancel-form .del_reservation { border: 0; cursor: pointer; font: inherit; }
-
-.del_reservation {
-    display: inline-grid;
-    place-items: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    background: #d9534f;
-    color: #fff;
-    font-weight: 800;
-    line-height: 1;
-    text-decoration: none;
-}
-
-.del_reservation:hover {
-    background: #b52b27;
-}
-
-.mypage-actions {
-    display: flex;
-    justify-content: center;
-    margin-top: 24px;
-}
-
-.mypage-notice{padding:10px 14px;border-radius:8px}.mypage-notice.is-success{background:#e6f4ea;color:#19472d}.mypage-notice.is-error{background:#fdecec;color:#9b2424}.reservation-cancel-form{margin:0}
+@media (prefers-reduced-motion: reduce) { .mypage-page * { scroll-behavior: auto; } }

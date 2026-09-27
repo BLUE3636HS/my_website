@@ -1,31 +1,57 @@
 {% extends "base.html" %}
 {% block title %}マイページ{% endblock %}
-{% block css %}
-    <link rel="stylesheet" href="/static/mypage.css">
-{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/mypage.css">{% endblock %}
 {% block content %}
 <div class="student-page mypage-page">
     <section class="student-page-hero">
         <p class="student-page-eyebrow">MY PAGE</p>
         <h1>マイページ</h1>
-        <p>プロフィール情報と現在の予約内容を確認できます。</p>
+        <p>予約カレンダーとプロフィール情報を確認できます。</p>
     </section>
-    <section class="student-panel">
-    <h2>大学生メンター 予約一覧</h2>
-    {% if mentor_reservation_notice %}<p class="mypage-notice is-{{ mentor_reservation_notice.type }}">{{ mentor_reservation_notice.message }}</p>{% endif %}
-    <div class="mypage-table-scroll"><table class="reservation-table" border="1">
-        <tr><th>メンター</th><th>日時</th><th>利用形式</th><th>相談内容</th><th>状態</th><th>キャンセル</th></tr>
-        {% for reservation in mentor_reservations %}
-        <tr>
-            <td>{{ reservation.mentor_name }}</td>
-            <td>{{ reservation.day }} {{ reservation.start_time }}〜{{ reservation.end_time }}</td>
-            <td>{{ 'オンライン' if reservation.meeting_type == 'online' else 'オフライン' }}</td>
-            <td>{{ reservation.consultation }}</td>
-            <td>{{ '有効' if reservation.status == 'active' else 'キャンセル済み' }}</td>
-            <td>{% if reservation.status == 'active' %}<form method="post" action="/mypage/mentor-reservation/{{ reservation.id }}/cancel" class="reservation-cancel-form"><input type="hidden" name="csrf" value="{{ mentor_reservation_csrf_token }}"><button class="del_reservation" type="submit" aria-label="メンター予約をキャンセル">X</button></form>{% else %}-{% endif %}</td>
-        </tr>
-        {% else %}<tr><td colspan="6">大学生メンターの予約はありません。</td></tr>{% endfor %}
-    </table></div>
+    <section class="student-panel mypage-calendar-panel" aria-labelledby="calendar-heading">
+        <h2 id="calendar-heading">予約カレンダー</h2>
+        {% for notice in [mentor_reservation_notice, reservation_notice] %}
+        {% if notice %}<p role="status" class="mypage-notice is-{{ notice.type }}">{{ notice.message }}</p>{% endif %}
+        {% endfor %}
+        <div class="calendar-legend" aria-label="予約の種類">
+            <span class="category-mentor">大学生メンター</span>
+            <span class="category-room">TEKNE工作室</span>
+            <span class="category-equipment">実験器具</span>
+        </div>
+        <div class="calendar-toolbar">
+            <h3 id="calendar-month" aria-live="polite"></h3>
+            <div><button type="button" id="calendar-prev" aria-label="前月">‹</button>
+            <button type="button" id="calendar-today">今日</button>
+            <button type="button" id="calendar-next" aria-label="翌月">›</button></div>
+        </div>
+        <div id="mypage-calendar" data-today="{{ calendar_today }}" aria-label="月別予約カレンダー"></div>
+        <p class="calendar-help">日付を選ぶと、その日の予約を下に表示します。帯は器具の持ち出し期間です。</p>
+        <noscript><p>カレンダー表示にはJavaScriptが必要です。予約内容は下で確認できます。</p></noscript>
+    </section>
+    <section class="student-panel" aria-labelledby="calendar-detail-title">
+        <h2 id="calendar-detail-title" tabindex="-1">予約詳細</h2>
+        <p id="calendar-empty" role="status" hidden>この日の予約はありません。</p>
+        <div id="calendar-details">
+        {% set category_names = {'mentor': '大学生メンター', 'room': 'TEKNE工作室', 'equipment': '実験器具'} %}
+        {% for event in calendar_events %}
+            <article id="detail-{{ event.key }}" class="reservation-detail category-{{ event.category }}{% if event.isMuted %} is-muted{% endif %}" tabindex="-1">
+                <span class="detail-category">{{ category_names[event.category] }}</span>
+                <h3>{{ event.title }}</h3>
+                <p class="detail-date">{{ event.start }}{% if event.end != event.start %} ～ {{ event.end }}{% endif %}
+                {% if event.startTime %} {{ event.startTime }}〜{{ event.endTime }}{% else %}（持ち出し期間）{% endif %}</p>
+                <dl>{% for label, value in event.details %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
+                {% if event.can_cancel %}
+                    {% if event.cancel_method == 'post' %}
+                    <form method="post" action="{{ event.cancel_url }}" class="reservation-cancel-form">
+                        {% if event.kind == 'mentor' %}<input type="hidden" name="csrf" value="{{ mentor_reservation_csrf_token }}">{% endif %}
+                        {% if event.kind == 'room' %}<input type="hidden" name="csrf_token" value="{{ reservation_csrf_token }}">{% endif %}
+                        <button class="cancel-reservation" type="submit">この予約をキャンセル</button>
+                    </form>
+                    {% else %}<a class="cancel-reservation" href="{{ event.cancel_url }}">この予約をキャンセル</a>{% endif %}
+                {% endif %}
+            </article>
+        {% endfor %}
+        </div>
     </section>
     <section class="student-panel">
     <h2>プロフィール情報</h2>
@@ -47,82 +73,10 @@
         </tr>
     </table>
     </section>
-    <section class="student-panel">
-    <h2>TEKNE工作室 予約一覧</h2>
-    {% if reservation_notice %}<p class="mypage-notice is-{{ reservation_notice.type }}">{{ reservation_notice.message }}</p>{% endif %}
-    <div class="mypage-table-scroll">
-    <table class="reservation-table" border="1">
-        <tr>
-            <th>予約日</th>
-            <th>予約時間</th>
-            <th>利用目的</th><th>キャンセル</th>
-        </tr>
-        {% for reservation in reservations %}
-        <tr>
-            <td>{{ reservation.day }}</td>
-            <td>{{ reservation.start_time }}〜{{ reservation.end_time }}</td>
-            <td>{{ reservation.purpose }}</td>
-            <td>
-                <form method="post" action="/mypage/reservation/{{ reservation.id }}/cancel" class="reservation-cancel-form">
-                    <input type="hidden" name="csrf_token" value="{{ reservation_csrf_token }}">
-                    <button class="del_reservation" type="submit" aria-label="工作室予約をキャンセル">X</button>
-                </form>
-            </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="4">有効な工作室予約はありません。</td></tr>
-        {% endfor %}
-    </table>
-    </div>
-    </section>
-    <section class="student-panel">
-    <h2>実験器具 予約一覧</h2>
-    <div class="mypage-table-scroll">
-    <table class="equipment-reservation-table" border="1">
-        <colgroup>
-            <col class="equipment-col-usage-type">
-            <col class="equipment-col-name">
-            <col class="equipment-col-date">
-            <col class="equipment-col-time">
-            <col class="equipment-col-quantity">
-            <col class="equipment-col-purpose">
-            <col class="equipment-col-return-status">
-            <col class="equipment-col-cancel">
-        </colgroup>
-        <tr><th>利用区分</th><th>器具</th><th>利用日・期間</th><th>利用時間</th><th>数量</th><th>使用目的</th><th>返却状態</th><th>取消</th></tr>
-        {% for reservation in equipment_reservations %}
-        <tr>
-            <td><span class="usage-type usage-type-{{ reservation.cancel_method }}">{{ reservation.usage_type }}</span></td>
-            <td>{{ reservation.equipment }}</td>
-            <td>{{ reservation.usage_date }}</td>
-            <td>{{ reservation.usage_time }}</td>
-            <td>{{ reservation.quantity }}</td>
-            <td class="equipment-purpose-cell">
-                <details class="equipment-purpose">
-                    <summary title="{{ reservation.purpose }}">{{ reservation.purpose }}</summary>
-                    <p>{{ reservation.purpose }}</p>
-                </details>
-            </td>
-            <td><span class="return-status return-status-{{ reservation.return_status_class }}">{{ reservation.return_status }}</span></td>
-            <td>
-                {% if reservation.cancel_method == "post" %}
-                <form method="post" action="{{ reservation.cancel_url }}" class="reservation-cancel-form"><button type="submit" class="del_reservation" aria-label="{{ reservation.usage_type }}予約を取り消す">X</button></form>
-                {% else %}
-                <a class="del_reservation" href="{{ reservation.cancel_url }}" aria-label="{{ reservation.usage_type }}予約を取り消す">X</a>
-                {% endif %}
-            </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="8">実験器具の予約はありません。</td></tr>
-        {% endfor %}
-    </table>
-    </div>
-    </section>
     <div class="mypage-actions">
         <a href="/mypage/edit" class="student-primary-button">プロフィール情報編集</a>
     </div>
 </div>
+<script id="mypage-calendar-data" type="application/json">{{ calendar_events|tojson }}</script>
 {% endblock %}
-{% block script %}
-<script src="/static/mypage.js"></script>
-{% endblock %}
+{% block script %}<script src="/static/mypage.js"></script>{% endblock %}
