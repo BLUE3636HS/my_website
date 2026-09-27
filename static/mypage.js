@@ -82,6 +82,7 @@ if (typeof document !== "undefined") {
         const names = { mentor: "メンター", room: "工作室", equipment: "器具" };
         const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
         const detailTitle = document.getElementById("calendar-detail-title");
+        const adminDetailScroll = document.querySelector(".admin-mypage-page .admin-detail-scroll");
         const cards = new Map(events.map(event => [event.key, document.getElementById(`detail-${event.key}`)]));
         function element(tag, className, text) {
             const node = document.createElement(tag);
@@ -96,6 +97,7 @@ if (typeof document !== "undefined") {
             return node;
         }
         function showDay(day, key = null, focusDetails = false) {
+            const dayChanged = selectedDay !== day;
             selectedDay = day;
             const matching = MyPageCalendar.onDay(events, day);
             const visibleKeys = new Set(matching.map(event => event.key));
@@ -104,13 +106,22 @@ if (typeof document !== "undefined") {
             for (const event of matching) detailContainer.append(cards.get(event.key));
             detailTitle.textContent = `${day.replaceAll("-", "/")} の予約（${matching.length}件）`;
             document.getElementById("calendar-empty").hidden = matching.length !== 0;
+            if (adminDetailScroll && (dayChanged || !key)) adminDetailScroll.scrollTop = 0;
             for (const dateButton of calendar.querySelectorAll(".calendar-day-hit")) {
                 dateButton.setAttribute("aria-pressed", String(dateButton.dataset.day === day));
             }
             if (focusDetails) {
                 const target = key ? cards.get(key) : detailTitle;
                 target.focus({ preventScroll: true });
-                target.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+                const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+                if (adminDetailScroll && window.matchMedia("(min-width: 1200px) and (min-height: 600px)").matches) {
+                    if (key) adminDetailScroll.scrollTo({
+                        top: adminDetailScroll.scrollTop + target.getBoundingClientRect().top - adminDetailScroll.getBoundingClientRect().top,
+                        behavior,
+                    });
+                } else {
+                    target.scrollIntoView({ block: "nearest", behavior });
+                }
             }
         }
         function render() {
