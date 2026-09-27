@@ -27,8 +27,8 @@
                     <a class="student-nav-link" href="/reservation"{% if current_path == '/reservation' or current_path.startswith('/reservation/') %} aria-current="page"{% endif %}>TEKNE工作室予約</a>
                     <a class="student-nav-link" href="/mentor-reservation"{% if current_path == '/mentor-reservation' or current_path.startswith('/mentor-reservation/') %} aria-current="page"{% endif %}>大学生メンター予約</a>
                     <a class="student-nav-link" href="/equipment-reservation"{% if current_path == '/equipment-reservation' or current_path.startswith('/equipment-reservation/') %} aria-current="page"{% endif %}>実験器具の貸し出し予約</a>
-                    <a class="student-nav-link" href="/mypage"{% if current_path == '/mypage' or current_path.startswith('/mypage/') %} aria-current="page"{% endif %}>マイページ</a>
                 </nav>
+                <a class="student-mypage-link" href="/mypage"{% if current_path == '/mypage' or current_path.startswith('/mypage/') %} aria-current="page"{% endif %}>マイページ</a>
                 <a class="student-notification-link" href="/notifications"{% if current_path == '/notifications' or current_path.startswith('/notifications/') %} aria-current="page"{% endif %}>
                     <span aria-hidden="true">🔔</span> 通知
                     {% if unread_notification_count %}<span class="notification-badge">{{ unread_notification_count }}</span>{% endif %}

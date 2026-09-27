@@ -45,6 +45,7 @@ body {
 }
 
 .student-nav-link,
+.student-mypage-link,
 .student-notification-link,
 .student-logout-link {
     display: block;
@@ -57,12 +58,13 @@ body {
 }
 
 .student-nav-link:hover,
+.student-mypage-link:hover,
 .student-notification-link:hover,
 .student-logout-link:hover {
     background: rgba(255, 255, 255, .16);
 }
 
-.student-notification-link {
+.student-mypage-link {
     margin-top: auto;
     border-top: 1px solid rgba(255, 255, 255, .25);
     border-radius: 0;
@@ -210,6 +212,7 @@ body {
 
 /* Keep the current section visible without shifting menu text. */
 .student-nav-link[aria-current="page"],
+.student-mypage-link[aria-current="page"],
 .student-notification-link[aria-current="page"] {
     background: rgba(255, 255, 255, .16);
     box-shadow: inset 4px 0 0 #fff;
@@ -219,6 +222,7 @@ body {
 }
 
 .student-nav-link:focus-visible,
+.student-mypage-link:focus-visible,
 .student-notification-link:focus-visible,
 .student-logout-link:focus-visible {
     outline: 2px solid #fff;

@@ -61,6 +61,7 @@
     .student-layout:has(.mypage-page) .student-brand img { width: 90px; }
     .student-layout:has(.mypage-page) .student-nav { display: flex; order: 1; flex-basis: 100%; overflow-x: auto; padding-top: 6px; }
     .student-layout:has(.mypage-page) .student-nav-link { flex-shrink: 0; padding: 8px 10px; font-size: .8rem; }
+    .student-layout:has(.mypage-page) .student-mypage-link,
     .student-layout:has(.mypage-page) .student-notification-link,
     .student-layout:has(.mypage-page) .student-logout-link { margin: 0; padding: 8px; }
     .student-layout:has(.mypage-page) .student-main { height: auto; overflow: visible; }
