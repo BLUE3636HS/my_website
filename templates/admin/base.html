@@ -29,6 +29,7 @@
                     <a class="nav-link" href="/admin/notifications"{% if current_path == '/admin/notifications' or current_path.startswith('/admin/notifications/') %} aria-current="page"{% endif %}>通知管理</a>
                     <a class="nav-link" href="/admin/accounts"{% if current_path == '/admin/accounts' or current_path.startswith('/admin/accounts/') %} aria-current="page"{% endif %}>アカウント一覧</a>
                 </nav>
+                <a class="nav-link admin-mypage-link" href="/admin/mypage"{% if current_path == '/admin/mypage' or current_path.startswith('/admin/mypage/') %} aria-current="page"{% endif %}>マイページ</a>
                 <a class="logout-link" href="/admin/logout">Logout</a>
             </aside>
             <main class="admin-main">

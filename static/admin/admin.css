@@ -39,7 +39,8 @@ body {
 .nav-menu::-webkit-scrollbar-track { background: transparent; }
 .nav-link, .logout-link { display: block; border-radius: 7px; padding: 12px; font-weight: 600; }
 .nav-link:hover, .logout-link:hover { background: rgba(255, 255, 255, .16); }
-.logout-link { flex: 0 0 auto; margin-top: 8px; border-top: 1px solid rgba(255,255,255,.25); border-radius: 0; padding-top: 20px; }
+.logout-link { flex: 0 0 auto; margin-top: 8px; border-radius: 0; padding-top: 20px; }
+.admin-mypage-link { flex: 0 0 auto; margin-top: 8px; border-top: 1px solid rgba(255,255,255,.25); border-radius: 0; padding-top: 20px; }
 
 .admin-main { display: flex; flex: 1; flex-direction: column; height: 100vh; min-width: 0; overflow: hidden; }
 .admin-header {

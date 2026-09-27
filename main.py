@@ -22,7 +22,7 @@ from notifications import (
     create_notification, initialize_notification_tables, notification_now,
     reservation_body
 )
-from mypage_calendar import calendar_reservations
+from mypage_calendar import calendar_reservations, admin_calendar_reservations
 from mentor_reservations import (
     build_router as build_mentor_router,
     csrf_token as mentor_csrf_token,
@@ -1425,6 +1425,26 @@ async def UpdateAdminReservationSchedule(
     except (sqlite3.Error, ValueError) as error:
         request.session[notice_key] = {"type": "error", "message": str(error) or "時間帯を更新できませんでした。"}
     return RedirectResponse(redirect_url, status_code=303)
+
+
+@app.get("/admin/mypage", response_class=HTMLResponse)
+async def AdminMypage(request: Request):
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    admin_id = request.session.get("admin_id")
+    now = datetime.datetime.now(JST)
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        events = admin_calendar_reservations(db, now)
+        db.row_factory = sqlite3.Row
+        profile = db.execute(
+            "SELECT display_name, description, is_published FROM mentor_profile WHERE admin_id = ?",
+            (admin_id,),
+        ).fetchone()
+        profile = dict(profile) if profile is not None else None
+    return templates.TemplateResponse(request=request, name="admin/mypage.html", context={
+        "request": request, "admin_id": admin_id, "mentor_profile": profile,
+        "calendar_events": events, "calendar_today": now.date().isoformat(),
+    })
 
 
 @app.get("/admin/reservation", response_class=HTMLResponse)

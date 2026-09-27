@@ -154,7 +154,7 @@ if (typeof document !== "undefined") {
                 });
                 week.segments.forEach(segment => {
                     const event = segment.event;
-                    const label = `${event.startTime ? event.startTime + " " : ""}${names[event.category]} ${event.title}${event.kind === "takeout" ? "（持ち出し）" : event.kind === "equipment-room" ? "（工作室内）" : ""}`;
+                    const label = `${event.startTime ? event.startTime + " " : ""}${names[event.category]} ${event.title}${event.kind === "takeout" ? "（持ち出し）" : event.kind === "equipment-room" ? "（工作室内）" : ""}${event.studentId ? ` ／ ${event.studentId}` : ""}`;
                     MyPageCalendar.splitSegmentForMonth(segment, week.days, month).forEach(part => {
                         const continuesBefore = event.start < week.days[part.start];
                         const continuesAfter = event.end > week.days[part.end];

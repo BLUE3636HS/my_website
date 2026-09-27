@@ -54,3 +54,57 @@ def calendar_reservations(db, user_id, now=None):
             f"/mypage/equipment-room-reservation/{row[0]}/cancel")
 
     return sorted(events, key=lambda event: (event["start"], event["startTime"], event["key"]))
+
+
+def admin_calendar_reservations(db, now=None):
+    """Read all students' reservations without changing data or querying per student."""
+    now = now or datetime.datetime.now(JST)
+    today, current_time = now.date().isoformat(), now.strftime("%H:%M")
+    events = []
+
+    def rows(sql):
+        cursor = db.execute(sql)
+        columns = [column[0] for column in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor]
+
+    def add(row, kind, category, title, start, end, start_time, end_time, details, url, returned=False):
+        is_past = end < today or (end == today and bool(end_time) and end_time <= current_time)
+        events.append({
+            "key": f"{kind}-{row['id']}", "kind": kind, "category": category,
+            "title": title, "start": start, "end": end, "startTime": start_time,
+            "endTime": end_time, "studentId": row["student_id"],
+            "details": [("予約者ID", row["student_id"]), ("在籍校", row["school"] or "不明"), *details],
+            "isMuted": returned if kind == "takeout" else is_past,
+            "can_cancel": False, "management_url": url,
+        })
+
+    for row in rows("""SELECT r.*, s.school,
+            COALESCE(NULLIF(p.display_name, ''), r.mentor_admin_id) AS mentor_name
+            FROM mentor_reservation r
+            LEFT JOIN student s ON s.id = r.student_id
+            LEFT JOIN mentor_profile p ON p.admin_id = r.mentor_admin_id
+            WHERE r.status = 'active'"""):
+        add(row, "mentor", "mentor", row["mentor_name"], row["day"], row["day"],
+            row["start_time"], row["end_time"], [
+                ("利用形式", "オンライン" if row["meeting_type"] == "online" else "オフライン"),
+                ("相談内容", row["consultation"])], "/admin/mentor-reservations?scope=all")
+
+    for row in rows("""SELECT r.*, r.userid AS student_id, s.school FROM reservation r
+            LEFT JOIN student s ON s.id = r.userid WHERE r.status = 'active'"""):
+        add(row, "room", "room", "TEKNE工作室", row["day"], row["day"],
+            row["start_time"], row["end_time"], [("利用目的", row["purpose"])], "/admin/reservation")
+
+    for row in rows("""SELECT r.*, r.userid AS student_id, s.school FROM equipment_reservation r
+            LEFT JOIN student s ON s.id = r.userid"""):
+        add(row, "takeout", "equipment", row["equipment"], row["start_day"], row["end_day"], "", "", [
+            ("利用区分", "持ち出し"), ("数量", row["quantity"]), ("使用目的", row["purpose"]),
+            ("返却状態", "返却済み" if row["returned"] else "未返却")],
+            "/admin/equipment-reservation", bool(row["returned"]))
+
+    for row in rows("""SELECT r.*, r.userid AS student_id, s.school FROM equipment_room_reservation r
+            LEFT JOIN student s ON s.id = r.userid"""):
+        add(row, "equipment-room", "equipment", row["equipment"], row["use_day"], row["use_day"],
+            row["start_time"], row["end_time"], [("利用区分", "工作室内"), ("数量", row["quantity"]),
+            ("使用目的", row["purpose"]), ("返却状態", "対象外")], "/admin/equipment-reservation")
+
+    return sorted(events, key=lambda event: (event["start"], event["startTime"], event["key"]))
