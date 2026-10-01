@@ -1047,7 +1047,7 @@ async def Login(request: Request):
 @app.get("/admin/login", response_class=HTMLResponse)
 async def AdminLoginPage(request: Request):
     if request.session.get("admin_login") == True:
-        return RedirectResponse("/admin", status_code=303)
+        return RedirectResponse("/admin/mypage", status_code=303)
     return templates.TemplateResponse(
         request=request,
         name="admin/login.html",
@@ -1074,66 +1074,7 @@ async def AdminLogin(
     request.session["admin_login"] = True
     request.session["admin_id"] = id
     request.session["admin_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    return RedirectResponse("/admin", status_code=303)
-
-@app.get("/admin", response_class=HTMLResponse)
-async def AdminHome(request: Request):
-    now = datetime.datetime.now(JST)
-    today = now.date().isoformat()
-    current_time = now.strftime("%H:%M")
-
-    with closing(sqlite3.connect(DATABASE_PATH)) as db:
-        recent_reservations = db.execute(
-            """
-            SELECT id, userid, day, start_time, end_time, purpose
-            FROM reservation
-            WHERE status = 'active'
-              AND (day > ? OR (day = ? AND end_time > ?))
-            ORDER BY day ASC, start_time ASC, id ASC
-            LIMIT 3
-            """,
-            (today, today, current_time)
-        ).fetchall()
-
-        recent_equipment_reservations = db.execute(
-            """
-            SELECT id, userid, equipment, start_day, end_day, quantity,
-                   purpose, note, returned
-            FROM equipment_reservation
-            WHERE end_day >= ?
-            ORDER BY
-                CASE WHEN start_day <= ? THEN 0 ELSE 1 END ASC,
-                start_day ASC,
-                end_day ASC,
-                id ASC
-            LIMIT 3
-            """,
-            (today, today)
-        ).fetchall()
-
-        recent_room_equipment_reservations = db.execute(
-            """
-            SELECT id, userid, equipment, use_day, start_time, end_time,
-                   quantity, purpose, note
-            FROM equipment_room_reservation
-            WHERE use_day > ? OR (use_day = ? AND end_time > ?)
-            ORDER BY use_day ASC, start_time ASC, id ASC
-            LIMIT 3
-            """,
-            (today, today, current_time)
-        ).fetchall()
-
-    return templates.TemplateResponse(
-        request=request,
-        name="admin/index.html",
-        context={
-            "request": request,
-            "admin_id": request.session.get("admin_id"),
-            "recent_reservations": recent_reservations,
-            "recent_equipment_reservations": recent_equipment_reservations,
-            "recent_room_equipment_reservations": recent_room_equipment_reservations
-        }
-    )
+    return RedirectResponse("/admin/mypage", status_code=303)
 
 @app.get("/admin/logout")
 async def AdminLogout(request: Request):

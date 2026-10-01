@@ -110,6 +110,10 @@ class CalendarTests(unittest.TestCase):
         self.assertEqual(len(json.loads(payload)), 4)
         self.assertEqual(dict(next(e for e in json.loads(payload) if e['kind'] == 'takeout')['details'])['使用目的'], unsafe)
         self.assertLess(html.index('id="mypage-calendar"'), html.index('プロフィール情報</h2>'))
+        self.assertEqual(html.count('class="reservation-expanded-details"'), len(events))
+        self.assertEqual(html.count('<summary>詳細を表示</summary>'), len(events))
+        self.assertIn('class="mypage-detail-scroll"', html)
+        self.assertIn('class="student-panel student-mypage-profile"', html)
         self.assertNotIn('mypage_reservation_notice', request.session)
         self.assertNotIn('secret', html)
 
