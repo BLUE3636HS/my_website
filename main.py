@@ -27,6 +27,7 @@ from mentor_reservations import (
     build_router as build_mentor_router,
     csrf_token as mentor_csrf_token,
     initialize_mentor_tables,
+    mentor_image_url,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -34,8 +35,10 @@ DATABASE_PATH = BASE_DIR / "database" / "database.db"
 UPLOADS_DIR = (BASE_DIR / "uploads").resolve()
 PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "profile").resolve()
 STUDY_IMAGE_UPLOADS_DIR = (UPLOADS_DIR / "study-images").resolve()
+MENTOR_PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "mentor-profile").resolve()
 PROFILE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 STUDY_IMAGE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+MENTOR_PROFILE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 PROFILE_MAX_BYTES = 5 * 1024 * 1024
 PROFILE_MAX_PIXELS = 25_000_000
 PROFILE_IMAGE_SIZE = (512, 512)
@@ -265,6 +268,7 @@ with closing(connect_studies(DATABASE_PATH)) as study_db:
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/uploads/profile", StaticFiles(directory=str(PROFILE_UPLOADS_DIR)), name="profile_uploads")
+app.mount("/uploads/mentor-profile", StaticFiles(directory=str(MENTOR_PROFILE_UPLOADS_DIR)), name="mentor_profile_uploads")
 
 def student_template_context(request):
     user_id = request.session.get("user_id")
@@ -280,7 +284,7 @@ def student_template_context(request):
 
 templates = Jinja2Templates(directory="templates", context_processors=[student_template_context])
 app.include_router(create_template_router(lambda: DATABASE_PATH, templates))
-app.include_router(build_mentor_router(DATABASE_PATH, templates))
+app.include_router(build_mentor_router(DATABASE_PATH, templates, MENTOR_PROFILE_UPLOADS_DIR))
 
 COMMUNITY_PAGE_SIZE = 20
 
@@ -1378,12 +1382,13 @@ async def AdminMypage(request: Request):
         events = admin_calendar_reservations(db, now)
         db.row_factory = sqlite3.Row
         profile = db.execute(
-            "SELECT display_name, description, is_published FROM mentor_profile WHERE admin_id = ?",
+            "SELECT display_name, description, is_published, profile_image FROM mentor_profile WHERE admin_id = ?",
             (admin_id,),
         ).fetchone()
         profile = dict(profile) if profile is not None else None
     return templates.TemplateResponse(request=request, name="admin/mypage.html", context={
         "request": request, "admin_id": admin_id, "mentor_profile": profile,
+        "mentor_image_url": mentor_image_url(profile["profile_image"] if profile else None),
         "calendar_events": events, "calendar_today": now.date().isoformat(),
     })
 

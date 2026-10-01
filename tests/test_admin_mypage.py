@@ -14,6 +14,7 @@ from fastapi.responses import RedirectResponse
 from starlette.requests import Request
 import test_mypage_calendar as student_tests
 from mypage_calendar import admin_calendar_reservations, JST
+from mentor_reservations import mentor_image_url
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -71,7 +72,7 @@ class AdminCalendarTests(unittest.TestCase):
         unsafe = '</script><img src=x onerror=alert(1)>'
         self.db.execute('UPDATE equipment_reservation SET purpose=?', (unsafe,))
         self.db.execute("UPDATE mentor_profile SET description='Own description'")
-        self.db.execute("INSERT INTO mentor_profile VALUES ('b', 0, 'Other mentor', 'PRIVATE OTHER DESCRIPTION', 'now', 'now')")
+        self.db.execute("INSERT INTO mentor_profile(admin_id,is_published,display_name,description,created_at,updated_at) VALUES ('b', 0, 'Other mentor', 'PRIVATE OTHER DESCRIPTION', 'now', 'now')")
         self.db.commit()
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'test.db'
@@ -83,6 +84,7 @@ class AdminCalendarTests(unittest.TestCase):
             namespace = dict(Request=Request, RedirectResponse=RedirectResponse, datetime=datetime, JST=JST,
                 closing=closing, sqlite3=sqlite3, DATABASE_PATH=path,
                 admin_calendar_reservations=admin_calendar_reservations,
+                mentor_image_url=mentor_image_url,
                 templates=Jinja2Templates(directory=str(ROOT / 'templates')))
             exec(compile(ast.Module(body=[route], type_ignores=[]), 'main.py', 'exec'), namespace)
 

@@ -33,7 +33,8 @@ class CalendarTests(unittest.TestCase):
             CREATE TABLE equipment_room_reservation (id INTEGER PRIMARY KEY, userid TEXT, equipment TEXT, use_day TEXT, start_time TEXT, end_time TEXT, quantity INTEGER, purpose TEXT);
             CREATE TABLE student (id TEXT, pwd TEXT, school TEXT, profile_image TEXT);
             INSERT INTO student VALUES ('s', 'secret', 'School', NULL);
-            INSERT INTO mentor_profile VALUES ('a', 1, 'Mentor A', NULL, 'now', 'now');
+            INSERT INTO mentor_profile(admin_id,is_published,display_name,description,created_at,updated_at)
+            VALUES ('a', 1, 'Mentor A', NULL, 'now', 'now');
         ''')
         self.now = datetime.datetime(2026, 9, 27, 12, 0, tzinfo=JST)
 

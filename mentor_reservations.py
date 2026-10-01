@@ -1,11 +1,15 @@
 import datetime
+import io
 import secrets
 import sqlite3
 from contextlib import closing
+from pathlib import Path
 from urllib.parse import urlencode
+from uuid import uuid4
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from notifications import create_notification, reservation_body
 
@@ -16,6 +20,13 @@ CLOSE_MINUTES = 22 * 60
 BOOKING_CONFLICT_MESSAGE = (
     "すでに生徒の予約が入っています。予約を削除してから再度対応可能時間の変更を行ってください"
 )
+MENTOR_IMAGE_MAX_BYTES = 5 * 1024 * 1024
+MENTOR_IMAGE_MAX_PIXELS = 25_000_000
+MENTOR_IMAGE_SIZE = (512, 512)
+MENTOR_IMAGE_FORMATS = {"JPEG", "PNG", "WEBP"}
+MENTOR_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
+MENTOR_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MENTOR_DEFAULT_IMAGE_URL = "/static/images/default_profile.svg"
 
 
 def initialize_mentor_tables(db):
@@ -62,6 +73,57 @@ def initialize_mentor_tables(db):
         CREATE INDEX IF NOT EXISTS idx_mentor_reservation_student_active
             ON mentor_reservation(student_id, day, status, start_time, end_time);
     """)
+    profile_columns = {row[1] for row in db.execute("PRAGMA table_info(mentor_profile)").fetchall()}
+    if "profile_image" not in profile_columns:
+        db.execute("ALTER TABLE mentor_profile ADD COLUMN profile_image TEXT")
+
+
+def mentor_image_url(filename):
+    if not filename:
+        return MENTOR_DEFAULT_IMAGE_URL
+    safe_name = Path(filename).name
+    if safe_name != filename or not safe_name.endswith(".webp"):
+        return MENTOR_DEFAULT_IMAGE_URL
+    return f"/uploads/mentor-profile/{safe_name}"
+
+
+def process_mentor_image(contents):
+    try:
+        with Image.open(io.BytesIO(contents)) as candidate:
+            detected_format = candidate.format
+            if candidate.width * candidate.height > MENTOR_IMAGE_MAX_PIXELS:
+                return None, "画像の縦横サイズが大きすぎます。"
+            candidate.verify()
+        if detected_format not in MENTOR_IMAGE_FORMATS:
+            return None, "対応していない画像形式です。"
+        with Image.open(io.BytesIO(contents)) as source:
+            image = ImageOps.exif_transpose(source)
+            image.load()
+            if image.width < 1 or image.height < 1:
+                return None, "画像ファイルを読み込めませんでした。"
+            side = min(image.width, image.height)
+            left = (image.width - side) // 2
+            top = (image.height - side) // 2
+            image = image.crop((left, top, left + side, top + side)).convert("RGBA")
+            image = image.resize(MENTOR_IMAGE_SIZE, Image.Resampling.LANCZOS)
+            output = io.BytesIO()
+            image.save(output, format="WEBP", quality=88, method=6)
+            return output.getvalue(), None
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
+        return None, "画像ファイルを読み込めませんでした。"
+
+
+def delete_mentor_image(uploads_dir, filename):
+    if not filename or Path(filename).name != filename or not filename.endswith(".webp"):
+        return
+    uploads_dir = Path(uploads_dir).resolve()
+    target = (uploads_dir / filename).resolve()
+    if target.parent != uploads_dir:
+        return
+    try:
+        target.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def time_to_minutes(value):
@@ -121,8 +183,10 @@ def mentor_reservations_for_student(db, student_id):
     return [dict(row) for row in rows]
 
 
-def build_router(database_path, templates):
+def build_router(database_path, templates, uploads_dir=None):
     router = APIRouter()
+    uploads_dir = Path(uploads_dir or (Path(database_path).resolve().parent / "mentor-profile-uploads")).resolve()
+    uploads_dir.mkdir(parents=True, exist_ok=True)
 
     @router.get("/admin/mentor-profile", response_class=HTMLResponse)
     async def admin_mentor_profile(request: Request):
@@ -132,31 +196,97 @@ def build_router(database_path, templates):
             profile = db.execute("SELECT * FROM mentor_profile WHERE admin_id = ?", (admin_id,)).fetchone()
         return templates.TemplateResponse(request=request, name="admin/mentor_profile.html", context={
             "request": request, "admin_id": admin_id, "profile": profile,
+            "mentor_image_url": mentor_image_url(profile["profile_image"] if profile else None),
             "csrf_token": csrf_token(request, "mentor_profile_csrf"),
             "notice": request.session.pop("mentor_profile_notice", None),
         })
 
     @router.post("/admin/mentor-profile")
     async def update_admin_mentor_profile(request: Request, display_name: str = Form(""),
-                                          is_published: str = Form("0"), csrf: str = Form("")):
+                                          description: str = Form(""), is_published: str = Form("0"),
+                                          profile_image: UploadFile | None = File(None), csrf: str = Form("")):
         admin_id = request.session.get("admin_id")
         if not valid_csrf(request, csrf, "mentor_profile_csrf"):
             request.session["mentor_profile_notice"] = {"type": "error", "message": "操作を確認できませんでした。"}
             return RedirectResponse("/admin/mentor-profile", 303)
         name = display_name.strip()
+        description = description.strip()
         published = 1 if is_published == "1" else 0
         if not name or len(name) > 100:
             request.session["mentor_profile_notice"] = {"type": "error", "message": "メンター名は1〜100文字で入力してください。"}
             return RedirectResponse("/admin/mentor-profile", 303)
+        if len(description) > 500:
+            request.session["mentor_profile_notice"] = {"type": "error", "message": "説明文は500文字以内で入力してください。"}
+            return RedirectResponse("/admin/mentor-profile", 303)
+        processed = None
+        if profile_image and profile_image.filename:
+            suffix = Path(profile_image.filename).suffix.lower()
+            content_type = (profile_image.content_type or "").lower()
+            if suffix not in MENTOR_IMAGE_SUFFIXES or content_type not in MENTOR_IMAGE_CONTENT_TYPES:
+                await profile_image.close()
+                request.session["mentor_profile_notice"] = {"type": "error", "message": "対応していない画像形式です。JPEG、PNG、WebPを選択してください。"}
+                return RedirectResponse("/admin/mentor-profile", 303)
+            contents = await profile_image.read(MENTOR_IMAGE_MAX_BYTES + 1)
+            await profile_image.close()
+            if len(contents) > MENTOR_IMAGE_MAX_BYTES:
+                request.session["mentor_profile_notice"] = {"type": "error", "message": "ファイルサイズが5MBを超えています。"}
+                return RedirectResponse("/admin/mentor-profile", 303)
+            processed, error = process_mentor_image(contents)
+            if error:
+                request.session["mentor_profile_notice"] = {"type": "error", "message": error}
+                return RedirectResponse("/admin/mentor-profile", 303)
         now = datetime.datetime.now(JST).isoformat()
-        with closing(sqlite3.connect(database_path)) as db:
-            db.execute("""INSERT INTO mentor_profile(admin_id,is_published,display_name,created_at,updated_at)
-                VALUES(?,?,?,?,?) ON CONFLICT(admin_id) DO UPDATE SET
-                is_published=excluded.is_published,display_name=excluded.display_name,updated_at=excluded.updated_at""",
-                (admin_id, published, name, now, now))
-            db.commit()
+        new_filename = f"{uuid4().hex}.webp" if processed else None
+        temporary_path = uploads_dir / f".{new_filename}.tmp" if new_filename else None
+        final_path = uploads_dir / new_filename if new_filename else None
+        old_filename = None
+        try:
+            if processed:
+                temporary_path.write_bytes(processed)
+                temporary_path.replace(final_path)
+            with closing(sqlite3.connect(database_path, timeout=10)) as db:
+                old_row = db.execute("SELECT profile_image FROM mentor_profile WHERE admin_id=?", (admin_id,)).fetchone()
+                old_filename = old_row[0] if old_row else None
+                db.execute("""INSERT INTO mentor_profile(admin_id,is_published,display_name,description,profile_image,created_at,updated_at)
+                    VALUES(?,?,?,?,?,?,?) ON CONFLICT(admin_id) DO UPDATE SET
+                    is_published=excluded.is_published,display_name=excluded.display_name,
+                    description=excluded.description,profile_image=COALESCE(excluded.profile_image,mentor_profile.profile_image),
+                    updated_at=excluded.updated_at""",
+                    (admin_id, published, name, description or None, new_filename, now, now))
+                db.commit()
+        except (OSError, sqlite3.Error):
+            if temporary_path:
+                temporary_path.unlink(missing_ok=True)
+            if final_path:
+                final_path.unlink(missing_ok=True)
+            request.session["mentor_profile_notice"] = {"type": "error", "message": "大学生メンター情報を保存できませんでした。"}
+            return RedirectResponse("/admin/mentor-profile", 303)
+        if new_filename:
+            delete_mentor_image(uploads_dir, old_filename)
         request.session["mentor_profile_csrf"] = secrets.token_urlsafe(32)
         request.session["mentor_profile_notice"] = {"type": "success", "message": "大学生メンター情報を保存しました。"}
+        return RedirectResponse("/admin/mentor-profile", 303)
+
+    @router.post("/admin/mentor-profile/image/delete")
+    async def delete_admin_mentor_image(request: Request, csrf: str = Form("")):
+        if not valid_csrf(request, csrf, "mentor_profile_csrf"):
+            request.session["mentor_profile_notice"] = {"type": "error", "message": "操作を確認できませんでした。"}
+            return RedirectResponse("/admin/mentor-profile", 303)
+        admin_id = request.session.get("admin_id")
+        try:
+            with closing(sqlite3.connect(database_path, timeout=10)) as db:
+                row = db.execute("SELECT profile_image FROM mentor_profile WHERE admin_id=?", (admin_id,)).fetchone()
+                old_filename = row[0] if row else None
+                if row:
+                    db.execute("UPDATE mentor_profile SET profile_image=NULL,updated_at=? WHERE admin_id=?",
+                               (datetime.datetime.now(JST).isoformat(), admin_id))
+                    db.commit()
+        except sqlite3.Error:
+            request.session["mentor_profile_notice"] = {"type": "error", "message": "画像を削除できませんでした。"}
+            return RedirectResponse("/admin/mentor-profile", 303)
+        delete_mentor_image(uploads_dir, old_filename)
+        request.session["mentor_profile_csrf"] = secrets.token_urlsafe(32)
+        request.session["mentor_profile_notice"] = {"type": "success", "message": "メンター画像を削除しました。"}
         return RedirectResponse("/admin/mentor-profile", 303)
 
     def schedule_rows(db, admin_id, day):
@@ -272,20 +402,22 @@ def build_router(database_path, templates):
     async def mentor_list(request: Request):
         with closing(sqlite3.connect(database_path)) as db:
             db.row_factory = sqlite3.Row
-            mentors = db.execute("SELECT admin_id,display_name FROM mentor_profile WHERE is_published=1 ORDER BY display_name,admin_id").fetchall()
+            mentors = db.execute("SELECT admin_id,display_name,description,profile_image FROM mentor_profile WHERE is_published=1 ORDER BY display_name,admin_id").fetchall()
         return templates.TemplateResponse(request=request, name="mentor/list.html", context={
-            "request": request, "user_id": request.session.get("user_id"), "mentors": mentors})
+            "request": request, "user_id": request.session.get("user_id"), "mentors": mentors,
+            "mentor_image_url": mentor_image_url})
 
     @router.get("/mentor-reservation/{admin_id}", response_class=HTMLResponse)
     async def mentor_booking_page(request: Request, admin_id: str):
         with closing(sqlite3.connect(database_path)) as db:
             db.row_factory = sqlite3.Row
-            mentor = db.execute("SELECT admin_id,display_name FROM mentor_profile WHERE admin_id=? AND is_published=1", (admin_id,)).fetchone()
+            mentor = db.execute("SELECT admin_id,display_name,description,profile_image FROM mentor_profile WHERE admin_id=? AND is_published=1", (admin_id,)).fetchone()
         if mentor is None:
             raise HTTPException(404, "メンターが見つかりません。")
         tomorrow = (datetime.datetime.now(JST).date() + datetime.timedelta(days=1)).isoformat()
         return templates.TemplateResponse(request=request, name="mentor/book.html", context={
             "request": request, "user_id": request.session.get("user_id"), "mentor": mentor, "tomorrow": tomorrow,
+            "mentor_image_url": mentor_image_url(mentor["profile_image"]),
             "csrf_token": csrf_token(request, "mentor_booking_csrf"),
         })
 

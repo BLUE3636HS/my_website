@@ -14,7 +14,10 @@
 >
     <section class="reservation-hero">
         <p class="reservation-eyebrow">BOOK A MENTOR</p>
-        <h1>{{ mentor.display_name }}を予約</h1>
+        <div class="mentor-book-profile">
+            <img class="mentor-profile-image" src="{{ mentor_image_url }}" alt="{{ mentor.display_name }}のメンター画像">
+            <div><h1>{{ mentor.display_name }}を予約</h1><p class="mentor-book-description">{{ mentor.description or '紹介文はまだ登録されていません。' }}</p></div>
+        </div>
         <p>利用形式と日付を選び、空いている時間と相談内容を入力してください。</p>
     </section>
 

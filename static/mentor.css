@@ -31,7 +31,7 @@
 }
 
 .student-content .mentor-cards {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
     gap: 22px;
 }
 
@@ -44,6 +44,7 @@
 
 .student-content .mentor-card {
     gap: 22px;
+    min-width: 0;
 }
 
 .student-content .mentor-card h2 {
@@ -97,9 +98,12 @@
 
 .student-content .mentor-button,
 .student-content .mentor-secondary {
+    box-sizing: border-box;
+    width: 100%;
     padding: 13px 22px;
     border-radius: 8px;
     background: #1f4e79;
+    text-align: center;
 }
 
 .student-content .mentor-button:hover,
@@ -124,5 +128,62 @@
     .student-content .mentor-panel,
     .student-content .mentor-card {
         padding: 20px;
+    }
+
+}
+
+.mentor-description p {
+    margin: 7px 0 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.mentor-profile-image {
+    display: block;
+    width: 160px;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border: 1px solid #d6e2d9;
+    border-radius: 18px;
+    background: #f2f6f3;
+}
+
+.mentor-card > .mentor-profile-image {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 14px;
+}
+
+.mentor-image-editor {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+}
+
+.mentor-image-editor > div {
+    flex: 1;
+}
+
+.mentor-help {
+    margin: 4px 0 0;
+    color: #607166;
+    font-size: .9rem;
+    font-weight: 400;
+    line-height: 1.6;
+}
+
+.mentor-image-delete {
+    max-width: 760px;
+}
+
+@media (max-width: 650px) {
+    .mentor-image-editor {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .mentor-image-editor .mentor-profile-image {
+        width: 128px;
     }
 }

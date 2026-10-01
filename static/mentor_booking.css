@@ -75,3 +75,43 @@
         font-size: 14px;
     }
 }
+.mentor-book-profile {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    margin: 12px 0;
+}
+
+.mentor-book-profile .mentor-profile-image {
+    width: 132px;
+    flex: 0 0 132px;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border: 1px solid #d6e0ea;
+    border-radius: 18px;
+    background: #f3f7fb;
+}
+
+.mentor-book-profile h1 {
+    margin: 0 0 8px;
+}
+
+.mentor-book-description {
+    margin: 0;
+    color: #526173;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+    .mentor-book-profile {
+        align-items: flex-start;
+    }
+
+    .mentor-book-profile .mentor-profile-image {
+        width: 92px;
+        flex-basis: 92px;
+        border-radius: 14px;
+    }
+}

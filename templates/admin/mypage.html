@@ -44,6 +44,7 @@
     </section>
     <section class="admin-mypage-panel admin-mypage-profile" aria-labelledby="admin-profile-heading">
         <h2 id="admin-profile-heading">管理者・メンター情報</h2>
+        <img class="admin-mentor-profile-image" src="{{ mentor_image_url }}" alt="現在のメンター画像">
         <dl class="admin-profile-details">
             <dt>管理者ID</dt><dd>{{ admin_id }}</dd>
             {% if mentor_profile is not none %}

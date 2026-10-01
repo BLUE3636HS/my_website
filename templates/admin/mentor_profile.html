@@ -1,9 +1,14 @@
 {% extends "admin/base.html" %}
 {% block title %}大学生メンター情報{% endblock %}
 {% block css %}<link rel="stylesheet" href="/static/mentor.css">{% endblock %}
-{% block content %}<div class="mentor-page"><header class="mentor-hero"><p class="eyebrow">MENTOR PROFILE</p><h1>大学生メンター情報</h1><p>生徒に表示する名前と公開状態を設定します。</p></header>
+{% block content %}<div class="mentor-page"><header class="mentor-hero"><p class="eyebrow">MENTOR PROFILE</p><h1>大学生メンター情報</h1><p>生徒に表示する画像、名前、説明文と公開状態を設定します。</p></header>
 {% if notice %}<p class="mentor-notice is-{{ notice.type }}">{{ notice.message }}</p>{% endif %}
-<form class="mentor-panel mentor-form" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}">
+<form class="mentor-panel mentor-form" method="post" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{ csrf_token }}">
+<div class="mentor-image-editor"><img class="mentor-profile-image" id="mentor-image-preview" src="{{ mentor_image_url }}" data-saved-src="{{ mentor_image_url }}" alt="現在のメンター画像"><div><label>メンター画像<input type="file" id="mentor-image-input" name="profile_image" accept="image/jpeg,image/png,image/webp" aria-describedby="mentor-image-help"></label><p id="mentor-image-help" class="mentor-help">JPEG・PNG・WebP、最大5MB。中央を正方形に切り抜いて保存します。</p></div></div>
 <label>メンター名<input name="display_name" maxlength="100" required value="{{ profile.display_name if profile else '' }}"></label>
+<label>説明文<textarea name="description" maxlength="500" rows="7" aria-describedby="mentor-description-help">{{ profile.description if profile and profile.description else '' }}</textarea></label>
+<p id="mentor-description-help" class="mentor-help">生徒に表示する紹介文を500文字以内で入力してください。改行も反映されます。</p>
 <fieldset><legend>生徒への公開</legend><label class="mentor-check"><input type="checkbox" name="is_published" value="1" {% if profile and profile.is_published %}checked{% endif %}> 生徒にメンターとして表示する</label></fieldset>
-<button class="mentor-button" type="submit">保存する</button></form></div>{% endblock %}
+<button class="mentor-button" type="submit">保存する</button></form>
+{% if profile and profile.profile_image %}<form class="mentor-image-delete" method="post" action="/admin/mentor-profile/image/delete"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="mentor-danger" type="submit">登録画像を削除する</button></form>{% endif %}</div>{% endblock %}
+{% block scripts %}<script src="/static/admin/mentor_profile.js"></script>{% endblock %}
