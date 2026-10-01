@@ -9,6 +9,7 @@ from fastapi import HTTPException
 import datetime
 import sqlite3
 import unittest
+from unittest.mock import patch
 from contextlib import closing
 
 from mentor_reservations import (
@@ -20,6 +21,8 @@ from mentor_reservations import (
     slot_range,
     validate_range,
 )
+from notifications import initialize_notification_tables
+from google_calendar import GoogleCalendarError
 
 
 class MentorReservationUnitTests(unittest.TestCase):
@@ -32,6 +35,8 @@ class MentorReservationUnitTests(unittest.TestCase):
         initialize_mentor_tables(db)
         self.assertEqual(db.execute("SELECT display_name FROM mentor_profile WHERE admin_id='a'").fetchone()[0], "A")
         self.assertIn("profile_image", {row[1] for row in db.execute("PRAGMA table_info(mentor_profile)")})
+        columns = {row[1] for row in db.execute("PRAGMA table_info(mentor_reservation)")}
+        self.assertTrue({"google_calendar_event_id", "google_meet_url"}.issubset(columns))
 
     def test_mentor_image_is_normalized_to_square_webp(self):
         from PIL import Image
@@ -83,12 +88,12 @@ class MentorAvailabilityTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.path = Path(self.temp.name) / "test.db"
         self.day = (datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).date() + datetime.timedelta(days=2)).isoformat()
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db:
             initialize_mentor_tables(db)
             db.execute("INSERT INTO mentor_profile(admin_id,is_published,display_name,description,created_at,updated_at) VALUES ('a',1,'A',NULL,'now','now')")
             db.executemany("INSERT INTO mentor_available_slot(admin_id,day,start_time,online_available,offline_available,created_at,updated_at) VALUES('a',?,?,?,?,'now','now')",
                            [(self.day, '13:00', 1, 0), (self.day, '13:30', 1, 1), (self.day, '14:00', 0, 1)])
-        db.close()
+            db.commit()
         self.routes = {r.path: r.endpoint for r in build_router(self.path, None).routes if 'GET' in r.methods}
         self.request = Request({'type': 'http', 'session': {'user_id': 's'}})
 
@@ -103,13 +108,13 @@ class MentorAvailabilityTests(unittest.TestCase):
         self.assertEqual(self.call('available-days', month=self.day[:7], meeting_type='offline')['available_days'], [self.day])
 
     def test_other_mentor_student_conflict_and_cancelled(self):
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db:
             db.execute("INSERT INTO mentor_reservation(student_id,mentor_admin_id,day,start_time,end_time,meeting_type,consultation,status,created_at) VALUES('s','b',?,'13:00','14:00','offline','test','active','now')", (self.day,))
-        db.close()
+            db.commit()
         self.assertEqual(self.call('available-days', month=self.day[:7], meeting_type='online')['available_days'], [])
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db:
             db.execute("UPDATE mentor_reservation SET status='cancelled'")
-        db.close()
+            db.commit()
         self.assertEqual(self.call('available-days', month=self.day[:7], meeting_type='online')['available_days'], [self.day])
 
     def test_invalid_day_format_and_hidden_mentor(self):
@@ -120,12 +125,115 @@ class MentorAvailabilityTests(unittest.TestCase):
             self.assertEqual(error.exception.status_code, 400)
         with self.assertRaises(HTTPException):
             self.call('available-days', month='bad', meeting_type='online')
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db:
             db.execute("UPDATE mentor_profile SET is_published=0")
-        db.close()
+            db.commit()
         with self.assertRaises(HTTPException) as error:
             self.call('available-days', month=self.day[:7], meeting_type='online')
         self.assertEqual(error.exception.status_code, 404)
+
+
+class MentorGoogleIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.path = Path(self.temp.name) / "test.db"
+        self.day = (datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).date()
+                    + datetime.timedelta(days=2)).isoformat()
+        with closing(sqlite3.connect(self.path)) as db:
+            initialize_mentor_tables(db)
+            initialize_notification_tables(db)
+            db.execute("CREATE TABLE student(id TEXT NOT NULL, pwd TEXT NOT NULL, school TEXT NOT NULL)")
+            db.execute("INSERT INTO student VALUES('s','x','school')")
+            db.execute("INSERT INTO mentor_profile(admin_id,is_published,display_name,created_at,updated_at) VALUES('a',1,'Mentor A','now','now')")
+            db.executemany("""INSERT INTO mentor_available_slot
+                (admin_id,day,start_time,online_available,offline_available,created_at,updated_at)
+                VALUES('a',?,?,1,1,'now','now')""", [(self.day, "13:00"), (self.day, "13:30")])
+            db.commit()
+        routes = build_router(self.path, None).routes
+        self.create = next(r.endpoint for r in routes if r.path == "/mentor-reservation/{admin_id}" and "POST" in r.methods)
+        self.student_cancel = next(r.endpoint for r in routes if r.path == "/mypage/mentor-reservation/{reservation_id}/cancel")
+        self.admin_cancel = next(r.endpoint for r in routes if r.path == "/admin/mentor-reservations/{reservation_id}/cancel")
+
+    def request(self, admin=False):
+        session = ({"admin_id": "a", "admin_mentor_reservation_csrf": "token"} if admin else
+                   {"user_id": "s", "mentor_booking_csrf": "token", "mypage_mentor_csrf": "cancel"})
+        return Request({"type": "http", "session": session})
+
+    def book(self, meeting_type="offline"):
+        return asyncio.run(self.create(self.request(), "a", self.day, "13:00", "14:00",
+                                      meeting_type, "相談内容", "token"))
+
+    @patch("mentor_reservations.create_mentor_event", return_value=("event-1", "https://meet.google.com/abc-defg-hij"))
+    def test_offline_saves_google_data_and_notifies_both_parties(self, create_event):
+        result = self.book()
+        self.assertTrue(result["result"])
+        create_event.assert_called_once()
+        with closing(sqlite3.connect(self.path)) as db:
+            reservation = db.execute("SELECT google_calendar_event_id,google_meet_url FROM mentor_reservation").fetchone()
+            student_notice = db.execute("SELECT body,meet_url FROM notification").fetchone()
+            admin_notice = db.execute("SELECT recipient_admin_id,body,meet_url FROM admin_notification").fetchone()
+        self.assertEqual(reservation, ("event-1", "https://meet.google.com/abc-defg-hij"))
+        self.assertIn("https://meet.google.com/abc-defg-hij", student_notice[0])
+        self.assertEqual(admin_notice[0], "a")
+        self.assertIn("生徒ID: s", admin_notice[1])
+
+    @patch("mentor_reservations.create_mentor_event")
+    def test_online_does_not_call_google_or_add_meet_notifications(self, create_event):
+        result = self.book("online")
+        self.assertTrue(result["result"])
+        create_event.assert_not_called()
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute("SELECT google_calendar_event_id,google_meet_url FROM mentor_reservation").fetchone(), (None, None))
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM admin_notification").fetchone()[0], 0)
+            self.assertNotIn("Google Meet", db.execute("SELECT body FROM notification").fetchone()[0])
+
+    @patch("mentor_reservations.create_mentor_event", side_effect=GoogleCalendarError("Google Meetの準備に失敗しました。"))
+    def test_google_failure_leaves_no_reservation_or_notifications(self, _create_event):
+        response = self.book()
+        self.assertEqual(response.status_code, 503)
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM mentor_reservation").fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM notification").fetchone()[0], 0)
+
+    @patch("mentor_reservations.delete_mentor_event")
+    @patch("mentor_reservations.create_admin_notification", side_effect=sqlite3.OperationalError("write failed"))
+    @patch("mentor_reservations.create_mentor_event", return_value=("event-2", "https://meet.google.com/test"))
+    def test_db_failure_rolls_back_and_compensates(self, _create_event, _admin_notice, delete_event):
+        response = self.book()
+        self.assertEqual(response.status_code, 409)
+        delete_event.assert_called_once_with("event-2")
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM mentor_reservation").fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM notification").fetchone()[0], 0)
+
+    @patch("mentor_reservations.delete_mentor_event")
+    @patch("mentor_reservations.create_mentor_event", return_value=("event-3", "https://meet.google.com/test"))
+    def test_student_and_admin_cancellation_delete_calendar_event(self, _create_event, delete_event):
+        self.book()
+        asyncio.run(self.student_cancel(self.request(), 1, "cancel"))
+        delete_event.assert_called_once_with("event-3")
+        with closing(sqlite3.connect(self.path)) as db:
+            db.execute("UPDATE mentor_reservation SET status='active'")
+            db.commit()
+        asyncio.run(self.admin_cancel(self.request(admin=True), 1, "token", "all"))
+        self.assertEqual(delete_event.call_count, 2)
+
+    @patch("mentor_reservations.delete_mentor_event")
+    def test_cancel_without_event_id_skips_google(self, delete_event):
+        self.book("online")
+        asyncio.run(self.student_cancel(self.request(), 1, "cancel"))
+        delete_event.assert_not_called()
+
+    @patch("mentor_reservations.delete_mentor_event", side_effect=GoogleCalendarError("delete failed"))
+    @patch("mentor_reservations.create_mentor_event", return_value=("event-4", "https://meet.google.com/test"))
+    def test_calendar_delete_failure_does_not_block_cancellation(self, _create_event, _delete_event):
+        self.book()
+        request = self.request()
+        asyncio.run(self.student_cancel(request, 1, "cancel"))
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute("SELECT status FROM mentor_reservation").fetchone()[0], "cancelled")
+        self.assertEqual(request.session["mypage_mentor_notice"]["type"], "warning")
 
 
 class MentorProfileUpdateTests(unittest.TestCase):

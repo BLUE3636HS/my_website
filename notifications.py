@@ -40,6 +40,17 @@ def initialize_notification_tables(db):
             batch_id INTEGER,
             FOREIGN KEY (batch_id) REFERENCES notification_batch(id)
         );
+        CREATE TABLE IF NOT EXISTS admin_notification (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipient_admin_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL,
+            meet_url TEXT,
+            is_read INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            notification_type TEXT NOT NULL,
+            related_reservation_id INTEGER
+        );
         CREATE INDEX IF NOT EXISTS idx_notification_recipient_created
             ON notification(recipient_user_id, created_at DESC, id DESC);
         CREATE INDEX IF NOT EXISTS idx_notification_recipient_unread
@@ -49,6 +60,11 @@ def initialize_notification_tables(db):
                             related_reservation_id, recipient_user_id)
             WHERE notification_type = 'reservation_reminder';
     """)
+    notification_columns = {
+        row[1] for row in db.execute("PRAGMA table_info(notification)").fetchall()
+    }
+    if "meet_url" not in notification_columns:
+        db.execute("ALTER TABLE notification ADD COLUMN meet_url TEXT")
     batch_columns = {
         row[1] for row in db.execute("PRAGMA table_info(notification_batch)").fetchall()
     }
@@ -71,18 +87,29 @@ def initialize_notification_tables(db):
 def create_notification(db, recipient_user_id, title, body,
                         notification_type="manual", related_reservation_type=None,
                         related_reservation_id=None, batch_id=None,
-                        sender_type="admin", sender_name="管理者"):
+                        sender_type="admin", sender_name="管理者", meet_url=None):
     return db.execute("""
         INSERT INTO notification (
             recipient_user_id, title, body, sender_type, sender_name,
             is_read, created_at, notification_type,
-            related_reservation_type, related_reservation_id, batch_id
-        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+            related_reservation_type, related_reservation_id, batch_id, meet_url
+        ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
     """, (
         recipient_user_id, title, body, sender_type, sender_name,
         notification_now(), notification_type,
-        related_reservation_type, related_reservation_id, batch_id
+        related_reservation_type, related_reservation_id, batch_id, meet_url
     )).lastrowid
+
+
+def create_admin_notification(db, recipient_admin_id, title, body, meet_url,
+                              notification_type, related_reservation_id):
+    return db.execute("""
+        INSERT INTO admin_notification (
+            recipient_admin_id, title, body, meet_url, is_read, created_at,
+            notification_type, related_reservation_id
+        ) VALUES (?, ?, ?, ?, 0, ?, ?, ?)
+    """, (recipient_admin_id, title, body, meet_url, notification_now(),
+          notification_type, related_reservation_id)).lastrowid
 
 
 def reservation_body(reservation_type, row):
@@ -94,9 +121,12 @@ def reservation_body(reservation_type, row):
     if reservation_type == "mentor":
         meeting_type = "オンライン" if row["meeting_type"] == "online" else "オフライン"
         consultation = row["consultation"]
-        return (f"メンター: {row['mentor_name']}\n利用日: {row['day']}\n"
+        body = (f"メンター: {row['mentor_name']}\n利用日: {row['day']}\n"
                 f"利用時間: {row['start_time']} ～ {row['end_time']}\n"
                 f"利用形式: {meeting_type}\n相談内容: {consultation}")
+        meet_url = row.get("google_meet_url") if isinstance(row, dict) else (
+            row["google_meet_url"] if "google_meet_url" in row.keys() else None)
+        return body + (f"\nGoogle Meet: {meet_url}" if meet_url else "")
     return (f"器具名: {row['equipment']}\n利用区分: 工作室内\n利用日: {row['use_day']}\n"
             f"利用時間: {row['start_time']} ～ {row['end_time']}\n数量: {row['quantity']}")
 

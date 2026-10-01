@@ -1,5 +1,6 @@
 import datetime
 import io
+import logging
 import secrets
 import sqlite3
 from contextlib import closing
@@ -11,7 +12,8 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from notifications import create_notification, reservation_body
+from google_calendar import GoogleCalendarError, create_mentor_event, delete_mentor_event
+from notifications import create_admin_notification, create_notification, reservation_body
 
 
 JST = datetime.timezone(datetime.timedelta(hours=9))
@@ -27,6 +29,7 @@ MENTOR_IMAGE_FORMATS = {"JPEG", "PNG", "WEBP"}
 MENTOR_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 MENTOR_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MENTOR_DEFAULT_IMAGE_URL = "/static/images/default_profile.svg"
+LOGGER = logging.getLogger(__name__)
 
 
 def initialize_mentor_tables(db):
@@ -76,6 +79,11 @@ def initialize_mentor_tables(db):
     profile_columns = {row[1] for row in db.execute("PRAGMA table_info(mentor_profile)").fetchall()}
     if "profile_image" not in profile_columns:
         db.execute("ALTER TABLE mentor_profile ADD COLUMN profile_image TEXT")
+    reservation_columns = {row[1] for row in db.execute("PRAGMA table_info(mentor_reservation)").fetchall()}
+    if "google_calendar_event_id" not in reservation_columns:
+        db.execute("ALTER TABLE mentor_reservation ADD COLUMN google_calendar_event_id TEXT")
+    if "google_meet_url" not in reservation_columns:
+        db.execute("ALTER TABLE mentor_reservation ADD COLUMN google_meet_url TEXT")
 
 
 def mentor_image_url(filename):
@@ -483,6 +491,7 @@ def build_router(database_path, templates, uploads_dir=None):
             student_id = request.session.get("user_id")
             required = slot_range(start_time, end_time)
             column = "online_available" if meeting_type == "online" else "offline_available"
+            # Validate first, then release SQLite before the external API call.
             with closing(sqlite3.connect(database_path, timeout=10)) as db:
                 db.row_factory = sqlite3.Row
                 db.execute("BEGIN IMMEDIATE")
@@ -497,19 +506,63 @@ def build_router(database_path, templates, uploads_dir=None):
                     (day, end_time, start_time, admin_id, student_id)).fetchone()
                 if overlap:
                     raise ValueError("選択した時間帯には別の予約があります。")
-                now = datetime.datetime.now(JST).isoformat()
-                reservation_id = db.execute("""INSERT INTO mentor_reservation
-                    (student_id,mentor_admin_id,day,start_time,end_time,meeting_type,consultation,status,created_at)
-                    VALUES(?,?,?,?,?,?,?,'active',?)""",
-                    (student_id, admin_id, day, start_time, end_time, meeting_type, content, now)).lastrowid
-                payload = {"mentor_name": mentor[0], "day": day, "start_time": start_time, "end_time": end_time,
-                           "meeting_type": meeting_type, "consultation": content}
-                create_notification(db, student_id, "大学生メンター予約を受け付けました",
-                                    reservation_body("mentor", payload), "reservation_created", "mentor", reservation_id)
                 db.commit()
+                mentor_name = mentor[0]
+
+            event_id = meet_url = None
+            if meeting_type == "offline":
+                event_id, meet_url = create_mentor_event(
+                    day=day, start_time=start_time, end_time=end_time,
+                    student_label=student_id, mentor_name=mentor_name,
+                    consultation=content, reservation_request_id=uuid4().hex)
+            try:
+                with closing(sqlite3.connect(database_path, timeout=10)) as db:
+                    db.row_factory = sqlite3.Row
+                    db.execute("BEGIN IMMEDIATE")
+                    mentor = db.execute("SELECT display_name FROM mentor_profile WHERE admin_id=? AND is_published=1", (admin_id,)).fetchone()
+                    if mentor is None:
+                        raise ValueError("このメンターは現在予約できません。")
+                    available = {row[0] for row in db.execute(f"SELECT start_time FROM mentor_available_slot WHERE admin_id=? AND day=? AND {column}=1", (admin_id, day))}
+                    if any(slot not in available for slot in required):
+                        raise ValueError("選択した時間帯は現在予約できません。")
+                    overlap = db.execute("""SELECT 1 FROM mentor_reservation WHERE day=? AND status='active'
+                        AND start_time < ? AND end_time > ? AND (mentor_admin_id=? OR student_id=?) LIMIT 1""",
+                        (day, end_time, start_time, admin_id, student_id)).fetchone()
+                    if overlap:
+                        raise ValueError("選択した時間帯には別の予約があります。")
+                    now = datetime.datetime.now(JST).isoformat()
+                    reservation_id = db.execute("""INSERT INTO mentor_reservation
+                        (student_id,mentor_admin_id,day,start_time,end_time,meeting_type,consultation,status,created_at,
+                         google_calendar_event_id,google_meet_url)
+                        VALUES(?,?,?,?,?,?,?,'active',?,?,?)""",
+                        (student_id, admin_id, day, start_time, end_time, meeting_type, content, now,
+                         event_id, meet_url)).lastrowid
+                    payload = {"mentor_name": mentor_name, "day": day, "start_time": start_time,
+                               "end_time": end_time, "meeting_type": meeting_type,
+                               "consultation": content, "google_meet_url": meet_url}
+                    create_notification(db, student_id, "大学生メンター予約を受け付けました",
+                                        reservation_body("mentor", payload), "reservation_created", "mentor",
+                                        reservation_id, meet_url=meet_url)
+                    if meeting_type == "offline":
+                        admin_body = (f"生徒ID: {student_id}\n利用日: {day}\n利用時間: {start_time} ～ {end_time}\n"
+                                      f"相談内容: {content}\nGoogle Meet: {meet_url}")
+                        create_admin_notification(db, admin_id, "新しい大学生メンター予約が入りました",
+                                                  admin_body, meet_url, "mentor_reservation_created", reservation_id)
+                    db.commit()
+            except (ValueError, sqlite3.Error):
+                if event_id:
+                    try:
+                        delete_mentor_event(event_id)
+                    except GoogleCalendarError:
+                        LOGGER.exception("Calendar compensation failed: event_id=%s", event_id)
+                raise
             return {"result": True, "message": "予約が完了しました。マイページで確認できます。"}
+        except GoogleCalendarError as error:
+            LOGGER.warning("Mentor reservation Google integration failed: %s", error)
+            return JSONResponse({"result": False, "message": str(error)}, 503)
         except (ValueError, sqlite3.Error) as error:
-            return JSONResponse({"result": False, "message": str(error) or "予約できませんでした。"}, 409)
+            message = str(error) if isinstance(error, ValueError) else "予約を保存できませんでした。"
+            return JSONResponse({"result": False, "message": message or "予約できませんでした。"}, 409)
 
     @router.post("/mypage/mentor-reservation/{reservation_id}/cancel")
     async def student_cancel_mentor(request: Request, reservation_id: int, csrf: str = Form("")):
@@ -517,11 +570,24 @@ def build_router(database_path, templates, uploads_dir=None):
             request.session["mypage_mentor_notice"] = {"type": "error", "message": "操作を確認できませんでした。"}
             return RedirectResponse("/mypage", 303)
         student_id = request.session.get("user_id")
+        event_id = None
         with closing(sqlite3.connect(database_path)) as db:
+            row = db.execute("SELECT google_calendar_event_id FROM mentor_reservation WHERE id=? AND student_id=? AND status='active'",
+                             (reservation_id, student_id)).fetchone()
+            event_id = row[0] if row else None
             changed = db.execute("""UPDATE mentor_reservation SET status='cancelled',cancelled_at=?,cancelled_by_type='student',cancelled_by_id=?
                 WHERE id=? AND student_id=? AND status='active'""", (datetime.datetime.now(JST).isoformat(), student_id, reservation_id, student_id)).rowcount
             db.commit()
-        request.session["mypage_mentor_notice"] = {"type": "success" if changed else "error", "message": "予約をキャンセルしました。" if changed else "有効な予約が見つかりませんでした。"}
+        delete_failed = False
+        if changed and event_id:
+            try:
+                delete_mentor_event(event_id)
+            except GoogleCalendarError:
+                delete_failed = True
+                LOGGER.exception("Calendar deletion failed after student cancellation: reservation_id=%s event_id=%s", reservation_id, event_id)
+        message = ("予約はキャンセルされましたが、Calendar予定の削除に失敗した可能性があります。" if delete_failed else
+                   "予約をキャンセルしました。" if changed else "有効な予約が見つかりませんでした。")
+        request.session["mypage_mentor_notice"] = {"type": "warning" if delete_failed else "success" if changed else "error", "message": message}
         request.session["mypage_mentor_csrf"] = secrets.token_urlsafe(32)
         return RedirectResponse("/mypage", 303)
 
@@ -561,7 +627,18 @@ def build_router(database_path, templates, uploads_dir=None):
                     create_notification(db, row["student_id"], "大学生メンター予約がキャンセルされました",
                                         reservation_body("mentor", row), "reservation_cancelled", "mentor", reservation_id)
             db.commit()
-        request.session["admin_mentor_reservation_notice"] = {"type": "success" if changed else "error", "message": "予約をキャンセルしました。" if changed else "有効な予約が見つかりませんでした。"}
+        delete_failed = False
+        if changed and row["google_calendar_event_id"]:
+            try:
+                delete_mentor_event(row["google_calendar_event_id"])
+            except GoogleCalendarError:
+                delete_failed = True
+                LOGGER.exception("Calendar deletion failed after admin cancellation: reservation_id=%s event_id=%s",
+                                 reservation_id, row["google_calendar_event_id"])
+        message = ("予約はキャンセルされましたが、Calendar予定の削除に失敗した可能性があります。" if delete_failed else
+                   "予約をキャンセルしました。" if changed else "有効な予約が見つかりませんでした。")
+        request.session["admin_mentor_reservation_notice"] = {
+            "type": "warning" if delete_failed else "success" if changed else "error", "message": message}
         request.session["admin_mentor_reservation_csrf"] = secrets.token_urlsafe(32)
         return RedirectResponse(redirect, 303)
 

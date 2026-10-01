@@ -8,6 +8,7 @@
         <div class="notification-item-head"><h1>{{ notification.title }}</h1><span>既読</span></div>
         <p class="notification-meta">送信元: {{ notification.sender_name }}　{{ notification.created_at }}</p>
         <div class="notification-body">{{ notification.body }}</div>
+        {% if notification.meet_url %}<p><a class="notification-meet-link" href="{{ notification.meet_url }}" target="_blank" rel="noopener noreferrer">Google Meetを開く</a></p>{% endif %}
     </article>
 </div>
 {% endblock %}

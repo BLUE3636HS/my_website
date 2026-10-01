@@ -1,4 +1,9 @@
 .notification-admin-page { display: grid; gap: 24px; }
+.admin-received-notifications { display: grid; gap: 12px; }
+.admin-received-notification { padding: 16px; border: 1px solid #d5e4da; border-left: 4px solid #2f7a4f; border-radius: 8px; }
+.admin-received-notification h2 { margin: 0 0 8px; font-size: 18px; }
+.admin-received-notification p { white-space: pre-wrap; }
+.admin-received-notification a { color: #25613e; font-weight: 700; }
 .admin-card { padding: 28px; border-radius: 12px; background: #fff; box-shadow: 0 5px 20px rgba(37,97,62,.1); }
 .admin-card h1, .admin-card h2 { margin-top: 0; }
 .notification-form { display: grid; max-width: 760px; gap: 17px; }

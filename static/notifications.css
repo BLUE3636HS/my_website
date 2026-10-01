@@ -14,3 +14,4 @@
 .notification-pagination a, .notification-back { color: #1f4e79; font-weight: 700; }
 .notification-detail { margin-top: 18px; }
 .notification-body { margin-top: 25px; padding-top: 22px; border-top: 1px solid #d6e0ea; line-height: 1.8; white-space: pre-wrap; }
+.notification-meet-link { display: inline-block; padding: 10px 16px; border-radius: 8px; background: #1f4e79; color: #fff; font-weight: 700; text-decoration: none; }

@@ -1167,6 +1167,7 @@ async def AdminNotifications(request: Request, page: int = 1):
     page = max(1, page)
     page_size = 20
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
         students = db.execute("SELECT id, school FROM student ORDER BY school, id").fetchall()
         schools = [row[0] for row in db.execute("SELECT DISTINCT school FROM student ORDER BY school")]
         total = db.execute("SELECT COUNT(*) FROM notification_batch").fetchone()[0]
@@ -1175,9 +1176,17 @@ async def AdminNotifications(request: Request, page: int = 1):
                    target_type, target_label, notification_count
             FROM notification_batch ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
         """, (page_size, (page - 1) * page_size)).fetchall()
+        received_notifications = db.execute("""
+            SELECT * FROM admin_notification
+            WHERE recipient_admin_id = ? ORDER BY created_at DESC, id DESC LIMIT 20
+        """, (request.session.get("admin_id"),)).fetchall()
+        db.execute("UPDATE admin_notification SET is_read=1 WHERE recipient_admin_id=? AND is_read=0",
+                   (request.session.get("admin_id"),))
+        db.commit()
     return templates.TemplateResponse(request=request, name="admin/notifications.html", context={
         "request": request, "admin_id": request.session.get("admin_id"),
         "students": students, "schools": schools, "batches": batches,
+        "received_notifications": received_notifications,
         "page": page, "has_previous": page > 1, "has_next": page * page_size < total,
         "csrf_token": notification_csrf_token(request, "admin_notification_csrf_token"),
         "notice": request.session.pop("admin_notification_notice", None)
