@@ -42,7 +42,7 @@
                 {% if event.startTime %} {{ event.startTime }}〜{{ event.endTime }}{% else %}（持ち出し期間）{% endif %}</p>
                 <details class="reservation-expanded-details">
                 <summary>詳細を表示</summary>
-                <dl>{% for label, value in event.details %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
+                <dl>{% for label, value in event.details %}<dt>{{ label }}</dt><dd>{% if label == 'Google Meet' %}<a href="{{ value }}" target="_blank" rel="noopener noreferrer">Google Meetを開く</a>{% else %}{{ value }}{% endif %}</dd>{% endfor %}</dl>
                 {% if event.can_cancel %}
                     {% if event.cancel_method == 'post' %}
                     <form method="post" action="{{ event.cancel_url }}" class="reservation-cancel-form">

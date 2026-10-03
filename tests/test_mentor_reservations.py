@@ -160,12 +160,12 @@ class MentorGoogleIntegrationTests(unittest.TestCase):
                    {"user_id": "s", "mentor_booking_csrf": "token", "mypage_mentor_csrf": "cancel"})
         return Request({"type": "http", "session": session})
 
-    def book(self, meeting_type="offline"):
+    def book(self, meeting_type="online"):
         return asyncio.run(self.create(self.request(), "a", self.day, "13:00", "14:00",
                                       meeting_type, "相談内容", "token"))
 
     @patch("mentor_reservations.create_mentor_event", return_value=("event-1", "https://meet.google.com/abc-defg-hij"))
-    def test_offline_saves_google_data_and_notifies_both_parties(self, create_event):
+    def test_online_saves_google_data_and_notifies_both_parties(self, create_event):
         result = self.book()
         self.assertTrue(result["result"])
         create_event.assert_called_once()
@@ -179,8 +179,8 @@ class MentorGoogleIntegrationTests(unittest.TestCase):
         self.assertIn("生徒ID: s", admin_notice[1])
 
     @patch("mentor_reservations.create_mentor_event")
-    def test_online_does_not_call_google_or_add_meet_notifications(self, create_event):
-        result = self.book("online")
+    def test_offline_does_not_call_google_or_add_meet_notifications(self, create_event):
+        result = self.book("offline")
         self.assertTrue(result["result"])
         create_event.assert_not_called()
         with closing(sqlite3.connect(self.path)) as db:
@@ -221,7 +221,7 @@ class MentorGoogleIntegrationTests(unittest.TestCase):
 
     @patch("mentor_reservations.delete_mentor_event")
     def test_cancel_without_event_id_skips_google(self, delete_event):
-        self.book("online")
+        self.book("offline")
         asyncio.run(self.student_cancel(self.request(), 1, "cancel"))
         delete_event.assert_not_called()
 

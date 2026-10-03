@@ -510,7 +510,7 @@ def build_router(database_path, templates, uploads_dir=None):
                 mentor_name = mentor[0]
 
             event_id = meet_url = None
-            if meeting_type == "offline":
+            if meeting_type == "online":
                 event_id, meet_url = create_mentor_event(
                     day=day, start_time=start_time, end_time=end_time,
                     student_label=student_id, mentor_name=mentor_name,
@@ -543,7 +543,7 @@ def build_router(database_path, templates, uploads_dir=None):
                     create_notification(db, student_id, "大学生メンター予約を受け付けました",
                                         reservation_body("mentor", payload), "reservation_created", "mentor",
                                         reservation_id, meet_url=meet_url)
-                    if meeting_type == "offline":
+                    if meeting_type == "online":
                         admin_body = (f"生徒ID: {student_id}\n利用日: {day}\n利用時間: {start_time} ～ {end_time}\n"
                                       f"相談内容: {content}\nGoogle Meet: {meet_url}")
                         create_admin_notification(db, admin_id, "新しい大学生メンター予約が入りました",

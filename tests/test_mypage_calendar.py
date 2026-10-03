@@ -60,6 +60,20 @@ class CalendarTests(unittest.TestCase):
         self.assertEqual(next(e for e in events if e['kind'] == 'takeout')['end'], '2026-10-02')
         self.assertEqual(dict(next(e for e in events if e['kind'] == 'takeout')['details'])['数量'], 2)
 
+    def test_online_mentor_meet_url_is_exposed_only_for_online_booking(self):
+        meet_url = 'https://meet.google.com/abc-defg-hij'
+        self.db.execute("INSERT INTO mentor_reservation(student_id, mentor_admin_id, day, start_time, end_time, meeting_type, consultation, status, created_at, google_meet_url) VALUES ('s', 'a', '2026-09-27', '13:00', '14:00', 'online', 'Advice', 'active', 'now', ?)", (meet_url,))
+        online_event = next(event for event in self.events() if event['kind'] == 'mentor')
+        self.assertIn(('Google Meet', meet_url), online_event['details'])
+        self.db.execute("UPDATE mentor_reservation SET meeting_type='offline'")
+        offline_event = next(event for event in self.events() if event['kind'] == 'mentor')
+        self.assertFalse(any(label == 'Google Meet' for label, _ in offline_event['details']))
+
+        env = Jinja2Templates(directory=str(ROOT / 'templates')).env
+        html = env.get_template('mypage.html').render(request=SimpleNamespace(url=SimpleNamespace(path='/mypage')),
+            calendar_events=[online_event], calendar_today='2026-09-27')
+        self.assertIn('href="https://meet.google.com/abc-defg-hij"', html)
+
     def test_history_cancelled_returned_and_end_time(self):
         self.seed()
         self.db.execute("UPDATE reservation SET day='2024-02-29'")

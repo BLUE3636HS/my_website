@@ -32,7 +32,8 @@ def calendar_reservations(db, user_id, now=None):
         add("mentor", row["id"], "mentor", row["mentor_name"], row["day"], row["day"],
             row["start_time"], row["end_time"], [
                 ("利用形式", "オンライン" if row["meeting_type"] == "online" else "オフライン"),
-                ("相談内容", row["consultation"])],
+                ("相談内容", row["consultation"]),
+                *([("Google Meet", row["google_meet_url"])] if row["meeting_type"] == "online" and row.get("google_meet_url") else [])],
             f"/mypage/mentor-reservation/{row['id']}/cancel")
 
     for row in db.execute("""SELECT id, day, start_time, end_time, purpose FROM reservation
