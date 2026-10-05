@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <title>
+            {% block title %}
+            {% endblock %}
+        </title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="/static/base.css">
+        <link rel="icon" href="/static/icon.ico">
+        {% block css %}
+        {% endblock %}
+    </head>
+    <body>
+        {% set current_path = request.url.path %}
+        <div class="student-layout">
+            <aside class="student-sidebar">
+                <div class="student-brand">
+                    <img src="/static/top.png" alt="TEKNE工作室">
+                </div>
+                <nav class="student-nav" aria-label="生徒用メニュー">
+                    <a class="student-nav-link" href="/dashboard"{% if current_path == '/dashboard' %} aria-current="page"{% endif %}>ダッシュボード</a>
+                    <a class="student-nav-link" href="/addform"{% if current_path == '/addform' or current_path.startswith('/addform/') %} aria-current="page"{% endif %}>研究成果追加フォーム</a>
+                    <a class="student-nav-link" href="/studylist"{% if current_path == '/studylist' or current_path.startswith('/studylist/') %} aria-current="page"{% endif %}>研究成果一覧</a>
+                    <a class="student-nav-link" href="/community"{% if current_path == '/community' or current_path.startswith('/community/') %} aria-current="page"{% endif %}>TEKNEコミュニティ</a>
+                    <a class="student-nav-link" href="/reservation"{% if current_path == '/reservation' or current_path.startswith('/reservation/') %} aria-current="page"{% endif %}>TEKNE工作室予約</a>
+                    <a class="student-nav-link" href="/mentor-reservation"{% if current_path == '/mentor-reservation' or current_path.startswith('/mentor-reservation/') %} aria-current="page"{% endif %}>大学生メンター予約</a>
+                    <a class="student-nav-link" href="/equipment-reservation"{% if current_path == '/equipment-reservation' or current_path.startswith('/equipment-reservation/') %} aria-current="page"{% endif %}>実験器具の貸し出し予約</a>
+                </nav>
+                <a class="student-mypage-link" href="/mypage"{% if current_path == '/mypage' or current_path.startswith('/mypage/') %} aria-current="page"{% endif %}>マイページ</a>
+                <a class="student-notification-link" href="/notifications"{% if current_path == '/notifications' or current_path.startswith('/notifications/') %} aria-current="page"{% endif %}>
+                    <span aria-hidden="true">🔔</span> 通知
+                    {% if unread_notification_count %}<span class="notification-badge">{{ unread_notification_count }}</span>{% endif %}
+                </a>
+                <a class="student-logout-link" href="/logout">Logout</a>
+            </aside>
+
+            <div class="student-main">
+                <header class="student-header">
+                    <p>{% block page_title %}{{ self.title() }}{% endblock %}</p>
+                    <span>{{ user_id }}</span>
+                </header>
+                <main class="student-content">
+                    {% block content %}
+                    {% endblock %}
+                </main>
+            </div>
+        </div>
+        {% block script %}
+        {% endblock %}
+    </body>
+</html>

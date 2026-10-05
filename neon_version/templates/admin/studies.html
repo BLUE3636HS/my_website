@@ -1,0 +1,106 @@
+{% extends "admin/base.html" %}
+
+{% block title %}研究成果管理{% endblock %}
+
+{% block css %}
+<link rel="stylesheet" href="/static/admin/studies.css">
+{% endblock %}
+
+{% block content %}
+<div class="studies-page">
+    <div class="dashboard-card-wide">
+        <div class="studies-page-header">
+            <div>
+                <p class="dashboard-eyebrow">Study Management</p>
+                <h1>研究成果管理</h1>
+                <p class="studies-page-description">登録された研究成果の内容と投稿者情報を確認できます。</p>
+            </div>
+            <span class="studies-count" aria-label="登録件数">{{ studies|length }} 件</span>
+        </div>
+
+        <div class="studies-table-container">
+            {% if studies %}
+            <table class="studies-admin-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>研究名</th>
+                        <th>紹介文</th>
+                        <th>PDFファイル</th>
+                        <th>投稿者ID</th>
+                        <th>投稿日時</th>
+                        <th class="studies-action-column">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for study in studies %}
+                    <tr>
+                        <td>{{ study[0] }}</td>
+                        <td class="studies-name-cell">{{ study[1] }}</td>
+                        <td class="studies-introduce-cell">{{ study[2] }}</td>
+                        <td class="studies-filename-cell">
+                            {% if study[9] == "pdf" %}<a class="studies-filename-link" href="/uploads/{{ study[0] }}.pdf" target="_blank" rel="noopener">{{ study[3] }}</a>{% else %}<a href="/uploads/{{ study[0] }}.pdf" target="_blank" rel="noopener">PDFを開く</a>{% endif %}
+                        </td>
+                        <td>
+                            <button
+                                type="button"
+                                class="studies-user-button"
+                                data-student-id="{{ study[7] or '' }}"
+                                data-student-school="{{ study[8] or '' }}"
+                                data-student-found="{{ 'true' if study[7] else 'false' }}"
+                            >{{ study[5] }}</button>
+                        </td>
+                        <td class="studies-time-cell">{{ study[6] }}</td>
+                        <td class="studies-action-column">
+                            <form method="post" action="/admin/studies/{{ study[0] }}/delete" class="study-delete-form">
+                                <button type="submit" class="studies-delete-button">削除</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="studies-no-data">
+                <p>研究成果は登録されていません。</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="student-modal" id="student-modal" hidden>
+    <div class="student-modal-backdrop" data-modal-close></div>
+    <div
+        class="student-modal-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="student-modal-title"
+    >
+        <div class="student-modal-header">
+            <h2 id="student-modal-title">投稿者情報</h2>
+            <button type="button" class="student-modal-close" aria-label="閉じる" data-modal-close>×</button>
+        </div>
+        <div class="student-modal-content" id="student-modal-found">
+            <dl>
+                <div>
+                    <dt>生徒ID</dt>
+                    <dd id="student-modal-id"></dd>
+                </div>
+                <div>
+                    <dt>学校名</dt>
+                    <dd id="student-modal-school"></dd>
+                </div>
+            </dl>
+        </div>
+        <p class="student-modal-missing" id="student-modal-missing" hidden>この投稿者の生徒情報は見つかりませんでした。</p>
+        <div class="student-modal-footer">
+            <button type="button" class="student-modal-close-button" data-modal-close>閉じる</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/admin/studies.js" defer></script>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}プロフィール・アカウント情報編集{% endblock %}
+{% block css %}
+    <link rel="stylesheet" href="/static/mypage/edit.css">
+{% endblock %}
+{% block content %}
+    <h1>プロフィール編集</h1><br>
+    <section class="profile-image-section" aria-labelledby="profile-image-title">
+        <h2 id="profile-image-title">プロフィール画像</h2>
+        {% if profile_notice %}
+        <p class="profile-notice profile-notice-{{ profile_notice.type }}" role="status">{{ profile_notice.message }}</p>
+        {% endif %}
+        <img id="profile_image_preview" class="profile-image-preview" src="{{ profile_image_url }}" alt="現在のプロフィール画像">
+        <form method="post" action="/mypage/edit/profile-image" enctype="multipart/form-data" class="profile-image-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="profile_image">新しい画像を選択</label>
+            <input type="file" id="profile_image" name="profile_image" accept="image/jpeg,image/png,image/webp" required>
+            <p id="profile_image_error" class="profile-client-error" role="alert" hidden></p>
+            <em>JPEG・PNG・WebP、5MB以下。保存時に中央で正方形へ調整されます。</em>
+            <button type="submit" id="profile_image_save_btn">画像を保存</button>
+        </form>
+        {% if has_profile_image %}
+        <form method="post" action="/mypage/edit/profile-image/delete" onsubmit="return confirm('プロフィール画像をデフォルトに戻しますか？');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="profile-image-delete">デフォルト画像に戻す</button>
+        </form>
+        {% endif %}
+    </section>
+    <label for="old_pwd">現在のパスワード</label><br>
+    <input type="password" id="old_pwd"><br><br><br><br>
+    <div id="tab">
+        <button id="id_form_btn" class="active">IDの変更</button>
+        <button id="pwd_form_btn">パスワードの変更</button>
+    </div><br>
+    <div id="id_form">
+        <h2>IDの変更</h2>
+        <label for="id">変更後のID</label><br>
+        <input type="text" id="new_id"><br>
+        <em>8文字以上の半角英数字、記号も可</em><br><br>
+        <button type="button" id="id_edit_btn">変更</button><br><br>
+    </div>
+    <div id="pwd_form">
+        <h2>パスワードの変更</h2>
+        <label for="pwd">変更後のパスワード</label><br>
+        <input type="password" id="new_pwd"><br>
+        <em>8文字以上の半角英数字どちらむ含む、記号も可</em><br><br>
+        <button type="button" id="pwd_edit_btn">変更</button><br><br>
+    </div>
+    <a href="/mypage">マイページへ戻る</a>
+{% endblock %}
+{% block script %}
+    <script src="/static/mypage/edit.js"></script>
+{% endblock %}

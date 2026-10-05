@@ -49,7 +49,7 @@ JST = datetime.timezone(datetime.timedelta(hours=9))
 
 app = FastAPI()
 
-conn = sqlite3.connect("database/database.db", check_same_thread=False)
+conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
 cursor = conn.cursor()
 
 cursor.execute("""
@@ -266,7 +266,7 @@ conn.commit()
 with closing(connect_studies(DATABASE_PATH)) as study_db:
     initialize_studies(study_db)
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 app.mount("/uploads/profile", StaticFiles(directory=str(PROFILE_UPLOADS_DIR)), name="profile_uploads")
 app.mount("/uploads/mentor-profile", StaticFiles(directory=str(MENTOR_PROFILE_UPLOADS_DIR)), name="mentor_profile_uploads")
 
@@ -282,7 +282,7 @@ def student_template_context(request):
     return {"unread_notification_count": unread_count}
 
 
-templates = Jinja2Templates(directory="templates", context_processors=[student_template_context])
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"), context_processors=[student_template_context])
 app.include_router(create_template_router(lambda: DATABASE_PATH, templates))
 app.include_router(build_mentor_router(DATABASE_PATH, templates, MENTOR_PROFILE_UPLOADS_DIR))
 

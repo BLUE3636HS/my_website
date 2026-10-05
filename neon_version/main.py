@@ -1,0 +1,3358 @@
+from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse, Response
+from starlette.concurrency import run_in_threadpool
+from study_pdf import render_study_pdf
+from template_management import create_template_router
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from contextlib import closing
+from pathlib import Path
+from uuid import uuid4
+
+import pg_compat as dbapi
+import shutil, bcrypt, datetime, csv, secrets, io
+import hashlib, hmac, logging
+from starlette.datastructures import UploadFile as StarletteUploadFile
+from studies import connect_studies, initialize_studies, get_templates, study_pdf_path, validate_pdf
+from study_images import normalize_study_image, study_image_path
+from urllib.parse import urlencode
+from PIL import Image, ImageOps, UnidentifiedImageError
+from notifications import (
+    create_notification, initialize_notification_tables, notification_now,
+    reservation_body
+)
+from mypage_calendar import calendar_reservations, admin_calendar_reservations
+from mentor_reservations import (
+    build_router as build_mentor_router,
+    csrf_token as mentor_csrf_token,
+    initialize_mentor_tables,
+    mentor_image_url,
+)
+
+BASE_DIR = Path(__file__).resolve().parent
+DATABASE_PATH = BASE_DIR / "database" / "database.db"
+UPLOADS_DIR = (BASE_DIR / "uploads").resolve()
+PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "profile").resolve()
+STUDY_IMAGE_UPLOADS_DIR = (UPLOADS_DIR / "study-images").resolve()
+MENTOR_PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "mentor-profile").resolve()
+PROFILE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+STUDY_IMAGE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+MENTOR_PROFILE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+PROFILE_MAX_BYTES = 5 * 1024 * 1024
+PROFILE_MAX_PIXELS = 25_000_000
+PROFILE_IMAGE_SIZE = (512, 512)
+PROFILE_ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}
+PROFILE_ALLOWED_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
+PROFILE_ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+JST = datetime.timezone(datetime.timedelta(hours=9))
+
+app = FastAPI()
+
+conn = dbapi.connect(DATABASE_PATH, check_same_thread=False)
+cursor = conn.cursor()
+
+def initialize_schema():
+    """Create the Neon schema only when explicitly called by init_db.py."""
+    global conn, cursor
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS study (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            introduce TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            pdfpath TEXT NOT NULL,
+            userid TEXT NOT NULL,
+            time TEXT NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS student (
+            id TEXT NOT NULL,
+            pwd TEXT NOT NULL,
+            school TEXT NOT NULL,
+            profile_image TEXT,
+            rowid BIGSERIAL UNIQUE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS teacher (
+            id TEXT NOT NULL,
+            pwd TEXT NOT NULL,
+            school TEXT NOT NULL,
+            rowid BIGSERIAL UNIQUE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS admin (
+            id TEXT PRIMARY KEY NOT NULL,
+            pwd TEXT NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reservation (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            userid TEXT NOT NULL,
+            day TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            purpose TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'cancelled')),
+            created_at TEXT NOT NULL DEFAULT '',
+            cancelled_at TEXT,
+            cancelled_by_type TEXT,
+            cancelled_by_id TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reservation_available_slot (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            admin_id TEXT NOT NULL,
+            day TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (admin_id, day, start_time)
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_reservation_available_slot_day_time
+        ON reservation_available_slot(day, start_time)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_reservation_day_status_time
+        ON reservation(day, status, start_time, end_time)
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS equipment_reservation (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            userid TEXT NOT NULL, equipment TEXT NOT NULL,
+            start_day TEXT NOT NULL, end_day TEXT NOT NULL,
+            quantity INTEGER NOT NULL, purpose TEXT NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            equipment_id TEXT,
+            returned INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    equipment_reservation_columns = {
+        row[1] for row in cursor.execute("PRAGMA table_info(equipment_reservation)").fetchall()
+    }
+    if "equipment_id" not in equipment_reservation_columns:
+        cursor.execute("ALTER TABLE equipment_reservation ADD COLUMN equipment_id TEXT")
+    if "returned" not in equipment_reservation_columns:
+        cursor.execute(
+            "ALTER TABLE equipment_reservation "
+            "ADD COLUMN returned INTEGER NOT NULL DEFAULT 0"
+        )
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS equipment_room_reservation (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            userid TEXT NOT NULL,
+            equipment_id TEXT NOT NULL,
+            equipment TEXT NOT NULL,
+            use_day TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            purpose TEXT NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            returned INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS community_post (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            parent_id INTEGER,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            deleted_at TEXT,
+            FOREIGN KEY (parent_id) REFERENCES community_post(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS community_like (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_id INTEGER NOT NULL,
+            user_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE (post_id, user_id),
+            FOREIGN KEY (post_id) REFERENCES community_post(id)
+        )
+    """)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_community_post_parent_id ON community_post(parent_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_community_post_created_id ON community_post(created_at, id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_community_like_post_id ON community_like(post_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_community_like_user_id ON community_like(user_id)"
+    )
+    equipment_room_reservation_columns = {
+        row[1] for row in cursor.execute(
+            "PRAGMA table_info(equipment_room_reservation)"
+        ).fetchall()
+    }
+    if "returned" not in equipment_room_reservation_columns:
+        cursor.execute(
+            "ALTER TABLE equipment_room_reservation "
+            "ADD COLUMN returned INTEGER NOT NULL DEFAULT 0"
+        )
+    initialize_notification_tables(conn)
+    initialize_mentor_tables(conn)
+    conn.commit()
+    with closing(connect_studies(DATABASE_PATH)) as study_db:
+        initialize_studies(study_db)
+
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+app.mount("/uploads/profile", StaticFiles(directory=str(PROFILE_UPLOADS_DIR)), name="profile_uploads")
+app.mount("/uploads/mentor-profile", StaticFiles(directory=str(MENTOR_PROFILE_UPLOADS_DIR)), name="mentor_profile_uploads")
+
+def student_template_context(request):
+    user_id = request.session.get("user_id")
+    unread_count = 0
+    if request.session.get("user_login") is True and user_id:
+        with closing(dbapi.connect(DATABASE_PATH)) as db:
+            unread_count = db.execute(
+                "SELECT COUNT(*) FROM notification WHERE recipient_user_id = ? AND is_read = 0",
+                (user_id,)
+            ).fetchone()[0]
+    return {"unread_notification_count": unread_count}
+
+
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"), context_processors=[student_template_context])
+app.include_router(create_template_router(lambda: DATABASE_PATH, templates))
+app.include_router(build_mentor_router(DATABASE_PATH, templates, MENTOR_PROFILE_UPLOADS_DIR))
+
+COMMUNITY_PAGE_SIZE = 20
+
+
+def community_now():
+    return datetime.datetime.now(JST).isoformat(timespec="seconds")
+
+
+def delete_community_subtrees(db, root_ids):
+    root_ids = list(dict.fromkeys(root_ids))
+    if not root_ids:
+        return 0
+    placeholders = ",".join("?" for _ in root_ids)
+    rows = db.execute(
+        f"""
+        WITH RECURSIVE tree(id, depth) AS (
+            SELECT id, 0 FROM community_post WHERE id IN ({placeholders})
+            UNION ALL
+            SELECT p.id, tree.depth + 1
+            FROM community_post p JOIN tree ON p.parent_id = tree.id
+        )
+        SELECT id, MAX(depth) FROM tree GROUP BY id ORDER BY MAX(depth) DESC
+        """,
+        root_ids
+    ).fetchall()
+    post_ids = [row[0] for row in rows]
+    if not post_ids:
+        return 0
+    delete_placeholders = ",".join("?" for _ in post_ids)
+    db.execute(
+        f"DELETE FROM community_like WHERE post_id IN ({delete_placeholders})",
+        post_ids
+    )
+    for post_id in post_ids:
+        db.execute("DELETE FROM community_post WHERE id = ?", (post_id,))
+    return len(post_ids)
+
+
+def cleanup_deleted_community_posts(db):
+    deleted_ids = [
+        row[0] for row in db.execute(
+            "SELECT id FROM community_post WHERE deleted_at IS NOT NULL"
+        ).fetchall()
+    ]
+    return delete_community_subtrees(db, deleted_ids)
+
+
+def profile_image_url(filename):
+    if not filename:
+        return "/static/images/default_profile.svg"
+    safe_name = Path(filename).name
+    if safe_name != filename or not safe_name.endswith(".webp"):
+        return "/static/images/default_profile.svg"
+    return f"/uploads/profile/{safe_name}"
+
+
+def profile_csrf_token(request):
+    token = request.session.get("profile_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session["profile_csrf_token"] = token
+    return token
+
+
+def valid_profile_csrf(request, token):
+    expected = request.session.get("profile_csrf_token", "")
+    return bool(expected and token and secrets.compare_digest(expected, token))
+
+
+def delete_profile_file(filename):
+    if not filename or Path(filename).name != filename or not filename.endswith(".webp"):
+        return
+    target = (PROFILE_UPLOADS_DIR / filename).resolve()
+    if target.parent != PROFILE_UPLOADS_DIR:
+        return
+    try:
+        target.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def process_profile_image(contents):
+    try:
+        with Image.open(io.BytesIO(contents)) as candidate:
+            detected_format = candidate.format
+            if candidate.width * candidate.height > PROFILE_MAX_PIXELS:
+                return None, "画像の縦横サイズが大きすぎます。"
+            candidate.verify()
+        if detected_format not in PROFILE_ALLOWED_FORMATS:
+            return None, "対応していない画像形式です。"
+        with Image.open(io.BytesIO(contents)) as source:
+            image = ImageOps.exif_transpose(source)
+            image.load()
+            if image.width < 1 or image.height < 1:
+                return None, "画像ファイルを読み込めませんでした。"
+            side = min(image.width, image.height)
+            left = (image.width - side) // 2
+            top = (image.height - side) // 2
+            image = image.crop((left, top, left + side, top + side)).convert("RGBA")
+            image = image.resize(PROFILE_IMAGE_SIZE, Image.Resampling.LANCZOS)
+            output = io.BytesIO()
+            image.save(output, format="WEBP", quality=88, method=6)
+            return output.getvalue(), None
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
+        return None, "画像ファイルを読み込めませんでした。"
+
+
+def validate_community_content(content):
+    if not isinstance(content, str) or not content.strip():
+        return "本文を入力してください。"
+    if len(content) > 200:
+        return "本文は200文字以内で入力してください。"
+    return None
+
+
+def community_csrf_token(request):
+    token = request.session.get("community_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session["community_csrf_token"] = token
+    return token
+
+
+def valid_community_csrf(request, token):
+    expected = request.session.get("community_csrf_token", "")
+    return bool(expected and token and secrets.compare_digest(expected, token))
+
+
+def community_post_payloads(db, root_ids, user_id=None):
+    if not root_ids:
+        return []
+    placeholders = ",".join("?" for _ in root_ids)
+    rows = db.execute(
+        f"""
+        WITH RECURSIVE tree(id, user_id, parent_id, content, created_at) AS (
+            SELECT id, user_id, parent_id, content, created_at
+            FROM community_post WHERE id IN ({placeholders}) AND deleted_at IS NULL
+            UNION ALL
+            SELECT p.id, p.user_id, p.parent_id, p.content, p.created_at
+            FROM community_post p JOIN tree t ON p.parent_id = t.id
+            WHERE p.deleted_at IS NULL
+        )
+        SELECT tree.id, tree.user_id, tree.parent_id, tree.content,
+               tree.created_at,
+               COUNT(community_like.id) AS like_count,
+               MAX(CASE WHEN community_like.user_id = ? THEN 1 ELSE 0 END) AS liked,
+               (SELECT student.profile_image FROM student
+                WHERE student.id = tree.user_id LIMIT 1) AS profile_image
+        FROM tree LEFT JOIN community_like ON community_like.post_id = tree.id
+        GROUP BY tree.id
+        ORDER BY tree.created_at ASC, tree.id ASC
+        """,
+        [*root_ids, user_id or ""]
+    ).fetchall()
+    by_id = {}
+    for row in rows:
+        try:
+            displayed_at = datetime.datetime.fromisoformat(row[4]).astimezone(JST).strftime("%Y/%m/%d %H:%M")
+        except ValueError:
+            displayed_at = row[4]
+        by_id[row[0]] = {
+            "id": row[0],
+            "user_id": row[1],
+            "parent_id": row[2],
+            "content": row[3],
+            "created_at": displayed_at,
+            "like_count": row[5],
+            "liked": bool(row[6]),
+            "profile_image_url": profile_image_url(row[7]),
+            "can_delete": bool(user_id and row[1] == user_id),
+            "replies": []
+        }
+    roots = []
+    for item in by_id.values():
+        if item["parent_id"] in by_id:
+            by_id[item["parent_id"]]["replies"].append(item)
+        else:
+            roots.append(item)
+    roots.sort(key=lambda item: item["id"], reverse=True)
+    return roots
+
+def load_equipment_catalog(catalog_path=None):
+    catalog = []
+    seen_ids = set()
+    path = catalog_path or BASE_DIR / "csv" / "equipment-reservation.csv"
+    with open(path, "r", encoding="utf-8-sig", newline="") as f:
+        for row in csv.DictReader(f):
+            try:
+                count = int(row.get("count") or "")
+            except (TypeError, ValueError):
+                continue
+            equipment_id = (row.get("id") or "").strip()
+            name = (row.get("name") or "").strip()
+            usage_type = (row.get("usage_type") or "").strip()
+            if (
+                not equipment_id or not name or count <= 0 or
+                usage_type not in {"takeout", "in_room"} or
+                equipment_id in seen_ids
+            ):
+                continue
+            seen_ids.add(equipment_id)
+            catalog.append({
+                "id": equipment_id,
+                "name": name,
+                "image": (row.get("image") or "").strip(),
+                "content": (row.get("content") or "").strip(),
+                "count": count,
+                "usage_type": usage_type
+            })
+    return catalog
+
+
+def load_schools():
+    with open(BASE_DIR / "csv" / "school.csv", "r", encoding="utf-8", newline="") as f:
+        return [row[0].strip() for row in csv.reader(f) if row and row[0].strip()]
+
+def find_equipment(catalog, equipment_id=None, equipment_name=None):
+    if equipment_id:
+        return next((item for item in catalog if item["id"] == equipment_id), None)
+    if equipment_name:
+        return next((item for item in catalog if item["name"] == equipment_name), None)
+    return None
+
+
+def date_range(start_day, end_day):
+    current = start_day
+    while current <= end_day:
+        yield current
+        current += datetime.timedelta(days=1)
+
+
+def takeout_availability(item, start_day, end_day, db=None):
+    database = db or conn
+    rows = database.execute(
+        """
+        SELECT start_day, end_day, quantity
+        FROM equipment_reservation
+        WHERE (equipment_id = ? OR ((equipment_id IS NULL OR equipment_id = '') AND equipment = ?))
+          AND start_day <= ? AND end_day >= ?
+        """,
+        (item["id"], item["name"], end_day.isoformat(), start_day.isoformat())
+    ).fetchall()
+    reserved_by_day = {day.isoformat(): 0 for day in date_range(start_day, end_day)}
+    for reserved_start, reserved_end, quantity in rows:
+        overlap_start = max(start_day, datetime.date.fromisoformat(reserved_start))
+        overlap_end = min(end_day, datetime.date.fromisoformat(reserved_end))
+        for day in date_range(overlap_start, overlap_end):
+            reserved_by_day[day.isoformat()] += quantity
+    peak_reserved = max(reserved_by_day.values(), default=0)
+    return {
+        **item,
+        "reserved": peak_reserved,
+        "available": max(item["count"] - peak_reserved, 0),
+        "reserved_by_day": reserved_by_day
+    }
+
+
+def room_slot_availability(item, use_day, db=None):
+    database = db or conn
+    rows = database.execute(
+        """
+        SELECT start_time, end_time, quantity
+        FROM equipment_room_reservation
+        WHERE equipment_id = ? AND use_day = ?
+        """,
+        (item["id"], use_day.isoformat())
+    ).fetchall()
+    now = datetime.datetime.now(JST)
+    slots = []
+    for total_minutes in range(9 * 60, 20 * 60 + 1, 30):
+        start_time = f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
+        end_minutes = total_minutes + 30
+        end_time = f"{end_minutes // 60:02d}:{end_minutes % 60:02d}"
+        reserved = sum(
+            quantity for reserved_start, reserved_end, quantity in rows
+            if reserved_start < end_time and reserved_end > start_time
+        )
+        slot_start = datetime.datetime.combine(
+            use_day,
+            datetime.time(total_minutes // 60, total_minutes % 60),
+            tzinfo=JST
+        )
+        closed = use_day == now.date() and slot_start < now
+        slots.append({
+            "start_time": start_time,
+            "end_time": end_time,
+            "reserved_quantity": reserved,
+            "available_quantity": max(item["count"] - reserved, 0),
+            "closed": closed
+        })
+    return slots
+
+
+def equipment_availability(equipment, start_day, end_day, catalog):
+    """Compatibility wrapper for the original name-based takeout lookup."""
+    item = find_equipment(catalog, equipment_name=equipment)
+    if item is None:
+        return None
+    return takeout_availability(
+        item,
+        datetime.date.fromisoformat(start_day),
+        datetime.date.fromisoformat(end_day)
+    )
+
+
+#classの定義
+#httpが呼び出されたとき最初に実行
+class LoginCheckMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        #loginしてから一日以上たったらログアウト
+        if request.session.get("teacher_login") == True:
+            login_time = datetime.datetime.strptime(
+                request.session.get("teacher_time"),
+                "%Y-%m-%d %H:%M:%S"
+            )
+            if (datetime.datetime.now() - login_time).days >= 1:
+                request.session.pop("teacher_login", None)
+                request.session.pop("teacher_id", None)
+                request.session.pop("teacher_time", None)
+                print("teacherログアウト")
+        
+        if request.session.get("user_login") == True:
+            login_time = datetime.datetime.strptime(
+                request.session.get("user_time"),
+                "%Y-%m-%d %H:%M:%S"
+            )
+            if (datetime.datetime.now() - login_time).days >= 1:
+                request.session.pop("user_login", None)
+                request.session.pop("user_id", None)
+                request.session.pop("user_time", None)
+                print("userログアウト")
+
+        if request.session.get("admin_login") == True:
+            login_time = datetime.datetime.strptime(
+                request.session.get("admin_time"),
+                "%Y-%m-%d %H:%M:%S"
+            )
+            if (datetime.datetime.now() - login_time).days >= 1:
+                request.session.pop("admin_login", None)
+                request.session.pop("admin_id", None)
+                request.session.pop("admin_time", None)
+                print("adminログアウト")
+
+        #ログインが必要なページにアクセスした場合、ログインページにリダイレクト
+        #ログインなしでもアクセスできるページを定義
+        public_paths = [
+            "/login",
+            "/registration",
+            "/session",
+            "/logout",
+            "/admin/login"
+        ]
+
+        # 静的ファイルなどはそのまま通す
+        if (
+            request.url.path.startswith("/static") or
+            request.url.path.startswith("/uploads")
+        ):
+            return await call_next(request)
+
+        # public_paths は誰でもアクセス可能
+        if request.url.path in public_paths:
+            return await call_next(request)
+
+        # admin 配下は admin 用セッションだけを許可する
+        if request.url.path.startswith("/admin"):
+            if request.session.get("admin_login") == True:
+                return await call_next(request)
+            return RedirectResponse("/admin/login", status_code=303)
+
+        # teacher ログイン済みなら teacher 配下のみ許可
+        if request.session.get("teacher_login") == True:
+            if request.url.path.startswith("/teacher"):
+                return await call_next(request)
+            else:
+                return RedirectResponse("/teacher", status_code=303)
+
+        # 一般ユーザーログイン済みなら teacher 配下以外を許可
+        if request.session.get("user_login") == True:
+            if not request.url.path.startswith("/teacher"):
+                return await call_next(request)
+            else:
+                return RedirectResponse("/login", status_code=303)
+
+        # 未ログインはログインページへ
+        return RedirectResponse("/login", status_code=303)
+
+app.add_middleware(LoginCheckMiddleware)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key="TEKNE"
+)
+
+RESERVATION_OPEN_MINUTES = 9 * 60
+RESERVATION_CLOSE_MINUTES = 22 * 60
+RESERVATION_MAX_MINUTES = 180
+
+
+def reservation_csrf_token(request, key="reservation_csrf_token"):
+    token = request.session.get(key)
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session[key] = token
+    return token
+
+
+def valid_reservation_csrf(request, token, key="reservation_csrf_token"):
+    expected = request.session.get(key, "")
+    return bool(expected and token and secrets.compare_digest(expected, token))
+
+
+def reservation_time_to_minutes(value):
+    parsed = datetime.datetime.strptime(value, "%H:%M").time()
+    return parsed.hour * 60 + parsed.minute
+
+
+def reservation_minutes_to_time(value):
+    return f"{value // 60:02d}:{value % 60:02d}"
+
+
+def reservation_slot_range(start_time, end_time):
+    start_minutes = reservation_time_to_minutes(start_time)
+    end_minutes = reservation_time_to_minutes(end_time)
+    return [
+        reservation_minutes_to_time(value)
+        for value in range(start_minutes, end_minutes, 30)
+    ]
+
+
+def reservation_slot_summary(db, day, admin_id=None):
+    capacity_rows = db.execute(
+        """
+        SELECT start_time, COUNT(*)
+        FROM reservation_available_slot
+        WHERE day = ?
+        GROUP BY start_time
+        """,
+        (day,)
+    ).fetchall()
+    capacities = {row[0]: row[1] for row in capacity_rows}
+    own_slots = set()
+    if admin_id:
+        own_slots = {
+            row[0] for row in db.execute(
+                """
+                SELECT start_time FROM reservation_available_slot
+                WHERE day = ? AND admin_id = ?
+                """,
+                (day, admin_id)
+            ).fetchall()
+        }
+    active_reservations = db.execute(
+        """
+        SELECT start_time, end_time
+        FROM reservation
+        WHERE day = ? AND status = 'active'
+        """,
+        (day,)
+    ).fetchall()
+    reservation_counts = {
+        reservation_minutes_to_time(value): 0
+        for value in range(RESERVATION_OPEN_MINUTES, RESERVATION_CLOSE_MINUTES, 30)
+    }
+    for start_time, end_time in active_reservations:
+        for slot_time in reservation_slot_range(start_time, end_time):
+            if slot_time in reservation_counts:
+                reservation_counts[slot_time] += 1
+    now = datetime.datetime.now(JST)
+    target_date = datetime.date.fromisoformat(day)
+    result = []
+    for value in range(RESERVATION_OPEN_MINUTES, RESERVATION_CLOSE_MINUTES, 30):
+        start_time = reservation_minutes_to_time(value)
+        end_time = reservation_minutes_to_time(value + 30)
+        capacity = capacities.get(start_time, 0)
+        reserved = reservation_counts[start_time]
+        remaining = max(capacity - reserved, 0)
+        slot_start = datetime.datetime.combine(
+            target_date, datetime.time(value // 60, value % 60), tzinfo=JST
+        )
+        closed = slot_start < now
+        if closed:
+            state = "closed"
+        elif capacity == 0:
+            state = "unset"
+        elif remaining == 0:
+            state = "full"
+        else:
+            state = "available"
+        result.append({
+            "start_time": start_time,
+            "end_time": end_time,
+            "capacity": capacity,
+            "reserved": reserved,
+            "remaining": remaining,
+            "own": start_time in own_slots,
+            "state": state
+        })
+    return result
+
+
+#get関数
+@app.get("/", response_class = HTMLResponse)
+async def Home(request: Request):
+    return RedirectResponse("/dashboard", status_code=303)
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def Dashboard(request: Request):
+    user_id = request.session.get("user_id")
+    now = datetime.datetime.now(JST)
+    today = now.date().isoformat()
+    current_time = now.strftime("%H:%M")
+
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        next_reservation = db.execute(
+            """
+            SELECT day, start_time, end_time, purpose
+            FROM reservation
+            WHERE userid = ?
+              AND status = 'active'
+              AND (day > ? OR (day = ? AND end_time > ?))
+            ORDER BY day ASC, start_time ASC, end_time ASC, id ASC
+            LIMIT 1
+            """,
+            (user_id, today, today, current_time)
+        ).fetchone()
+        next_equipment_reservation = db.execute(
+            """
+            SELECT equipment, start_day, end_day, quantity
+            FROM equipment_reservation
+            WHERE userid = ? AND end_day >= ?
+            ORDER BY
+                CASE WHEN start_day <= ? THEN 0 ELSE 1 END ASC,
+                start_day ASC,
+                end_day ASC,
+                id ASC
+            LIMIT 1
+            """,
+            (user_id, today, today)
+        ).fetchone()
+        unread_notifications = db.execute(
+            """
+            SELECT id, title, created_at
+            FROM notification
+            WHERE recipient_user_id = ? AND is_read = 0
+            ORDER BY created_at DESC, id DESC
+            LIMIT 5
+            """,
+            (user_id,)
+        ).fetchall()
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "dashboard.html",
+        context = {
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": user_id,
+            "unread_notifications": unread_notifications,
+            "next_reservation": next_reservation,
+            "next_equipment_reservation": next_equipment_reservation
+        }
+    )
+
+@app.get("/addform", response_class = HTMLResponse)
+async def AddForm(request: Request):
+    if request.session.get("user_login") is not True or not request.session.get("user_id"):
+        return RedirectResponse("/login", status_code=303)
+    csrf = request.session.setdefault("study_csrf_token", secrets.token_urlsafe(32))
+    nonce = secrets.token_hex(32)
+    submission_token = nonce + "." + hmac.new(csrf.encode(), nonce.encode(), hashlib.sha256).hexdigest()
+    with closing(connect_studies(DATABASE_PATH)) as db:
+        study_templates = get_templates(db)
+    return templates.TemplateResponse(
+        request = request,
+        name = "addform.html",
+        context = {
+            "study_templates": study_templates,
+            "csrf_token": csrf,
+            "submission_token": submission_token,
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
+    )
+
+@app.get("/studylist", response_class = HTMLResponse)
+async def StudyList(request: Request):    
+    with closing(connect_studies(DATABASE_PATH)) as db:
+        studies = db.execute("SELECT * FROM study ORDER BY id").fetchall()
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "studylist.html",
+        context = {
+            "request": request,
+            "studies": studies,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
+    )
+
+@app.get("/uploads/{id}.pdf")
+async def pdf(id: int, request: Request):
+    authenticated = False
+    for role in ("user", "teacher", "admin"):
+        try:
+            age = datetime.datetime.now() - datetime.datetime.strptime(
+                request.session.get(f"{role}_time", ""), "%Y-%m-%d %H:%M:%S")
+            authenticated |= (request.session.get(f"{role}_login") is True
+                              and bool(request.session.get(f"{role}_id"))
+                              and datetime.timedelta(0) <= age < datetime.timedelta(days=1))
+        except (ValueError, TypeError):
+            pass
+    headers = {"Cache-Control": "private, no-store"}
+    if not authenticated:
+        return RedirectResponse("/login", status_code=303, headers=headers)
+    with closing(connect_studies(DATABASE_PATH)) as db:
+        study = db.execute("SELECT pdfpath, registration_type, template_id, userid FROM study WHERE id = ?", (id,)).fetchone()
+        sections = []
+        if study and study[1] == 'template':
+            field_rows = db.execute("""SELECT f.id, f.label, COALESCE(v.value, ''), f.heading_font_size, f.body_font_size, f.hide_heading,
+                    f.heading_alignment, f.body_alignment, f.heading_bold, f.body_bold,
+                    f.field_type, f.image_size, f.image_alignment
+                FROM study_template_field f
+                LEFT JOIN study_field_value v ON v.field_id = f.id AND v.study_id = ?
+                WHERE f.template_id = ? ORDER BY f.position, f.id""", (id, study[2])).fetchall()
+            for field in field_rows:
+                if field[10] == 'text':
+                    sections.append((field[1], field[2], *field[3:10]))
+                    continue
+                images = db.execute("""SELECT stored_name, caption FROM study_field_image
+                    WHERE study_id=? AND field_id=? ORDER BY position,id""", (id, field[0])).fetchall()
+                sections.append({
+                    'type': 'image', 'label': field[1], 'heading_font_size': field[3],
+                    'body_font_size': field[4], 'hide_heading': bool(field[5]),
+                    'heading_alignment': field[6], 'body_alignment': field[7],
+                    'heading_bold': bool(field[8]), 'body_bold': bool(field[9]),
+                    'image_size': field[11], 'image_alignment': field[12],
+                    'images': [(str(study_image_path(STUDY_IMAGE_UPLOADS_DIR, name)), caption)
+                               for name, caption in images]
+                })
+    if not study:
+        raise HTTPException(404, "PDFが見つかりません。")
+    headers["Content-Disposition"] = f'inline; filename="study-{id}.pdf"'
+    if study[1] == 'template':
+        try:
+            content = await run_in_threadpool(render_study_pdf, sections, study[3])
+        except Exception:
+            logging.exception("Failed to render research PDF %s", id)
+            raise HTTPException(500, "PDFの生成に失敗しました。", headers=headers)
+        return Response(content, media_type="application/pdf", headers=headers)
+    try:
+        target = study_pdf_path(UPLOADS_DIR, study[0])
+    except ValueError:
+        raise HTTPException(404, "PDFが見つかりません。")
+    if not target.is_file():
+        raise HTTPException(404, "PDFが見つかりません。")
+    return FileResponse(target, media_type="application/pdf", headers=headers)
+
+@app.get("/reservation", response_class = HTMLResponse)
+async def ReservationPage(request: Request, day: str = None):
+    today = datetime.datetime.now(JST).date()
+    initial_day = ""
+    if day:
+        try:
+            selected_day = datetime.date.fromisoformat(day)
+        except ValueError:
+            selected_day = None
+        if selected_day is not None and selected_day >= today:
+            initial_day = selected_day.isoformat()
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "reservation.html",
+        context = {
+            "request": request,
+            "today": today.isoformat(),
+            "initial_day": initial_day,
+            "csrf_token": reservation_csrf_token(request),
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
+    )
+
+
+@app.get("/reservation/available-days")
+async def ReservationAvailableDays(month: str):
+    try:
+        month_start = datetime.date.fromisoformat(f"{month}-01")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="年月が正しくありません。")
+    if month_start.month == 12:
+        month_end = datetime.date(month_start.year + 1, 1, 1)
+    else:
+        month_end = datetime.date(month_start.year, month_start.month + 1, 1)
+    today = datetime.datetime.now(JST).date()
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        candidate_days = [
+            row[0] for row in db.execute(
+                """
+                SELECT DISTINCT day FROM reservation_available_slot
+                WHERE day >= ? AND day < ? AND day >= ?
+                ORDER BY day
+                """,
+                (month_start.isoformat(), month_end.isoformat(), today.isoformat())
+            ).fetchall()
+        ]
+        available_days = []
+        for day in candidate_days:
+            if any(slot["state"] == "available" for slot in reservation_slot_summary(db, day)):
+                available_days.append(day)
+    return {"month": month, "available_days": available_days}
+
+
+@app.get("/reservation/availability")
+async def ReservationAvailability(day: str):
+    try:
+        target_date = datetime.date.fromisoformat(day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付が正しくありません。")
+
+    now = datetime.datetime.now(JST)
+    if target_date < now.date():
+        raise HTTPException(status_code=400, detail="過去の日付は選択できません。")
+
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        slots = reservation_slot_summary(db, target_date.isoformat())
+    return {"day": target_date.isoformat(), "slots": slots}
+
+
+@app.get("/reservation/{year}/{month}/{day}", response_class = HTMLResponse)
+async def ReservationLegacyDate(request: Request, year: int, month: int, day: int):
+    try:
+        target_date = datetime.date(year, month, day)
+    except ValueError:
+        raise HTTPException(status_code = 404, detail = "Not Found")
+
+    if target_date < datetime.datetime.now(JST).date():
+        raise HTTPException(status_code = 404, detail = "Not Found")
+    return RedirectResponse(
+        f"/reservation?{urlencode({'day': target_date.isoformat()})}",
+        status_code=303
+    )
+
+@app.get("/login")
+async def Login(request: Request):
+    return templates.TemplateResponse(
+        request = request,
+        name = "login.html",
+        context = {
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
+    )
+
+@app.get("/admin/login", response_class=HTMLResponse)
+async def AdminLoginPage(request: Request):
+    if request.session.get("admin_login") == True:
+        return RedirectResponse("/admin/mypage", status_code=303)
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/login.html",
+        context={"request": request}
+    )
+
+@app.post("/admin/login")
+async def AdminLogin(
+    request: Request,
+    id: str = Form(...),
+    pwd: str = Form(...)
+):
+    cursor.execute("SELECT pwd FROM admin WHERE id = ?", (id,))
+    admin = cursor.fetchone()
+
+    if admin is None or not bcrypt.checkpw(pwd.encode(), admin[0].encode()):
+        return templates.TemplateResponse(
+            request=request,
+            name="admin/login.html",
+            context={"request": request, "error": "ID またはパスワードが正しくありません。"},
+            status_code=401
+        )
+
+    request.session["admin_login"] = True
+    request.session["admin_id"] = id
+    request.session["admin_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return RedirectResponse("/admin/mypage", status_code=303)
+
+@app.get("/admin/logout")
+async def AdminLogout(request: Request):
+    request.session.pop("admin_login", None)
+    request.session.pop("admin_id", None)
+    request.session.pop("admin_time", None)
+    return RedirectResponse("/admin/login", status_code=303)
+
+
+def notification_csrf_token(request, key="notification_csrf_token"):
+    token = request.session.get(key)
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session[key] = token
+    return token
+
+
+def valid_notification_csrf(request, token, key="notification_csrf_token"):
+    expected = request.session.get(key, "")
+    return bool(expected and token and secrets.compare_digest(expected, token))
+
+
+@app.get("/notifications", response_class=HTMLResponse)
+async def NotificationList(request: Request, page: int = 1):
+    user_id = request.session.get("user_id")
+    page = max(1, page)
+    page_size = 20
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        total = db.execute(
+            "SELECT COUNT(*) FROM notification WHERE recipient_user_id = ?", (user_id,)
+        ).fetchone()[0]
+        notifications = db.execute("""
+            SELECT id, title, body, sender_name, is_read, created_at
+            FROM notification WHERE recipient_user_id = ?
+            ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
+        """, (user_id, page_size, (page - 1) * page_size)).fetchall()
+    return templates.TemplateResponse(request=request, name="notifications.html", context={
+        "request": request, "user_id": user_id, "notifications": notifications,
+        "page": page, "has_previous": page > 1,
+        "has_next": page * page_size < total,
+        "csrf_token": notification_csrf_token(request)
+    })
+
+
+@app.get("/notifications/{notification_id}", response_class=HTMLResponse)
+async def NotificationDetail(request: Request, notification_id: int):
+    user_id = request.session.get("user_id")
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        db.row_factory = dbapi.Row
+        notification = db.execute("""
+            SELECT * FROM notification WHERE id = ? AND recipient_user_id = ?
+        """, (notification_id, user_id)).fetchone()
+        if notification is None:
+            raise HTTPException(status_code=404, detail="通知が見つかりません。")
+        if not notification["is_read"]:
+            read_at = notification_now()
+            db.execute("""
+                UPDATE notification SET is_read = 1, read_at = ?
+                WHERE id = ? AND recipient_user_id = ? AND is_read = 0
+            """, (read_at, notification_id, user_id))
+            db.commit()
+            notification = dict(notification)
+            notification["is_read"] = 1
+            notification["read_at"] = read_at
+    return templates.TemplateResponse(request=request, name="notification_detail.html", context={
+        "request": request, "user_id": user_id, "notification": notification
+    })
+
+
+@app.post("/notifications/read-all")
+async def ReadAllNotifications(request: Request, csrf_token: str = Form(...)):
+    if not valid_notification_csrf(request, csrf_token):
+        raise HTTPException(status_code=403, detail="操作を確認できませんでした。")
+    user_id = request.session.get("user_id")
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        db.execute("""
+            UPDATE notification SET is_read = 1, read_at = ?
+            WHERE recipient_user_id = ? AND is_read = 0
+        """, (notification_now(), user_id))
+        db.commit()
+    return RedirectResponse("/notifications", status_code=303)
+
+
+@app.get("/admin/notifications", response_class=HTMLResponse)
+async def AdminNotifications(request: Request, page: int = 1):
+    page = max(1, page)
+    page_size = 20
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        db.row_factory = dbapi.Row
+        students = db.execute("SELECT id, school FROM student ORDER BY school, id").fetchall()
+        schools = [row[0] for row in db.execute("SELECT DISTINCT school FROM student ORDER BY school")]
+        total = db.execute("SELECT COUNT(*) FROM notification_batch").fetchone()[0]
+        batches = db.execute("""
+            SELECT id, created_at, sender_type, sender_id, title, body,
+                   target_type, target_label, notification_count
+            FROM notification_batch ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
+        """, (page_size, (page - 1) * page_size)).fetchall()
+        received_notifications = db.execute("""
+            SELECT * FROM admin_notification
+            WHERE recipient_admin_id = ? ORDER BY created_at DESC, id DESC LIMIT 20
+        """, (request.session.get("admin_id"),)).fetchall()
+        db.execute("UPDATE admin_notification SET is_read=1 WHERE recipient_admin_id=? AND is_read=0",
+                   (request.session.get("admin_id"),))
+        db.commit()
+    return templates.TemplateResponse(request=request, name="admin/notifications.html", context={
+        "request": request, "admin_id": request.session.get("admin_id"),
+        "students": students, "schools": schools, "batches": batches,
+        "received_notifications": received_notifications,
+        "page": page, "has_previous": page > 1, "has_next": page * page_size < total,
+        "csrf_token": notification_csrf_token(request, "admin_notification_csrf_token"),
+        "notice": request.session.pop("admin_notification_notice", None)
+    })
+
+
+@app.post("/admin/notifications/send")
+async def AdminSendNotification(
+    request: Request, target_type: str = Form(...), student_id: str = Form(""),
+    school: str = Form(""), title: str = Form(...), body: str = Form(...),
+    csrf_token: str = Form(...)
+):
+    if not valid_notification_csrf(request, csrf_token, "admin_notification_csrf_token"):
+        raise HTTPException(status_code=403, detail="操作を確認できませんでした。")
+    clean_title, clean_body = title.strip(), body.strip()
+    if not clean_title or not clean_body or len(clean_title) > 200 or len(clean_body) > 5000:
+        request.session["admin_notification_notice"] = {"type": "error", "message": "タイトルは200文字、本文は5000文字以内で入力してください。"}
+        return RedirectResponse("/admin/notifications", status_code=303)
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        if target_type == "student":
+            clean_student_id = student_id.strip()
+            recipients = [row[0] for row in db.execute("SELECT id FROM student WHERE id = ?", (clean_student_id,))]
+            target_value, target_label = clean_student_id, f"個人: {clean_student_id}"
+        elif target_type == "school":
+            recipients = [row[0] for row in db.execute("SELECT id FROM student WHERE school = ?", (school,))]
+            school_exists = db.execute("SELECT 1 FROM student WHERE school = ?", (school,)).fetchone()
+            if school_exists is None:
+                recipients = []
+            target_value, target_label = school, f"学校: {school}"
+        elif target_type == "all":
+            recipients = [row[0] for row in db.execute("SELECT id FROM student")]
+            target_value, target_label = None, "全生徒"
+        else:
+            recipients, target_value, target_label = [], None, ""
+        if not recipients:
+            request.session["admin_notification_notice"] = {"type": "error", "message": "送信対象が見つかりませんでした。"}
+            return RedirectResponse("/admin/notifications", status_code=303)
+        now = notification_now()
+        admin_id = request.session.get("admin_id")
+        batch_id = db.execute("""
+            INSERT INTO notification_batch
+                (target_type, target_value, target_label, title, body, sender_type,
+                 sender_name, sender_id, notification_count, created_at)
+            VALUES (?, ?, ?, ?, ?, 'admin', '管理者', ?, ?, ?)
+        """, (
+            target_type, target_value, target_label, clean_title, clean_body,
+            admin_id, len(recipients), now
+        )).lastrowid
+        for recipient in recipients:
+            create_notification(db, recipient, clean_title, clean_body, batch_id=batch_id)
+        db.commit()
+    request.session["admin_notification_notice"] = {"type": "success", "message": f"{len(recipients)}人へ通知を送信しました。"}
+    request.session["admin_notification_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/admin/notifications", status_code=303)
+
+
+@app.get("/admin/reservation-schedule", response_class=HTMLResponse)
+async def AdminReservationSchedule(request: Request, day: str = None):
+    today = datetime.datetime.now(JST).date()
+    try:
+        selected_day = datetime.date.fromisoformat(day) if day else today
+    except ValueError:
+        selected_day = today
+    if selected_day < today:
+        selected_day = today
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        slots = reservation_slot_summary(
+            db, selected_day.isoformat(), request.session.get("admin_id")
+        )
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/reservation_schedule.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "today": today.isoformat(),
+            "selected_day": selected_day.isoformat(),
+            "slots": slots,
+            "csrf_token": reservation_csrf_token(request, "admin_reservation_schedule_csrf_token"),
+            "notice": request.session.pop("admin_reservation_schedule_notice", None)
+        }
+    )
+
+
+@app.get("/admin/reservation-schedule/availability")
+async def AdminReservationScheduleAvailability(request: Request, day: str):
+    try:
+        target_date = datetime.date.fromisoformat(day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付が正しくありません。")
+    if target_date < datetime.datetime.now(JST).date():
+        raise HTTPException(status_code=400, detail="過去の日付は選択できません。")
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        slots = reservation_slot_summary(
+            db, target_date.isoformat(), request.session.get("admin_id")
+        )
+    return {"day": target_date.isoformat(), "slots": slots}
+
+
+@app.post("/admin/reservation-schedule")
+async def UpdateAdminReservationSchedule(
+    request: Request,
+    day: str = Form(...),
+    action: str = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(...),
+    csrf_token: str = Form(...)
+):
+    redirect_url = f"/admin/reservation-schedule?{urlencode({'day': day})}"
+    notice_key = "admin_reservation_schedule_notice"
+    if not valid_reservation_csrf(request, csrf_token, "admin_reservation_schedule_csrf_token"):
+        request.session[notice_key] = {"type": "error", "message": "操作を確認できませんでした。ページを再読み込みしてください。"}
+        return RedirectResponse(redirect_url, status_code=303)
+    start_minutes = -1
+    end_minutes = -1
+    try:
+        target_date = datetime.date.fromisoformat(day)
+        start_minutes = reservation_time_to_minutes(start_time)
+        end_minutes = reservation_time_to_minutes(end_time)
+    except ValueError:
+        target_date = None
+    valid_range = (
+        target_date is not None and target_date >= datetime.datetime.now(JST).date()
+        and action in {"add", "delete"}
+        and RESERVATION_OPEN_MINUTES <= start_minutes < end_minutes <= RESERVATION_CLOSE_MINUTES
+        and start_minutes % 30 == 0 and end_minutes % 30 == 0
+    )
+    if valid_range and target_date == datetime.datetime.now(JST).date():
+        selected_start = datetime.datetime.combine(
+            target_date,
+            datetime.time(start_minutes // 60, start_minutes % 60),
+            tzinfo=JST
+        )
+        valid_range = selected_start >= datetime.datetime.now(JST)
+    if not valid_range:
+        request.session[notice_key] = {"type": "error", "message": "日付または時間帯が正しくありません。"}
+        return RedirectResponse(redirect_url, status_code=303)
+
+    admin_id = request.session.get("admin_id")
+    slot_times = reservation_slot_range(start_time, end_time)
+    now_text = datetime.datetime.now(JST).isoformat()
+    try:
+        with closing(dbapi.connect(DATABASE_PATH, timeout=10)) as db:
+            db.execute("BEGIN IMMEDIATE")
+            existing = {
+                row[0] for row in db.execute(
+                    f"""
+                    SELECT start_time FROM reservation_available_slot
+                    WHERE admin_id = ? AND day = ?
+                      AND start_time IN ({','.join('?' for _ in slot_times)})
+                    """,
+                    (admin_id, day, *slot_times)
+                ).fetchall()
+            }
+            if action == "add":
+                if existing:
+                    raise ValueError("選択範囲には、すでに自分が登録した時間が含まれています。")
+                db.executemany(
+                    """
+                    INSERT INTO reservation_available_slot
+                        (admin_id, day, start_time, end_time, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (admin_id, day, slot_time,
+                         reservation_minutes_to_time(reservation_time_to_minutes(slot_time) + 30),
+                         now_text, now_text)
+                        for slot_time in slot_times
+                    ]
+                )
+                success_message = "予約可能時間を追加しました。"
+            else:
+                if existing != set(slot_times):
+                    raise ValueError("選択範囲に、自分が登録していない時間が含まれています。")
+                summaries = {slot["start_time"]: slot for slot in reservation_slot_summary(db, day)}
+                if any(summaries[slot_time]["capacity"] - 1 < summaries[slot_time]["reserved"] for slot_time in slot_times):
+                    raise ValueError("既存予約の定員を下回るため、この時間帯は削除できません。")
+                db.execute(
+                    f"""
+                    DELETE FROM reservation_available_slot
+                    WHERE admin_id = ? AND day = ?
+                      AND start_time IN ({','.join('?' for _ in slot_times)})
+                    """,
+                    (admin_id, day, *slot_times)
+                )
+                success_message = "予約可能時間を削除しました。"
+            db.commit()
+        request.session[notice_key] = {"type": "success", "message": success_message}
+        request.session["admin_reservation_schedule_csrf_token"] = secrets.token_urlsafe(32)
+    except (dbapi.Error, ValueError) as error:
+        request.session[notice_key] = {"type": "error", "message": str(error) or "時間帯を更新できませんでした。"}
+    return RedirectResponse(redirect_url, status_code=303)
+
+
+@app.get("/admin/mypage", response_class=HTMLResponse)
+async def AdminMypage(request: Request):
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    admin_id = request.session.get("admin_id")
+    now = datetime.datetime.now(JST)
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        events = admin_calendar_reservations(db, now)
+        db.row_factory = dbapi.Row
+        profile = db.execute(
+            "SELECT display_name, description, is_published, profile_image FROM mentor_profile WHERE admin_id = ?",
+            (admin_id,),
+        ).fetchone()
+        profile = dict(profile) if profile is not None else None
+    return templates.TemplateResponse(request=request, name="admin/mypage.html", context={
+        "request": request, "admin_id": admin_id, "mentor_profile": profile,
+        "mentor_image_url": mentor_image_url(profile["profile_image"] if profile else None),
+        "calendar_events": events, "calendar_today": now.date().isoformat(),
+    })
+
+
+@app.get("/admin/reservation", response_class=HTMLResponse)
+async def AdminReservationPage(request: Request, start_day: str = None, end_day: str = None):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    if start_day and end_day:
+        cursor.execute("""
+            SELECT id, userid, day, start_time, end_time, purpose, status,
+                   cancelled_at, cancelled_by_type, cancelled_by_id
+            FROM reservation
+            WHERE day >= ? AND day <= ?
+            ORDER BY day ASC, start_time ASC, id ASC
+        """, (start_day, end_day))
+    else:
+        cursor.execute("""
+            SELECT id, userid, day, start_time, end_time, purpose, status,
+                   cancelled_at, cancelled_by_type, cancelled_by_id
+            FROM reservation
+            ORDER BY day DESC, start_time ASC, id ASC
+        """)
+    reservations = cursor.fetchall()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/reservation.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "reservations": reservations,
+            "start_day": start_day,
+            "end_day": end_day,
+            "csrf_token": reservation_csrf_token(request, "admin_reservation_csrf_token"),
+            "notice": request.session.pop("admin_reservation_notice", None)
+        }
+    )
+
+
+@app.post("/admin/reservation/{reservation_id}/cancel")
+async def AdminCancelReservation(
+    request: Request,
+    reservation_id: int,
+    csrf_token: str = Form(...)
+):
+    if not valid_reservation_csrf(request, csrf_token, "admin_reservation_csrf_token"):
+        request.session["admin_reservation_notice"] = {"type": "error", "message": "操作を確認できませんでした。"}
+        return RedirectResponse("/admin/reservation", status_code=303)
+    now_text = datetime.datetime.now(JST).isoformat()
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        db.row_factory = dbapi.Row
+        reservation = db.execute(
+            "SELECT * FROM reservation WHERE id = ? AND status = 'active'",
+            (reservation_id,)
+        ).fetchone()
+        changed = db.execute(
+            """
+            UPDATE reservation
+            SET status = 'cancelled', cancelled_at = ?,
+                cancelled_by_type = 'admin', cancelled_by_id = ?
+            WHERE id = ? AND status = 'active'
+            """,
+            (now_text, request.session.get("admin_id"), reservation_id)
+        ).rowcount
+        if changed and reservation is not None:
+            create_notification(
+                db, reservation["userid"], "TEKNE工作室の予約がキャンセルされました",
+                reservation_body("tekne", reservation), "reservation_cancelled", "tekne", reservation_id
+            )
+        db.commit()
+    request.session["admin_reservation_notice"] = {
+        "type": "success" if changed else "error",
+        "message": "予約をキャンセルしました。" if changed else "有効な予約が見つかりませんでした。"
+    }
+    request.session["admin_reservation_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/admin/reservation", status_code=303)
+
+
+@app.get("/admin/equipment-reservation", response_class=HTMLResponse)
+async def AdminEquipmentReservationPage(
+    request: Request,
+    start_day: str = None,
+    end_day: str = None,
+    unreturned_only: str = None
+):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    today = datetime.datetime.now(JST).date().isoformat()
+    show_unreturned_only = unreturned_only == "1"
+
+    takeout_conditions = []
+    takeout_params = []
+    if start_day and end_day:
+        takeout_conditions.append("start_day <= ? AND end_day >= ?")
+        takeout_params.extend((end_day, start_day))
+    if show_unreturned_only:
+        takeout_conditions.append("returned = 0")
+    takeout_where = (
+        f"WHERE {' AND '.join(takeout_conditions)}" if takeout_conditions else ""
+    )
+    cursor.execute(f"""
+        SELECT id, userid, equipment, start_day, end_day, quantity, purpose, note, returned,
+               CASE WHEN end_day < ? AND returned = 0 THEN 1 ELSE 0 END AS is_overdue
+        FROM equipment_reservation
+        {takeout_where}
+        ORDER BY start_day ASC, id ASC
+    """, [today, *takeout_params])
+    equipment_reservations = cursor.fetchall()
+
+    room_conditions = []
+    room_params = []
+    if start_day and end_day:
+        room_conditions.append("use_day >= ? AND use_day <= ?")
+        room_params.extend((start_day, end_day))
+    room_where = f"WHERE {' AND '.join(room_conditions)}" if room_conditions else ""
+    cursor.execute(f"""
+        SELECT id, userid, equipment, use_day, start_time, end_time, quantity, purpose, note
+        FROM equipment_room_reservation
+        {room_where}
+        ORDER BY use_day ASC, start_time ASC, id ASC
+    """, room_params)
+    equipment_room_reservations = cursor.fetchall()
+
+    csrf_token = request.session.get("equipment_reservation_csrf_token")
+    if not csrf_token:
+        csrf_token = secrets.token_urlsafe(32)
+        request.session["equipment_reservation_csrf_token"] = csrf_token
+    notice = request.session.pop("equipment_reservation_notice", None)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/equipment_reservation.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "equipment_reservations": equipment_reservations,
+            "equipment_room_reservations": equipment_room_reservations,
+            "start_day": start_day,
+            "end_day": end_day,
+            "unreturned_only": show_unreturned_only,
+            "csrf_token": csrf_token,
+            "notice": notice
+        }
+    )
+
+
+@app.post("/admin/equipment-reservation/cancel")
+async def AdminCancelEquipmentReservation(
+    request: Request,
+    reservation_type: str = Form(...),
+    reservation_id: int = Form(...),
+    csrf_token: str = Form(...)
+):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    session_token = request.session.get("equipment_reservation_csrf_token", "")
+    if not session_token or not secrets.compare_digest(csrf_token, session_token):
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "操作を確認できませんでした。ページを再読み込みして、もう一度お試しください。"
+        }
+        return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+    table_by_type = {
+        "takeout": "equipment_reservation",
+        "in_room": "equipment_room_reservation"
+    }
+    table = table_by_type.get(reservation_type)
+    if table is None:
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "予約種別が正しくありません。"
+        }
+        return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        db.row_factory = dbapi.Row
+        reservation = db.execute(f"SELECT * FROM {table} WHERE id = ?", (reservation_id,)).fetchone()
+        deleted_count = db.execute(f"DELETE FROM {table} WHERE id = ?", (reservation_id,)).rowcount
+        if deleted_count == 1 and reservation is not None:
+            related_type = "equipment_takeout" if reservation_type == "takeout" else "equipment_in_room"
+            create_notification(
+                db, reservation["userid"], "実験器具の予約がキャンセルされました",
+                reservation_body(related_type, reservation), "reservation_cancelled",
+                related_type, reservation_id
+            )
+        db.commit()
+
+    if deleted_count != 1:
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "取消対象の予約が見つかりませんでした。"
+        }
+    else:
+        request.session["equipment_reservation_notice"] = {
+            "type": "success",
+            "message": "実験器具の予約を取り消しました。"
+        }
+        request.session["equipment_reservation_csrf_token"] = secrets.token_urlsafe(32)
+
+    return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+
+@app.post("/admin/equipment-reservation/return-status")
+async def AdminUpdateEquipmentReturnStatus(
+    request: Request,
+    reservation_type: str = Form(...),
+    reservation_id: int = Form(...),
+    returned: int = Form(...),
+    csrf_token: str = Form(...)
+):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    session_token = request.session.get("equipment_reservation_csrf_token", "")
+    if not session_token or not secrets.compare_digest(csrf_token, session_token):
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "操作を確認できませんでした。ページを再読み込みして、もう一度お試しください。"
+        }
+        return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+    if reservation_type != "takeout" or returned not in (0, 1):
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "返却状態の指定が正しくありません。"
+        }
+        return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        updated_count = db.execute(
+            "UPDATE equipment_reservation SET returned = ? WHERE id = ?",
+            (returned, reservation_id)
+        ).rowcount
+        db.commit()
+
+    if updated_count != 1:
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "更新対象の予約が見つかりませんでした。"
+        }
+    else:
+        request.session["equipment_reservation_notice"] = {
+            "type": "success",
+            "message": "返却状態を更新しました。"
+        }
+        request.session["equipment_reservation_csrf_token"] = secrets.token_urlsafe(32)
+
+    return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+
+@app.get("/admin/studies", response_class=HTMLResponse)
+async def AdminStudiesPage(request: Request):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        studies = db.execute("""
+            SELECT
+                study.id,
+                study.name,
+                study.introduce,
+                study.filename,
+                study.pdfpath,
+                study.userid,
+                study.time,
+                student.id,
+                student.school,
+                study.registration_type
+            FROM study
+            LEFT JOIN student ON study.userid = student.id
+            ORDER BY study.id ASC
+        """).fetchall()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/studies.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "studies": studies
+        }
+    )
+
+
+@app.post("/admin/studies/{study_id}/delete")
+async def AdminDeleteStudy(request: Request, study_id: int):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    image_names = []
+    with closing(connect_studies(DATABASE_PATH)) as db:
+        try:
+            study = db.execute(
+                "SELECT pdfpath FROM study WHERE id = ?",
+                (study_id,)
+            ).fetchone()
+
+            if study is None:
+                return RedirectResponse("/admin/studies", status_code=303)
+
+            image_names = [row[0] for row in db.execute(
+                "SELECT stored_name FROM study_field_image WHERE study_id=?", (study_id,)).fetchall()]
+            db.execute("DELETE FROM study WHERE id = ?", (study_id,))
+            db.commit()
+        except dbapi.Error:
+            db.rollback()
+            raise
+
+    pdfpath = study[0]
+    if pdfpath:
+        try:
+            target_path = study_pdf_path(UPLOADS_DIR, pdfpath)
+        except ValueError:
+            pass
+        else:
+            try:
+                target_path.unlink(missing_ok=True)
+            except OSError:
+                logging.exception("Failed to delete research PDF %s", target_path)
+    for stored_name in image_names:
+        try:
+            study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name).unlink(missing_ok=True)
+        except (ValueError, OSError):
+            logging.exception("Failed to delete research image %s", stored_name)
+
+    return RedirectResponse("/admin/studies", status_code=303)
+
+
+@app.get("/admin/accounts", response_class=HTMLResponse)
+async def AdminAccountsPage(request: Request, type: str = "student", school: str = None):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    account_type = type if type in ("student", "teacher") else "student"
+    schools = load_schools()
+    selected_school = school if school in schools else None
+    table_name = "student" if account_type == "student" else "teacher"
+
+    query = f"SELECT rowid, id, school FROM {table_name}"
+    params = ()
+    if selected_school:
+        query += " WHERE school = ?"
+        params = (selected_school,)
+    query += " ORDER BY id ASC, rowid ASC"
+
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        accounts = db.execute(query, params).fetchall()
+
+    csrf_token = request.session.get("account_csrf_token")
+    if not csrf_token:
+        csrf_token = secrets.token_urlsafe(32)
+        request.session["account_csrf_token"] = csrf_token
+
+    school_query = urlencode({"school": selected_school}) if selected_school else ""
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/accounts.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "account_type": account_type,
+            "accounts": accounts,
+            "schools": schools,
+            "selected_school": selected_school,
+            "school_query": school_query,
+            "csrf_token": csrf_token,
+            "notice": request.session.pop("account_notice", None)
+        }
+    )
+
+
+@app.post("/admin/accounts/delete")
+async def AdminDeleteAccount(
+    request: Request,
+    account_type: str = Form(...),
+    account_rowid: int = Form(...),
+    account_id: str = Form(...),
+    admin_id: str = Form(...),
+    admin_password: str = Form(...),
+    csrf_token: str = Form(...),
+    return_school: str = Form("")
+):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    safe_type = account_type if account_type in ("student", "teacher") else "student"
+    schools = load_schools()
+    safe_school = return_school if return_school in schools else None
+    redirect_params = {"type": safe_type}
+    if safe_school:
+        redirect_params["school"] = safe_school
+    redirect_url = "/admin/accounts?" + urlencode(redirect_params)
+
+    session_token = request.session.get("account_csrf_token", "")
+    if not session_token or not secrets.compare_digest(csrf_token, session_token):
+        request.session["account_notice"] = {
+            "type": "error",
+            "message": "セッションを確認できませんでした。もう一度お試しください。"
+        }
+        return RedirectResponse(redirect_url, status_code=303)
+
+    if account_type not in ("student", "teacher"):
+        request.session["account_notice"] = {
+            "type": "error",
+            "message": "削除対象の種類が正しくありません。"
+        }
+        return RedirectResponse(redirect_url, status_code=303)
+
+    session_admin_id = request.session.get("admin_id")
+    authenticated = False
+
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        try:
+            admin = db.execute(
+                "SELECT pwd FROM admin WHERE id = ?",
+                (session_admin_id,)
+            ).fetchone()
+
+            if admin_id == session_admin_id and admin is not None:
+                try:
+                    authenticated = bcrypt.checkpw(
+                        admin_password.encode(),
+                        admin[0].encode()
+                    )
+                except ValueError:
+                    authenticated = False
+
+            if not authenticated:
+                request.session["account_notice"] = {
+                    "type": "error",
+                    "message": "管理者IDまたはパスワードが正しくありません。"
+                }
+                return RedirectResponse(redirect_url, status_code=303)
+
+            table_name = "student" if account_type == "student" else "teacher"
+            target = db.execute(
+                f"SELECT id FROM {table_name} WHERE rowid = ? AND id = ?",
+                (account_rowid, account_id)
+            ).fetchone()
+
+            if target is None:
+                request.session["account_notice"] = {
+                    "type": "error",
+                    "message": "削除対象のアカウントが見つかりませんでした。"
+                }
+                return RedirectResponse(redirect_url, status_code=303)
+
+            db.execute(
+                f"DELETE FROM {table_name} WHERE rowid = ? AND id = ?",
+                (account_rowid, account_id)
+            )
+            db.commit()
+        except dbapi.Error:
+            db.rollback()
+            raise
+
+    account_label = "生徒" if account_type == "student" else "先生"
+    request.session["account_notice"] = {
+        "type": "success",
+        "message": f"{account_label}アカウント「{account_id}」を削除しました。"
+    }
+    request.session["account_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse(redirect_url, status_code=303)
+
+@app.get("/community", response_class=HTMLResponse)
+async def CommunityPage(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="community.html",
+        context={
+            "request": request,
+            "user_id": request.session.get("user_id"),
+            "csrf_token": community_csrf_token(request)
+        }
+    )
+
+
+@app.get("/community/posts")
+async def CommunityPosts(request: Request, before_id: int = None):
+    user_id = request.session.get("user_id")
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        if before_id is None:
+            rows = db.execute(
+                "SELECT id FROM community_post WHERE parent_id IS NULL AND deleted_at IS NULL ORDER BY id DESC LIMIT ?",
+                (COMMUNITY_PAGE_SIZE + 1,)
+            ).fetchall()
+        else:
+            rows = db.execute(
+                "SELECT id FROM community_post WHERE parent_id IS NULL AND deleted_at IS NULL AND id < ? ORDER BY id DESC LIMIT ?",
+                (before_id, COMMUNITY_PAGE_SIZE + 1)
+            ).fetchall()
+        has_more = len(rows) > COMMUNITY_PAGE_SIZE
+        root_ids = [row[0] for row in rows[:COMMUNITY_PAGE_SIZE]]
+        posts = community_post_payloads(db, root_ids, user_id)
+    return JSONResponse({
+        "posts": posts,
+        "next_cursor": root_ids[-1] if has_more and root_ids else None,
+        "has_more": has_more
+    })
+
+
+@app.post("/community/posts")
+async def CreateCommunityPost(
+    request: Request,
+    content: str = Form(...),
+    parent_id: int = Form(None),
+    csrf_token: str = Form(...)
+):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return JSONResponse({"error": "ログインが必要です。"}, status_code=401)
+    if not valid_community_csrf(request, csrf_token):
+        return JSONResponse({"error": "操作を確認できませんでした。"}, status_code=403)
+    error = validate_community_content(content)
+    if error:
+        return JSONResponse({"error": error}, status_code=422)
+
+    with closing(dbapi.connect(DATABASE_PATH, timeout=10)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        if parent_id is not None:
+            parent = db.execute(
+                "SELECT id FROM community_post WHERE id = ? AND deleted_at IS NULL",
+                (parent_id,)
+            ).fetchone()
+            if parent is None:
+                db.rollback()
+                return JSONResponse({"error": "返信先の投稿が見つかりません。"}, status_code=404)
+        created_at = community_now()
+        post_id = db.execute(
+            "INSERT INTO community_post (user_id, parent_id, content, created_at) VALUES (?, ?, ?, ?)",
+            (user_id, parent_id, content, created_at)
+        ).lastrowid
+        db.commit()
+        post = community_post_payloads(db, [post_id], user_id)[0]
+    return JSONResponse({"post": post}, status_code=201)
+
+
+@app.post("/community/posts/{post_id}/like")
+async def ToggleCommunityLike(
+    request: Request,
+    post_id: int,
+    csrf_token: str = Form(...)
+):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return JSONResponse({"error": "ログインが必要です。"}, status_code=401)
+    if not valid_community_csrf(request, csrf_token):
+        return JSONResponse({"error": "操作を確認できませんでした。"}, status_code=403)
+    with closing(dbapi.connect(DATABASE_PATH, timeout=10)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        post = db.execute(
+            "SELECT id FROM community_post WHERE id = ? AND deleted_at IS NULL", (post_id,)
+        ).fetchone()
+        if post is None:
+            db.rollback()
+            return JSONResponse({"error": "投稿が見つかりません。"}, status_code=404)
+        existing = db.execute(
+            "SELECT id FROM community_like WHERE post_id = ? AND user_id = ?",
+            (post_id, user_id)
+        ).fetchone()
+        if existing:
+            db.execute("DELETE FROM community_like WHERE id = ?", (existing[0],))
+            liked = False
+        else:
+            db.execute(
+                "INSERT OR IGNORE INTO community_like (post_id, user_id, created_at) VALUES (?, ?, ?)",
+                (post_id, user_id, community_now())
+            )
+            liked = True
+        count = db.execute(
+            "SELECT COUNT(*) FROM community_like WHERE post_id = ?", (post_id,)
+        ).fetchone()[0]
+        db.commit()
+    return JSONResponse({"liked": liked, "like_count": count})
+
+
+@app.post("/community/posts/{post_id}/delete")
+async def DeleteCommunityPost(
+    request: Request,
+    post_id: int,
+    csrf_token: str = Form(...)
+):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return JSONResponse({"error": "ログインが必要です。"}, status_code=401)
+    if not valid_community_csrf(request, csrf_token):
+        return JSONResponse({"error": "操作を確認できませんでした。"}, status_code=403)
+    with closing(dbapi.connect(DATABASE_PATH, timeout=10)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        target = db.execute(
+            "SELECT id FROM community_post WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+            (post_id, user_id)
+        ).fetchone()
+        if target is None:
+            db.rollback()
+            return JSONResponse({"error": "削除できる投稿が見つかりません。"}, status_code=403)
+        delete_community_subtrees(db, [post_id])
+        db.commit()
+    return JSONResponse({"deleted": True})
+
+
+@app.get("/admin/community", response_class=HTMLResponse)
+async def AdminCommunityPage(request: Request, page: int = 1):
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    safe_page = max(page, 1)
+    per_page = 50
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        total = db.execute(
+            "SELECT COUNT(*) FROM community_post WHERE deleted_at IS NULL"
+        ).fetchone()[0]
+        posts = db.execute(
+            """
+            SELECT p.id, p.user_id, p.parent_id, p.content, p.created_at,
+                   COUNT(l.id) AS like_count
+            FROM community_post p LEFT JOIN community_like l ON l.post_id = p.id
+            WHERE p.deleted_at IS NULL
+            GROUP BY p.id ORDER BY p.id DESC LIMIT ? OFFSET ?
+            """,
+            (per_page, (safe_page - 1) * per_page)
+        ).fetchall()
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/community.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "posts": posts,
+            "page": safe_page,
+            "has_previous": safe_page > 1,
+            "has_next": safe_page * per_page < total,
+            "csrf_token": community_csrf_token(request),
+            "notice": request.session.pop("community_admin_notice", None)
+        }
+    )
+
+
+@app.post("/admin/community/{post_id}/delete")
+async def AdminDeleteCommunityPost(
+    request: Request,
+    post_id: int,
+    csrf_token: str = Form(...),
+    return_page: int = Form(1)
+):
+    redirect_url = "/admin/community?" + urlencode({"page": max(return_page, 1)})
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    if not valid_community_csrf(request, csrf_token):
+        request.session["community_admin_notice"] = {"type": "error", "message": "操作を確認できませんでした。"}
+        return RedirectResponse(redirect_url, status_code=303)
+    with closing(dbapi.connect(DATABASE_PATH, timeout=10)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        target = db.execute(
+            "SELECT id FROM community_post WHERE id = ? AND deleted_at IS NULL",
+            (post_id,)
+        ).fetchone()
+        changed = bool(target)
+        if changed:
+            delete_community_subtrees(db, [post_id])
+        db.commit()
+    request.session["community_admin_notice"] = {
+        "type": "success" if changed else "error",
+        "message": "投稿を削除しました。" if changed else "削除対象の投稿が見つかりませんでした。"
+    }
+    return RedirectResponse(redirect_url, status_code=303)
+
+
+@app.get("/equipment-reservation", response_class=HTMLResponse)
+async def EquipmentReservationPage(request: Request):
+    today = datetime.date.today().isoformat()
+    return templates.TemplateResponse(
+        request=request,
+        name="equipment_reservation.html",
+        context={
+            "request": request,
+            "catalog": load_equipment_catalog(),
+            "selected_day": today,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
+    )
+
+@app.get("/registration")
+async def Registration(request: Request):
+    schools = load_schools()
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "registration.html",
+        context = {
+            "request": request,
+            "schools": schools
+        }
+    )
+
+@app.get("/logout")
+async def Logout(request: Request):
+    request.session.pop("user_login", None)
+    request.session.pop("user_id", None)
+    request.session.pop("user_time", None)
+    request.session.pop("teacher_login", None)
+    request.session.pop("teacher_id", None)
+    request.session.pop("teacher_time", None)
+    return templates.TemplateResponse(
+        request = request,
+        name = "logout.html"
+    )
+
+@app.get("/mypage")
+async def Mypage(request: Request):
+    user_id = request.session.get("user_id")
+
+    cursor.execute(
+        """
+        SELECT *
+        FROM student
+        WHERE id = ?
+        """,
+        (user_id,)
+    )
+
+    user = cursor.fetchone()
+    user_school = user[2]
+    current_profile_image = user[3] if len(user) > 3 else None
+
+    calendar_now = datetime.datetime.now(JST)
+    today = calendar_now.date().isoformat()
+    with closing(dbapi.connect(DATABASE_PATH)) as calendar_db:
+        events = calendar_reservations(calendar_db, user_id, calendar_now)
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "mypage.html",
+        context = {
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": user_id,
+            "user_school": user_school,
+            "profile_image_url": profile_image_url(current_profile_image),
+            "calendar_events": events,
+            "calendar_today": today,
+            "mentor_reservation_csrf_token": mentor_csrf_token(request, "mypage_mentor_csrf"),
+            "mentor_reservation_notice": request.session.pop("mypage_mentor_notice", None),
+            "reservation_csrf_token": reservation_csrf_token(request, "mypage_reservation_csrf_token"),
+            "reservation_notice": request.session.pop("mypage_reservation_notice", None)
+        }
+    )
+
+@app.get("/mypage/edit")
+async def Edit(request: Request):
+    user_id = request.session.get("user_id")
+    cursor.execute("SELECT profile_image FROM student WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    current_profile_image = row[0] if row else None
+    return templates.TemplateResponse(
+        request = request,
+        name = "mypage/edit.html",
+        context = {
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": user_id,
+            "profile_image_url": profile_image_url(current_profile_image),
+            "has_profile_image": bool(current_profile_image),
+            "csrf_token": profile_csrf_token(request),
+            "profile_notice": request.session.pop("profile_notice", None)
+        }
+    )
+
+
+@app.post("/mypage/edit/profile-image")
+async def UpdateProfileImage(
+    request: Request,
+    profile_image: UploadFile = File(...),
+    csrf_token: str = Form("")
+):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not valid_profile_csrf(request, csrf_token):
+        request.session["profile_notice"] = {"type": "error", "message": "操作を確認できませんでした。もう一度お試しください。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+
+    suffix = Path(profile_image.filename or "").suffix.lower()
+    content_type = (profile_image.content_type or "").lower()
+    if suffix not in PROFILE_ALLOWED_SUFFIXES or content_type not in PROFILE_ALLOWED_CONTENT_TYPES:
+        request.session["profile_notice"] = {"type": "error", "message": "対応していない画像形式です。JPEG、PNG、WebPを選択してください。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+    contents = await profile_image.read(PROFILE_MAX_BYTES + 1)
+    await profile_image.close()
+    if len(contents) > PROFILE_MAX_BYTES:
+        request.session["profile_notice"] = {"type": "error", "message": "ファイルサイズが5MBを超えています。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+    processed, error = process_profile_image(contents)
+    if error:
+        request.session["profile_notice"] = {"type": "error", "message": error}
+        return RedirectResponse("/mypage/edit", status_code=303)
+
+    new_filename = f"{uuid4().hex}.webp"
+    final_path = PROFILE_UPLOADS_DIR / new_filename
+    temporary_path = PROFILE_UPLOADS_DIR / f".{new_filename}.tmp"
+    try:
+        temporary_path.write_bytes(processed)
+        temporary_path.replace(final_path)
+        with closing(dbapi.connect(DATABASE_PATH, timeout=10)) as db:
+            old_row = db.execute("SELECT profile_image FROM student WHERE id = ?", (user_id,)).fetchone()
+            if old_row is None:
+                raise RuntimeError("student not found")
+            old_filename = old_row[0]
+            db.execute("UPDATE student SET profile_image = ? WHERE id = ?", (new_filename, user_id))
+            db.commit()
+    except (OSError, dbapi.Error, RuntimeError):
+        temporary_path.unlink(missing_ok=True)
+        final_path.unlink(missing_ok=True)
+        request.session["profile_notice"] = {"type": "error", "message": "プロフィール画像の保存に失敗しました。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+
+    delete_profile_file(old_filename)
+    request.session["profile_notice"] = {"type": "success", "message": "プロフィール画像を保存しました。"}
+    request.session["profile_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/mypage/edit", status_code=303)
+
+
+@app.post("/mypage/edit/profile-image/delete")
+async def DeleteProfileImage(request: Request, csrf_token: str = Form("")):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not valid_profile_csrf(request, csrf_token):
+        request.session["profile_notice"] = {"type": "error", "message": "操作を確認できませんでした。もう一度お試しください。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+    try:
+        with closing(dbapi.connect(DATABASE_PATH, timeout=10)) as db:
+            row = db.execute("SELECT profile_image FROM student WHERE id = ?", (user_id,)).fetchone()
+            if row is None:
+                raise RuntimeError("student not found")
+            old_filename = row[0]
+            db.execute("UPDATE student SET profile_image = NULL WHERE id = ?", (user_id,))
+            db.commit()
+    except (dbapi.Error, RuntimeError):
+        request.session["profile_notice"] = {"type": "error", "message": "プロフィール画像の削除に失敗しました。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+    delete_profile_file(old_filename)
+    request.session["profile_notice"] = {"type": "success", "message": "プロフィール画像をデフォルトに戻しました。"}
+    request.session["profile_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/mypage/edit", status_code=303)
+
+@app.post("/mypage/reservation/{reservation_id}/cancel")
+async def CancelReservation(
+    request: Request,
+    reservation_id: int,
+    csrf_token: str = Form(...)
+):
+    user_id = request.session.get("user_id")
+    if not valid_reservation_csrf(request, csrf_token, "mypage_reservation_csrf_token"):
+        request.session["mypage_reservation_notice"] = {"type": "error", "message": "操作を確認できませんでした。"}
+        return RedirectResponse("/mypage", status_code=303)
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        db.row_factory = dbapi.Row
+        reservation = db.execute("""
+            SELECT * FROM reservation
+            WHERE id = ? AND userid = ? AND status = 'active'
+        """, (reservation_id, user_id)).fetchone()
+        changed = False
+        if reservation is not None:
+            changed = db.execute(
+                """
+                UPDATE reservation
+                SET status = 'cancelled', cancelled_at = ?,
+                    cancelled_by_type = 'student', cancelled_by_id = ?
+                WHERE id = ? AND userid = ? AND status = 'active'
+                """,
+                (datetime.datetime.now(JST).isoformat(), user_id, reservation_id, user_id)
+            ).rowcount == 1
+            if changed:
+                create_notification(
+                    db, user_id, "TEKNE工作室の予約がキャンセルされました",
+                    reservation_body("tekne", reservation), "reservation_cancelled", "tekne", reservation["id"]
+                )
+        db.commit()
+    request.session["mypage_reservation_notice"] = {
+        "type": "success" if changed else "error",
+        "message": "予約をキャンセルしました。" if changed else "有効な予約が見つかりませんでした。"
+    }
+    request.session["mypage_reservation_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/mypage", status_code=303)
+
+@app.post("/equipment-reservation")
+async def CreateEquipmentReservation(
+    request: Request,
+    equipment_id: str = Form(""),
+    equipment: str = Form(""),
+    start_day: str = Form(...),
+    end_day: str = Form(...),
+    quantity: int = Form(...),
+    purpose: str = Form(...),
+    note: str = Form("")
+):
+    catalog = load_equipment_catalog()
+    item = find_equipment(catalog, equipment_id=equipment_id, equipment_name=equipment)
+    if item is None:
+        raise HTTPException(status_code=400, detail="選択した器具は利用できません。")
+    if item["usage_type"] != "takeout":
+        raise HTTPException(status_code=400, detail="この器具は工作室内専用です。")
+    try:
+        start = datetime.date.fromisoformat(start_day)
+        end = datetime.date.fromisoformat(end_day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付の形式が正しくありません。")
+    if start < datetime.datetime.now(JST).date() or end < start:
+        raise HTTPException(status_code=400, detail="利用日を正しく指定してください。")
+    if (end - start).days + 1 > 7:
+        raise HTTPException(status_code=400, detail="貸出期間は最長7日間です。")
+    clean_purpose = purpose.strip()
+    clean_note = note.strip()
+    if quantity < 1 or not clean_purpose:
+        raise HTTPException(status_code=400, detail="数量と使用目的を入力してください。")
+    if len(clean_purpose) > 500 or len(clean_note) > 500:
+        raise HTTPException(status_code=400, detail="使用目的と備考は500文字以内で入力してください。")
+
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            availability = takeout_availability(item, start, end, db)
+            if quantity > availability["available"]:
+                db.rollback()
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"選択した期間は必要な数量を確保できません。利用可能数: {availability['available']}"
+                )
+            reservation_id = db.execute("""INSERT INTO equipment_reservation
+                (userid, equipment, start_day, end_day, quantity, purpose, note, equipment_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", (
+                    request.session.get("user_id"), item["name"], start.isoformat(),
+                    end.isoformat(), quantity, clean_purpose, clean_note, item["id"]
+                )).lastrowid
+            create_notification(
+                db, request.session.get("user_id"), "実験器具の予約を受け付けました",
+                reservation_body("equipment_takeout", {
+                    "equipment": item["name"], "start_day": start.isoformat(),
+                    "end_day": end.isoformat(), "quantity": quantity
+                }), "reservation_created", "equipment_takeout", reservation_id
+            )
+            db.commit()
+        except HTTPException:
+            raise
+        except Exception:
+            db.rollback()
+            raise
+    return {"result": True}
+
+@app.get("/mypage/equipment-reservation/{reservation_id}/cancel")
+async def CancelEquipmentReservation(request: Request, reservation_id: int):
+    user_id = request.session.get("user_id")
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        db.row_factory = dbapi.Row
+        reservation = db.execute("SELECT * FROM equipment_reservation WHERE id = ? AND userid = ?", (reservation_id, user_id)).fetchone()
+        if reservation is not None:
+            deleted = db.execute("DELETE FROM equipment_reservation WHERE id = ? AND userid = ?", (reservation_id, user_id)).rowcount
+            if deleted == 1:
+                create_notification(
+                    db, user_id, "実験器具の予約がキャンセルされました",
+                    reservation_body("equipment_takeout", reservation), "reservation_cancelled",
+                    "equipment_takeout", reservation_id
+                )
+        db.commit()
+    return RedirectResponse("/mypage", status_code=303)
+
+@app.get("/equipment-availability")
+async def EquipmentAvailability(start_day: str, end_day: str, equipment_id: str = "", equipment: str = ""):
+    item = find_equipment(load_equipment_catalog(), equipment_id=equipment_id, equipment_name=equipment)
+    if item is None:
+        raise HTTPException(status_code=404, detail="器具が見つかりません。")
+    if item["usage_type"] != "takeout":
+        raise HTTPException(status_code=400, detail="この器具は工作室内専用です。")
+    try:
+        start = datetime.date.fromisoformat(start_day)
+        end = datetime.date.fromisoformat(end_day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付の形式が正しくありません。")
+    if start < datetime.datetime.now(JST).date() or end < start or (end - start).days + 1 > 7:
+        raise HTTPException(status_code=400, detail="利用期間は最長7日間で指定してください。")
+    availability = takeout_availability(item, start, end)
+    return {"count": item["count"], "available": availability["available"]}
+
+
+@app.get("/equipment-room-availability")
+async def EquipmentRoomAvailability(equipment_id: str, day: str):
+    item = find_equipment(load_equipment_catalog(), equipment_id=equipment_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="器具が見つかりません。")
+    if item["usage_type"] != "in_room":
+        raise HTTPException(status_code=400, detail="この器具は持ち出し用です。")
+    try:
+        use_day = datetime.date.fromisoformat(day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付の形式が正しくありません。")
+    if use_day < datetime.datetime.now(JST).date():
+        raise HTTPException(status_code=400, detail="過去の日付は選択できません。")
+    return {"count": item["count"], "day": day, "slots": room_slot_availability(item, use_day)}
+
+
+@app.post("/equipment-room-reservation")
+async def CreateEquipmentRoomReservation(
+    request: Request,
+    equipment_id: str = Form(...),
+    use_day: str = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(...),
+    quantity: int = Form(...),
+    purpose: str = Form(...),
+    note: str = Form("")
+):
+    if request.session.get("user_login") is not True or not request.session.get("user_id"):
+        raise HTTPException(status_code=401, detail="ログインが必要です。")
+    item = find_equipment(load_equipment_catalog(), equipment_id=equipment_id)
+    if item is None:
+        raise HTTPException(status_code=400, detail="選択した器具は利用できません。")
+    if item["usage_type"] != "in_room":
+        raise HTTPException(status_code=400, detail="この器具は持ち出し用です。")
+    try:
+        reservation_day = datetime.date.fromisoformat(use_day)
+        parsed_start = datetime.datetime.strptime(start_time, "%H:%M").time()
+        parsed_end = datetime.datetime.strptime(end_time, "%H:%M").time()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="予約日時が正しくありません。")
+    reservation_start = datetime.datetime.combine(reservation_day, parsed_start, tzinfo=JST)
+    duration_minutes = (
+        datetime.datetime.combine(reservation_day, parsed_end, tzinfo=JST) - reservation_start
+    ).total_seconds() // 60
+    if (
+        reservation_start < datetime.datetime.now(JST) or
+        start_time != parsed_start.strftime("%H:%M") or
+        end_time != parsed_end.strftime("%H:%M") or
+        parsed_start < datetime.time(9, 0) or parsed_end > datetime.time(20, 30) or
+        duration_minutes < 30 or duration_minutes % 30 != 0 or
+        parsed_start.minute not in (0, 30) or parsed_end.minute not in (0, 30)
+    ):
+        raise HTTPException(status_code=400, detail="この時間帯は予約できません。")
+    clean_purpose = purpose.strip()
+    clean_note = note.strip()
+    if quantity < 1 or not clean_purpose:
+        raise HTTPException(status_code=400, detail="数量と使用目的を入力してください。")
+    if len(clean_purpose) > 500 or len(clean_note) > 500:
+        raise HTTPException(status_code=400, detail="使用目的と備考は500文字以内で入力してください。")
+
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            slots = room_slot_availability(item, reservation_day, db)
+            selected_slots = [
+                slot for slot in slots
+                if slot["start_time"] < end_time and slot["end_time"] > start_time
+            ]
+            if not selected_slots or any(slot["closed"] for slot in selected_slots):
+                db.rollback()
+                raise HTTPException(status_code=400, detail="この時間帯は予約できません。")
+            available = min(slot["available_quantity"] for slot in selected_slots)
+            if quantity > available:
+                db.rollback()
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"選択した時間帯は在庫が不足しています。利用可能数: {available}"
+                )
+            reservation_id = db.execute("""INSERT INTO equipment_room_reservation
+                (userid, equipment_id, equipment, use_day, start_time, end_time, quantity, purpose, note)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
+                    request.session.get("user_id"), item["id"], item["name"], reservation_day.isoformat(),
+                    start_time, end_time, quantity, clean_purpose, clean_note
+                )).lastrowid
+            create_notification(
+                db, request.session.get("user_id"), "実験器具の予約を受け付けました",
+                reservation_body("equipment_in_room", {
+                    "equipment": item["name"], "use_day": reservation_day.isoformat(),
+                    "start_time": start_time, "end_time": end_time, "quantity": quantity
+                }), "reservation_created", "equipment_in_room", reservation_id
+            )
+            db.commit()
+        except HTTPException:
+            raise
+        except Exception:
+            db.rollback()
+            raise
+    return {"result": True}
+
+
+@app.post("/mypage/equipment-room-reservation/{reservation_id}/cancel")
+async def CancelEquipmentRoomReservation(request: Request, reservation_id: int):
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        db.row_factory = dbapi.Row
+        user_id = request.session.get("user_id")
+        reservation = db.execute(
+            "SELECT * FROM equipment_room_reservation WHERE id = ? AND userid = ?",
+            (reservation_id, user_id)
+        ).fetchone()
+        if reservation is not None:
+            deleted = db.execute(
+                "DELETE FROM equipment_room_reservation WHERE id = ? AND userid = ?", (reservation_id, user_id)
+            ).rowcount
+            if deleted == 1:
+                create_notification(
+                    db, user_id, "実験器具の予約がキャンセルされました",
+                    reservation_body("equipment_in_room", reservation), "reservation_cancelled",
+                    "equipment_in_room", reservation_id
+                )
+        db.commit()
+    return RedirectResponse("/mypage", status_code=303)
+
+#teacherページ
+@app.get("/teacher")
+async def teacher(request: Request):
+    teacher_id = request.session.get("teacher_id")
+
+    cursor.execute("""
+    SELECT *
+    FROM teacher
+    WHERE id = ?
+    """, (teacher_id,))
+
+    teacher_school = cursor.fetchone()[2]
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "teacher.html",
+        context = {
+            "request": request,
+            "teacher_login": request.session.get("teacher_login"),
+            "teacher_id": teacher_id,
+            "teacher_school": teacher_school
+        }
+    )
+
+@app.get("/teacher/edit")
+async def Edit(request: Request):
+    teacher_id = request.session.get("teacher_id")
+
+    cursor.execute("""
+    SELECT school
+    FROM teacher
+    WHERE id = ?
+    """, (teacher_id,))
+    teacher = cursor.fetchone()
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "teacher/edit.html",
+        context = {
+            "request": request,
+            "teacher_login": request.session.get("teacher_login"),
+            "teacher_id": teacher_id,
+            "teacher_school": teacher[0] if teacher else ""
+        }
+    )
+
+
+@app.get("/teacher/notifications", response_class=HTMLResponse)
+async def TeacherNotifications(request: Request, page: int = 1):
+    teacher_id = request.session.get("teacher_id")
+    page = max(1, page)
+    page_size = 20
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        teacher = db.execute(
+            "SELECT school FROM teacher WHERE id = ?", (teacher_id,)
+        ).fetchone()
+        if teacher is None:
+            return RedirectResponse("/login", status_code=303)
+        teacher_school = teacher[0]
+        students = db.execute(
+            "SELECT id FROM student WHERE school = ? ORDER BY id", (teacher_school,)
+        ).fetchall()
+        total = db.execute("""
+            SELECT COUNT(*) FROM notification_batch
+            WHERE sender_type = 'teacher' AND sender_school = ?
+        """, (teacher_school,)).fetchone()[0]
+        batches = db.execute("""
+            SELECT id, created_at, sender_id, title, body, target_label,
+                   notification_count
+            FROM notification_batch
+            WHERE sender_type = 'teacher' AND sender_school = ?
+            ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
+        """, (teacher_school, page_size, (page - 1) * page_size)).fetchall()
+    return templates.TemplateResponse(
+        request=request,
+        name="teacher/notifications.html",
+        context={
+            "request": request,
+            "teacher_login": request.session.get("teacher_login"),
+            "teacher_id": teacher_id,
+            "students": students,
+            "batches": batches,
+            "page": page,
+            "has_previous": page > 1,
+            "has_next": page * page_size < total,
+            "csrf_token": notification_csrf_token(
+                request, "teacher_notification_csrf_token"
+            ),
+            "notice": request.session.pop("teacher_notification_notice", None),
+        }
+    )
+
+
+@app.post("/teacher/notifications/send")
+async def TeacherSendNotification(
+    request: Request,
+    target_type: str = Form(...),
+    student_id: str = Form(""),
+    title: str = Form(...),
+    body: str = Form(...),
+    csrf_token: str = Form(...),
+):
+    if not valid_notification_csrf(
+        request, csrf_token, "teacher_notification_csrf_token"
+    ):
+        raise HTTPException(status_code=403, detail="操作を確認できませんでした。")
+
+    redirect = RedirectResponse("/teacher/notifications", status_code=303)
+    clean_title, clean_body = title.strip(), body.strip()
+    if (
+        not clean_title or not clean_body
+        or len(clean_title) > 200 or len(clean_body) > 5000
+    ):
+        request.session["teacher_notification_notice"] = {
+            "type": "error",
+            "message": "タイトルは200文字、本文は5000文字以内で入力してください。",
+        }
+        return redirect
+
+    teacher_id = request.session.get("teacher_id")
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        teacher = db.execute(
+            "SELECT school FROM teacher WHERE id = ?", (teacher_id,)
+        ).fetchone()
+        if teacher is None:
+            return RedirectResponse("/login", status_code=303)
+        teacher_school = teacher[0]
+
+        if target_type == "student":
+            clean_student_id = student_id.strip()
+            recipients = [row[0] for row in db.execute(
+                "SELECT id FROM student WHERE id = ? AND school = ?",
+                (clean_student_id, teacher_school),
+            )]
+            target_value = clean_student_id
+            target_label = f"個人: {clean_student_id}"
+        elif target_type == "all":
+            recipients = [row[0] for row in db.execute(
+                "SELECT id FROM student WHERE school = ? ORDER BY id",
+                (teacher_school,),
+            )]
+            target_value = teacher_school
+            target_label = "自校の全生徒"
+        else:
+            recipients, target_value, target_label = [], None, ""
+
+        if not recipients:
+            request.session["teacher_notification_notice"] = {
+                "type": "error",
+                "message": "送信対象が見つかりませんでした。",
+            }
+            return redirect
+
+        try:
+            now = notification_now()
+            batch_id = db.execute("""
+                INSERT INTO notification_batch
+                    (target_type, target_value, target_label, title, body,
+                     sender_type, sender_name, notification_count, created_at,
+                     sender_school, sender_id)
+                VALUES (?, ?, ?, ?, ?, 'teacher', '先生', ?, ?, ?, ?)
+            """, (
+                target_type, target_value, target_label, clean_title, clean_body,
+                len(recipients), now, teacher_school, teacher_id,
+            )).lastrowid
+            for recipient in recipients:
+                create_notification(
+                    db,
+                    recipient,
+                    clean_title,
+                    clean_body,
+                    batch_id=batch_id,
+                    sender_type="teacher",
+                    sender_name=f"先生: {teacher_id}",
+                )
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+
+    request.session["teacher_notification_notice"] = {
+        "type": "success",
+        "message": f"{len(recipients)}人へ通知を送信しました。",
+    }
+    request.session["teacher_notification_csrf_token"] = secrets.token_urlsafe(32)
+    return redirect
+
+@app.get("/teacher/studylist", response_class = HTMLResponse)
+async def StudyList(request: Request):
+    if request.session.get("teacher_login") != True:
+        return RedirectResponse("/login", status_code=303)
+
+    teacher_id = request.session.get("teacher_id")
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        teacher = db.execute(
+            "SELECT school FROM teacher WHERE id = ?",
+            (teacher_id,)
+        ).fetchone()
+
+        studies = []
+        if teacher is not None:
+            studies = db.execute("""
+                SELECT study.*
+                FROM study
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM student
+                    WHERE student.id = study.userid
+                      AND student.school = ?
+                )
+                ORDER BY study.id ASC
+            """, (teacher[0],)).fetchall()
+
+    csrf_token = request.session.get("teacher_studylist_csrf_token")
+    if not csrf_token:
+        csrf_token = secrets.token_urlsafe(32)
+        request.session["teacher_studylist_csrf_token"] = csrf_token
+    delete_succeeded = request.session.pop("teacher_studylist_delete_succeeded", False)
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "teacher/studylist.html",
+        context = {
+            "request": request,
+            "studies": studies,
+            "teacher_login": request.session.get("teacher_login"),
+            "teacher_id": teacher_id,
+            "csrf_token": csrf_token,
+            "delete_succeeded": delete_succeeded
+        }
+    )
+
+
+@app.post("/teacher/studylist/{study_id}/delete")
+async def TeacherDeleteStudy(
+    request: Request,
+    study_id: int,
+    csrf_token: str = Form("")
+):
+    redirect = RedirectResponse("/teacher/studylist", status_code=303)
+    if request.session.get("teacher_login") != True:
+        return RedirectResponse("/login", status_code=303)
+
+    expected_token = request.session.get("teacher_studylist_csrf_token")
+    if not expected_token or not secrets.compare_digest(expected_token, csrf_token):
+        return redirect
+
+    teacher_id = request.session.get("teacher_id")
+    study = None
+    image_names = []
+    with closing(connect_studies(DATABASE_PATH)) as db:
+        try:
+            teacher = db.execute(
+                "SELECT school FROM teacher WHERE id = ?",
+                (teacher_id,)
+            ).fetchone()
+            if teacher is None:
+                return redirect
+
+            study = db.execute("""
+                SELECT study.pdfpath
+                FROM study
+                WHERE study.id = ?
+                  AND EXISTS (
+                      SELECT 1
+                      FROM student
+                      WHERE student.id = study.userid
+                        AND student.school = ?
+                  )
+            """, (study_id, teacher[0])).fetchone()
+
+            if study is None:
+                return redirect
+
+            image_names = [row[0] for row in db.execute(
+                "SELECT stored_name FROM study_field_image WHERE study_id=?", (study_id,)).fetchall()]
+            deleted_count = db.execute("""
+                DELETE FROM study
+                WHERE id = ?
+                  AND EXISTS (
+                      SELECT 1
+                      FROM student
+                      WHERE student.id = study.userid
+                        AND student.school = ?
+                  )
+            """, (study_id, teacher[0])).rowcount
+            if deleted_count != 1:
+                db.rollback()
+                return redirect
+            db.commit()
+        except dbapi.Error:
+            db.rollback()
+            return redirect
+
+    request.session["teacher_studylist_csrf_token"] = secrets.token_urlsafe(32)
+    pdfpath = study[0]
+    if pdfpath:
+        try:
+            target_path = study_pdf_path(UPLOADS_DIR, pdfpath)
+        except ValueError:
+            pass
+        else:
+            try:
+                target_path.unlink(missing_ok=True)
+            except OSError:
+                logging.exception("Failed to delete research PDF %s", target_path)
+    for stored_name in image_names:
+        try:
+            study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name).unlink(missing_ok=True)
+        except (ValueError, OSError):
+            logging.exception("Failed to delete research image %s", stored_name)
+
+    request.session["teacher_studylist_delete_succeeded"] = True
+    return redirect
+
+#仮 request.sessionをfalseにする
+@app.get("/reset")
+async def Reset(request: Request):
+    request.session["teacher_login"] = False
+    request.session["user_login"] = False
+
+#仮 sessionの中を確認
+@app.get("/session")
+async def Session(request: Request):
+    return request.session
+
+
+#post関数
+@app.post("/login")
+async def Login(
+    request: Request,
+    type: str = Form(...),
+    id: str = Form(...),
+    pwd: str = Form(...)
+):
+    if type == "student":
+        #dbからチェック
+        cursor.execute(
+            "SELECT * FROM student WHERE id = ?",
+            (id,)
+        )
+        
+        #入力情報と照合
+        hashed_pwd = cursor.fetchone()
+        if hashed_pwd is None:
+            return {"result": False}
+        else:    
+            pwdcheck = bcrypt.checkpw(
+                pwd.encode(),
+                hashed_pwd[1].encode()
+            )
+
+        if pwdcheck:
+            request.session.pop("teacher_login", None)
+            request.session.pop("teacher_id", None)
+            request.session.pop("teacher_time", None)
+            request.session["user_login"] = True
+            request.session["user_id"] = id
+            request.session["user_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            return {"result": True}
+        else:
+            return {"result": False}
+    
+    elif type == "teacher":
+        #dbからチェック
+        cursor.execute(
+            "SELECT * FROM teacher WHERE id = ?",
+            (id,)
+        )
+        
+        #入力情報と照合
+        hashed_pwd = cursor.fetchone()
+        if hashed_pwd is None:
+            return {"result": False}
+        else:    
+            pwdcheck = bcrypt.checkpw(
+                pwd.encode(),
+                hashed_pwd[1].encode()
+            )
+
+        if pwdcheck:
+            request.session.pop("user_login", None)
+            request.session.pop("user_id", None)
+            request.session.pop("user_time", None)
+            request.session["teacher_login"] = True
+            request.session["teacher_id"] = id
+            request.session["teacher_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            return {"result": True}
+        else:
+            return {"result": False}
+
+@app.post("/registration")
+async def Registration(
+    type: str = Form(...),
+    id: str = Form(...),
+    pwd: str = Form(...),
+    school: str = Form(...)
+):
+    #生徒用
+    if type == "student":
+        if (id.isascii() and
+            len(id) > 7 and
+            
+            pwd.isascii() and
+            len(pwd) > 7 and
+            any(i.isalpha() for i in pwd) and
+            any(i.isdigit() for i in pwd) and
+
+            school != "notselect"
+            ):
+            #IDがかぶっていないかチェック
+            cursor.execute(
+                "SELECT * FROM student WHERE id = ?",
+                (id,)
+            )
+
+            if cursor.fetchone() != None:
+                return {"result": 2}
+            else: 
+                #dbにIDとパスワードに追加
+                hashed_pwd = bcrypt.hashpw(
+                    pwd.encode(),
+                    bcrypt.gensalt()
+                ).decode()
+                cursor.execute(
+                    """
+                    INSERT INTO student (id, pwd, school)
+                    VALUES (?, ?, ?)
+                    """,
+                    (id, hashed_pwd, school)
+                )
+                conn.commit()
+                
+                print("dbに情報を追加")
+
+                return {"result": 0}
+        else:
+            return {"result": 1}
+    #先生用
+    elif type == "teacher":
+        if (id.isascii() and
+            len(id) > 7 and
+            
+            pwd.isascii() and
+            len(pwd) > 7 and
+            any(i.isalpha() for i in pwd) and
+            any(i.isdigit() for i in pwd) and
+    
+            school != "notselect"
+            ):
+            #IDがかぶっていないかチェック
+            cursor.execute(
+                "SELECT * FROM teacher WHERE id = ?",
+                (id,)
+            )
+    
+            if cursor.fetchone() != None:
+                return {"result": 2}
+            else: 
+                #dbにIDとパスワードに追加
+                hashed_pwd = bcrypt.hashpw(
+                    pwd.encode(),
+                    bcrypt.gensalt()
+                ).decode()
+                cursor.execute(
+                    """
+                    INSERT INTO teacher (id, pwd, school)
+                    VALUES (?, ?, ?)
+                    """,
+                    (id, hashed_pwd, school)
+                )
+                conn.commit()
+                
+                print("dbに情報を追加")
+    
+                return {"result": 0}
+        else:
+            return {"result": 1}
+
+@app.post("/addform")
+async def Add(request: Request):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        raise HTTPException(401, "ログインしてください。")
+    async with request.form(max_part_size=2**63 - 1) as form:
+        def text_value(key, default=""):
+            value = form.get(key, default)
+            if not isinstance(value, str) or len(form.getlist(key)) > 1:
+                raise HTTPException(422, "入力形式が不正です。")
+            return value
+
+        csrf = request.session.get("study_csrf_token", "")
+        if not csrf or not secrets.compare_digest(csrf.encode(), text_value("csrf_token").encode()):
+            raise HTTPException(403, "画面を再読み込みして登録してください。")
+        token = text_value("submission_token")
+        nonce, separator, signature = token.partition(".")
+        expected = hmac.new(csrf.encode(), nonce.encode(), hashlib.sha256).hexdigest()
+        if len(nonce) != 64 or not separator or not secrets.compare_digest(signature.encode(), expected.encode()):
+            raise HTTPException(403, "送信情報が不正です。画面を再読み込みしてください。")
+        submission_key = hashlib.sha256((str(user_id) + ":" + token).encode()).hexdigest()
+        mode = text_value("registration_type")
+        if mode not in ("pdf", "template"):
+            raise HTTPException(422, "登録方式を選択してください。")
+        name = text_value("name")
+        introduce = text_value("introduce")
+        if not name.strip():
+            raise HTTPException(422, "名前を入力してください。")
+        if not introduce.strip():
+            raise HTTPException(422, "紹介文を入力してください。")
+        temporary = final = None
+        created_image_paths = []
+        try:
+            with closing(connect_studies(DATABASE_PATH)) as db:
+                # Serialize duplicate requests before checking the unique key.
+                with db:
+                    db.execute("BEGIN IMMEDIATE")
+                    previous = db.execute("SELECT id FROM study WHERE submission_key = ?", (submission_key,)).fetchone()
+                    if previous:
+                        return JSONResponse({"ok": True, "id": previous[0]})
+                    if not db.execute("SELECT 1 FROM student WHERE id = ?", (user_id,)).fetchone():
+                        raise HTTPException(401, "ログインし直してください。")
+                    template_id, values, image_values, filename, pdfpath = None, [], [], "", ""
+                    if mode == "template":
+                        try:
+                            template_id = int(text_value("template_id"))
+                        except ValueError:
+                            raise HTTPException(422, "テンプレートを選択してください。")
+                        template = db.execute("SELECT id FROM study_template WHERE id = ? AND active = 1", (template_id,)).fetchone()
+                        if not template:
+                            raise HTTPException(422, "選択されたテンプレートは利用できません。")
+                        fields = db.execute("SELECT id, label, required, max_length, field_type FROM study_template_field WHERE template_id = ? ORDER BY position, id", (template_id,)).fetchall()
+                        allowed = set()
+                        for field_id, _label, _required, _max_length, field_type in fields:
+                            allowed.add(("field_" if field_type == "text" else "image_") + str(field_id))
+                            if field_type == "image":
+                                allowed.add(f"caption_{field_id}")
+                        if any((key.startswith("field_") or key.startswith("image_") or key.startswith("caption_")) and key not in allowed for key in form):
+                            raise HTTPException(422, "テンプレートに存在しない項目が含まれています。")
+                        for field_id, label, required, max_length, field_type in fields:
+                            if field_type == "text":
+                                value = text_value(f"field_{field_id}").replace('\r\n', '\n').replace('\r', '\n')
+                                if required and not value.strip():
+                                    raise HTTPException(422, f"「{label}」を入力してください。")
+                                if max_length and len(value) > max_length:
+                                    raise HTTPException(422, f"「{label}」は{max_length}文字以内で入力してください。")
+                                values.append((field_id, value))
+                                continue
+                            uploads = form.getlist(f"image_{field_id}")
+                            captions = form.getlist(f"caption_{field_id}")
+                            if required and not uploads:
+                                raise HTTPException(422, f"「{label}」の画像を1枚以上選択してください。")
+                            if len(uploads) > 4:
+                                raise HTTPException(422, f"「{label}」の画像は最大4枚です。")
+                            if len(uploads) != len(captions):
+                                raise HTTPException(422, f"「{label}」の画像と説明の数が一致しません。")
+                            for position, (upload, caption) in enumerate(zip(uploads, captions)):
+                                if not isinstance(upload, StarletteUploadFile) or not isinstance(caption, str):
+                                    raise HTTPException(422, "画像の入力形式が不正です。")
+                                caption = caption.strip()
+                                if not caption:
+                                    raise HTTPException(422, f"「{label}」の画像説明を入力してください。")
+                                if len(caption) > 50:
+                                    raise HTTPException(422, f"「{label}」の画像説明は50文字以内で入力してください。")
+                                try:
+                                    content, image_format, width, height, suffix, original_name = normalize_study_image(upload)
+                                except ValueError as exc:
+                                    raise HTTPException(422, f"「{label}」: {exc}")
+                                stored_name = uuid4().hex + suffix
+                                image_final = study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name)
+                                image_temporary = image_final.with_name("." + image_final.name + ".tmp")
+                                created_image_paths.append(image_temporary)
+                                with image_temporary.open("xb") as output:
+                                    output.write(content)
+                                image_temporary.replace(image_final)
+                                created_image_paths.remove(image_temporary)
+                                created_image_paths.append(image_final)
+                                image_values.append((field_id, position, stored_name, original_name,
+                                                     caption, image_format, width, height))
+                    else:
+                        upload = form.get("pdf")
+                        if not isinstance(upload, StarletteUploadFile) or len(form.getlist("pdf")) != 1:
+                            raise HTTPException(422, "PDFファイルを選択してください。")
+                        try:
+                            validate_pdf(upload)
+                        except ValueError as exc:
+                            raise HTTPException(422, str(exc))
+                        filename = upload.filename.replace("\\", "/").rsplit("/", 1)[-1]
+                        pdfpath = uuid4().hex + ".pdf"
+                        final = study_pdf_path(UPLOADS_DIR, pdfpath)
+                        temporary = final.with_suffix(".tmp")
+                        with temporary.open("xb") as output:
+                            shutil.copyfileobj(upload.file, output)
+                        temporary.replace(final)
+                    result = db.execute("""INSERT INTO study
+                        (name, introduce, filename, pdfpath, userid, time, registration_type, template_id, submission_key)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
+                            name, introduce, filename, pdfpath, user_id,
+                            datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"), mode, template_id, submission_key))
+                    study_id = result.lastrowid
+                    db.executemany("INSERT INTO study_field_value(study_id, field_id, value) VALUES (?, ?, ?)",
+                                   [(study_id, field_id, value) for field_id, value in values])
+                    db.executemany("""INSERT INTO study_field_image
+                        (study_id,field_id,position,stored_name,original_name,caption,image_format,width,height)
+                        VALUES (?,?,?,?,?,?,?,?,?)""",
+                        [(study_id, *value) for value in image_values])
+            return JSONResponse({"ok": True, "id": study_id}, status_code=201)
+        except Exception as exc:
+            for path in (temporary, final):
+                if path is not None:
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError:
+                        logging.exception("Failed to clean research file %s", path)
+            for path in created_image_paths:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    logging.exception("Failed to clean research image %s", path)
+            if isinstance(exc, HTTPException):
+                raise
+            logging.exception("Research submission failed")
+            raise HTTPException(500, "登録に失敗しました。時間をおいて再度お試しください。")
+
+@app.post("/reservation/date")
+async def ReservationDate(
+    request: Request,
+    day: str = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(...),
+    purpose: str = Form(...),
+    csrf_token: str = Form(...)
+):
+    if not valid_reservation_csrf(request, csrf_token):
+        return JSONResponse(
+            {"result": False, "message": "操作を確認できませんでした。ページを再読み込みしてください。"},
+            status_code=403
+        )
+    try:
+        reservation_day = datetime.date.fromisoformat(day)
+        parsed_start = datetime.datetime.strptime(start_time, "%H:%M").time()
+        parsed_end = datetime.datetime.strptime(end_time, "%H:%M").time()
+    except ValueError:
+        return JSONResponse(
+            {"result": False, "message": "予約日時が正しくありません。"},
+            status_code=400
+        )
+
+    reservation_start = datetime.datetime.combine(reservation_day, parsed_start, tzinfo=JST)
+    reservation_end = datetime.datetime.combine(reservation_day, parsed_end, tzinfo=JST)
+    duration_minutes = int((reservation_end - reservation_start).total_seconds() // 60)
+    if (
+        reservation_start < datetime.datetime.now(JST) or
+        duration_minutes <= 0 or
+        duration_minutes > 180 or
+        duration_minutes % 30 != 0 or
+        parsed_start.minute not in (0, 30) or
+        parsed_end.minute not in (0, 30) or
+        parsed_start < datetime.time(9, 0) or
+        parsed_end > datetime.time(22, 0)
+    ):
+        return JSONResponse(
+            {"result": False, "message": "予約時間は当日以降の9:00〜22:00から、30分単位・3時間以内で選択してください。"},
+            status_code=400
+        )
+
+    if not purpose.strip():
+        return JSONResponse(
+            {"result": False, "message": "使用目的を入力してください。"},
+            status_code=400
+        )
+
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        summaries = {
+            slot["start_time"]: slot
+            for slot in reservation_slot_summary(db, reservation_day.isoformat())
+        }
+        required_slots = reservation_slot_range(start_time, end_time)
+        if any(
+            slot_time not in summaries or summaries[slot_time]["remaining"] <= 0
+            for slot_time in required_slots
+        ):
+            db.rollback()
+            return JSONResponse(
+                {"result": False, "message": "選択した時間帯は満席になったか、予約できなくなりました。空き状況を更新しました。"},
+                status_code=409
+            )
+
+        reservation_id = db.execute(
+            """
+            INSERT INTO reservation
+                (userid, day, start_time, end_time, purpose, status, created_at)
+            VALUES (?, ?, ?, ?, ?, 'active', ?)
+            """,
+            (
+                request.session.get("user_id"),
+                reservation_day.isoformat(),
+                start_time,
+                end_time,
+                purpose.strip(),
+                datetime.datetime.now(JST).isoformat()
+            )
+        ).lastrowid
+        create_notification(
+            db, request.session.get("user_id"), "TEKNE工作室の予約を受け付けました",
+            reservation_body("tekne", {
+                "day": reservation_day.isoformat(), "start_time": start_time,
+                "end_time": end_time, "purpose": purpose.strip()
+            }), "reservation_created", "tekne", reservation_id
+        )
+        db.commit()
+
+    return {"result": True, "message": "予約が完了しました。マイページで予約を確認できます。"}
+
+@app.post("/mypage/edit/id")
+async def Edit(
+    request: Request,
+    old_pwd: str = Form(...),
+    new_id: str= Form(...)
+):
+    current_id = request.session.get("user_id")
+    #dbからチェック
+    cursor.execute(
+        "SELECT * FROM student WHERE id = ?",
+        (current_id,)
+    )
+    
+    #入力情報と照合
+    hashed_pwd = cursor.fetchone()
+    if hashed_pwd is None:
+        return {"result": False}
+    else:    
+        pwdcheck = bcrypt.checkpw(
+            old_pwd.encode(),
+            hashed_pwd[1].encode()
+        )
+
+    if pwdcheck:
+        #IDがかぶっていないかチェック
+        cursor.execute(
+            "SELECT * FROM student WHERE id = ?",
+            (new_id,)
+        )
+
+        if cursor.fetchone() != None:
+            return {"result": 1}
+        else:
+            if(
+                new_id.isascii() and
+                len(new_id) > 7
+            ):
+                cursor.execute("""
+                UPDATE student
+                SET id = ?
+                WHERE id = ?
+                """, (new_id, current_id))
+                conn.commit()
+                request.session["user_id"] = new_id
+                return {"result": 3}
+            else:
+                return {"result": 2}
+    else:
+        return {"result": 0}
+
+@app.post("/mypage/edit/pwd")
+async def Edit(
+    request: Request,
+    old_pwd: str = Form(...),
+    new_pwd: str= Form(...)
+):
+    current_id = request.session.get("user_id")
+    #dbからチェック
+    cursor.execute(
+        "SELECT * FROM student WHERE id = ?",
+        (current_id,)
+    )
+    
+    #入力情報と照合
+    hashed_pwd = cursor.fetchone()
+    if hashed_pwd is None:
+        return {"result": False}
+    else:    
+        pwdcheck = bcrypt.checkpw(
+            old_pwd.encode(),
+            hashed_pwd[1].encode()
+        )
+
+    if pwdcheck:
+        if(
+            new_pwd.isascii() and
+            len(new_pwd) > 7 and
+            any(i.isalpha() for i in new_pwd) and
+            any(i.isdigit() for i in new_pwd)
+        ):
+            new_hashed_pwd = bcrypt.hashpw(
+                new_pwd.encode(),
+                bcrypt.gensalt()
+            ).decode()
+            cursor.execute("""
+            UPDATE student
+            SET pwd = ?
+            WHERE id = ?
+            """, (new_hashed_pwd, current_id))
+            conn.commit()
+
+            return {"result": 2}
+        else:
+            return {"result": 1}
+    else:
+        return {"result": 0}
+
+@app.post("/teacher/edit/id")
+async def Edit(
+    request: Request,
+    old_id: str = Form(...),
+    old_pwd: str = Form(...),
+    new_id: str= Form(...)
+):
+    #dbからチェック
+    cursor.execute(
+        "SELECT * FROM teacher WHERE id = ?",
+        (old_id,)
+    )
+    
+    #入力情報と照合
+    hashed_pwd = cursor.fetchone()
+    if hashed_pwd is None:
+        return {"result": False}
+    else:    
+        pwdcheck = bcrypt.checkpw(
+            old_pwd.encode(),
+            hashed_pwd[1].encode()
+        )
+
+    if pwdcheck:
+        #IDがかぶっていないかチェック
+        cursor.execute(
+            "SELECT * FROM teacher WHERE id = ?",
+            (new_id,)
+        )
+
+        if cursor.fetchone() != None:
+            return {"result": 1}
+        else:
+            if(
+                new_id.isascii() and
+                len(new_id) > 7
+            ):
+                cursor.execute("""
+                UPDATE teacher
+                SET id = ?
+                WHERE id = ?
+                """, (new_id, old_id))
+                conn.commit()
+                request.session["teacher_id"] = new_id
+                return {"result": 3}
+            else:
+                return {"result": 2}
+    else:
+        return {"result": 0}
+
+@app.post("/teacher/edit/pwd")
+async def Edit(
+    request: Request,
+    old_id: str = Form(...),
+    old_pwd: str = Form(...),
+    new_pwd: str= Form(...)
+):
+    #dbからチェック
+    cursor.execute(
+        "SELECT * FROM teacher WHERE id = ?",
+        (old_id,)
+    )
+    
+    #入力情報と照合
+    hashed_pwd = cursor.fetchone()
+    if hashed_pwd is None:
+        return {"result": False}
+    else:    
+        pwdcheck = bcrypt.checkpw(
+            old_pwd.encode(),
+            hashed_pwd[1].encode()
+        )
+
+    if pwdcheck:
+        if(
+            new_pwd.isascii() and
+            len(new_pwd) > 7 and
+            any(i.isalpha() for i in new_pwd) and
+            any(i.isdigit() for i in new_pwd)
+        ):
+            new_hashed_pwd = bcrypt.hashpw(
+                new_pwd.encode(),
+                bcrypt.gensalt()
+            ).decode()
+            cursor.execute("""
+            UPDATE teacher
+            SET pwd = ?
+            WHERE id = ?
+            """, (new_hashed_pwd, old_id))
+            conn.commit()
+
+            return {"result": 2}
+        else:
+            return {"result": 1}
+    else:
+        return {"result": 0}

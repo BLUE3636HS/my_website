@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">デフォルトプロフィール画像</title>
+  <rect width="512" height="512" fill="#e8eef4"/>
+  <circle cx="256" cy="190" r="94" fill="#8ba0b3"/>
+  <path d="M82 512c12-119 78-190 174-190s162 71 174 190" fill="#8ba0b3"/>
+</svg>

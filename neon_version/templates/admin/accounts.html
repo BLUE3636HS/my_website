@@ -1,0 +1,115 @@
+{% extends "admin/base.html" %}
+
+{% block title %}アカウント一覧{% endblock %}
+
+{% block css %}
+<link rel="stylesheet" href="/static/admin/accounts.css">
+{% endblock %}
+
+{% block content %}
+<div class="accounts-page">
+    <div class="dashboard-card-wide">
+        <div class="accounts-page-header">
+            <div>
+                <p class="dashboard-eyebrow">Account Management</p>
+                <h1>アカウント一覧</h1>
+                <p class="accounts-description">登録された生徒と先生のアカウントを確認できます。</p>
+            </div>
+            <span class="accounts-count">
+                {% if account_type == "student" %}登録生徒数{% else %}登録教員数{% endif %}: {{ accounts|length }} 人
+            </span>
+        </div>
+
+        {% if notice %}
+        <div class="accounts-notice accounts-notice-{{ notice.type }}" role="status">{{ notice.message }}</div>
+        {% endif %}
+
+        <div class="accounts-tabs" role="tablist" aria-label="アカウント種別">
+            <a class="accounts-tab{% if account_type == 'student' %} is-active{% endif %}" href="/admin/accounts?type=student{% if school_query %}&{{ school_query }}{% endif %}" role="tab" aria-selected="{{ 'true' if account_type == 'student' else 'false' }}">生徒</a>
+            <a class="accounts-tab{% if account_type == 'teacher' %} is-active{% endif %}" href="/admin/accounts?type=teacher{% if school_query %}&{{ school_query }}{% endif %}" role="tab" aria-selected="{{ 'true' if account_type == 'teacher' else 'false' }}">先生</a>
+        </div>
+
+        <form method="get" action="/admin/accounts" class="accounts-filter-form">
+            <input type="hidden" name="type" value="{{ account_type }}">
+            <label for="school">学校</label>
+            <select id="school" name="school">
+                <option value="">すべての学校</option>
+                {% for school in schools %}
+                <option value="{{ school }}"{% if school == selected_school %} selected{% endif %}>{{ school }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit">絞り込む</button>
+            {% if selected_school %}<a href="/admin/accounts?type={{ account_type }}">クリア</a>{% endif %}
+        </form>
+
+        <div class="accounts-table-container">
+            {% if accounts %}
+            <table class="accounts-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>学校名</th>
+                        <th class="account-action-column">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for account in accounts %}
+                    <tr>
+                        <td>{{ account[1] }}</td>
+                        <td>{{ account[2] }}</td>
+                        <td class="account-action-column">
+                            <button
+                                type="button"
+                                class="account-delete-button"
+                                data-account-type="{{ account_type }}"
+                                data-account-rowid="{{ account[0] }}"
+                                data-account-id="{{ account[1] }}"
+                            >削除</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="accounts-no-data">該当するアカウントはありません。</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="account-auth-modal" id="account-auth-modal" hidden>
+    <div class="account-auth-backdrop" data-auth-close></div>
+    <div class="account-auth-dialog" role="dialog" aria-modal="true" aria-labelledby="account-auth-title">
+        <div class="account-auth-header">
+            <div>
+                <p class="account-auth-eyebrow">Re-authentication</p>
+                <h2 id="account-auth-title">管理者再認証</h2>
+            </div>
+            <button type="button" class="account-auth-close" aria-label="閉じる" data-auth-close>×</button>
+        </div>
+        <p class="account-auth-description">アカウントを削除するため、現在ログイン中の管理者情報を入力してください。</p>
+        <form method="post" action="/admin/accounts/delete" id="account-auth-form">
+            <input type="hidden" name="account_type" id="delete-account-type">
+            <input type="hidden" name="account_rowid" id="delete-account-rowid">
+            <input type="hidden" name="account_id" id="delete-account-id">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="return_school" value="{{ selected_school or '' }}">
+
+            <label for="reauth-admin-id">管理者ID</label>
+            <input type="text" id="reauth-admin-id" name="admin_id" autocomplete="username" required>
+
+            <label for="reauth-admin-password">パスワード</label>
+            <input type="password" id="reauth-admin-password" name="admin_password" autocomplete="current-password" required>
+
+            <div class="account-auth-actions">
+                <button type="button" class="account-auth-cancel" data-auth-close>キャンセル</button>
+                <button type="submit" class="account-auth-submit">削除する</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/admin/accounts.js" defer></script>
+{% endblock %}

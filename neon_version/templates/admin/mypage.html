@@ -1,0 +1,63 @@
+{% extends "admin/base.html" %}
+{% block title %}マイページ{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/mypage.css"><link rel="stylesheet" href="/static/admin/mypage.css">{% endblock %}
+{% block content %}
+<div class="mypage-page admin-mypage-page">
+    <section class="admin-mypage-hero">
+        <p class="dashboard-eyebrow">MY PAGE</p>
+        <h1>マイページ</h1>
+        <p>全生徒の予約と、管理者・メンター情報を確認できます。</p>
+    </section>
+    <section class="admin-mypage-panel mypage-calendar-panel" aria-labelledby="calendar-heading">
+        <h2 id="calendar-heading">予約カレンダー</h2>
+        <div class="calendar-legend" aria-label="予約の種類">
+            <span class="category-mentor">大学生メンター</span>
+            <span class="category-room">TEKNE工作室</span>
+            <span class="category-equipment">実験器具</span>
+        </div>
+        <div class="calendar-toolbar">
+            <h3 id="calendar-month" aria-live="polite"></h3>
+            <div><button type="button" id="calendar-prev" aria-label="前月">‹</button>
+            <button type="button" id="calendar-today">今日</button>
+            <button type="button" id="calendar-next" aria-label="翌月">›</button></div>
+        </div>
+        <div id="mypage-calendar" data-today="{{ calendar_today }}" aria-label="月別予約カレンダー"></div>
+        <p class="calendar-help">日付を選ぶと予約詳細を表示します。帯は器具の持ち出し期間です。</p>
+        <noscript><p>カレンダー表示にはJavaScriptが必要です。予約内容は下で確認できます。</p></noscript>
+    </section>
+    <section class="admin-mypage-panel admin-mypage-details" aria-labelledby="calendar-detail-title">
+        <h2 id="calendar-detail-title" tabindex="-1">予約詳細</h2>
+        <div class="admin-detail-scroll" tabindex="0" role="region" aria-labelledby="calendar-detail-title">
+        <p id="calendar-empty" role="status" hidden>この日の予約はありません。</p>
+        <div id="calendar-details">
+        {% set category_names = {'mentor': '大学生メンター', 'room': 'TEKNE工作室', 'equipment': '実験器具'} %}
+        {% for event in calendar_events %}
+            <article id="detail-{{ event.key }}" class="reservation-detail category-{{ event.category }}{% if event.isMuted %} is-muted{% endif %}" tabindex="-1">
+                <span class="detail-category">{{ category_names[event.category] }}</span>
+                <h3>{{ event.title }}</h3>
+                <p class="detail-date">{% if event.startTime %}{{ event.startTime }}〜{{ event.endTime }}{% else %}（持ち出し期間）{% endif %}</p>
+                <a class="admin-mypage-button" href="{{ event.management_url }}">予約管理画面へ</a>
+            </article>
+        {% endfor %}
+        </div>
+        </div>
+    </section>
+    <section class="admin-mypage-panel admin-mypage-profile" aria-labelledby="admin-profile-heading">
+        <h2 id="admin-profile-heading">管理者・メンター情報</h2>
+        <img class="admin-mentor-profile-image" src="{{ mentor_image_url }}" alt="現在のメンター画像">
+        <dl class="admin-profile-details">
+            <dt>管理者ID</dt><dd>{{ admin_id }}</dd>
+            {% if mentor_profile is not none %}
+            <dt>メンター表示名</dt><dd>{{ mentor_profile.display_name or '未設定' }}</dd>
+            <dt>紹介文</dt><dd class="admin-profile-description">{{ mentor_profile.description or '未設定' }}</dd>
+            <dt>公開状態</dt><dd>{{ '公開中' if mentor_profile.is_published else '非公開' }}</dd>
+            {% else %}
+            <dt>メンター情報</dt><dd>未登録</dd>
+            {% endif %}
+        </dl>
+        <a class="admin-mypage-button" href="/admin/mentor-profile">大学生メンター情報を設定・編集</a>
+    </section>
+</div>
+<script id="mypage-calendar-data" type="application/json">{{ calendar_events|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/static/mypage.js"></script>{% endblock %}

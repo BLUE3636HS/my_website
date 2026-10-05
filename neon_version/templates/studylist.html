@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}研究成果一覧{% endblock %}
+{% block css %}
+    <link rel="stylesheet" href="/static/studylist.css">
+{% endblock %}
+{% block content %}
+<div class="student-page studylist-page">
+    <section class="student-page-hero">
+        <p class="student-page-eyebrow">RESEARCH ARCHIVE</p>
+        <h1>研究成果一覧</h1>
+        <p>登録された研究成果の概要を確認し、PDFを閲覧できます。</p>
+    </section>
+    <section class="student-panel studylist-panel">
+    <div class="study-table-scroll">
+    <table border="1">
+        <tr>
+            <th>題名</th>
+            <th>要約</th>
+            <th>ダウンロード</th>
+        </tr>
+        {%for study in studies%}
+        <tr>
+            <td>{{study[1]}}</td>
+            <td>{{study[2]}}</td>
+            <td>{% if study[7] == "pdf" %}<a href="/uploads/{{study[0]}}.pdf">{{study[3]}}</a>{% else %}<a href="/uploads/{{ study[0] }}.pdf" target="_blank" rel="noopener">PDFを開く</a>{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    </div>
+    <div class="studylist-actions">
+        <a href="/dashboard" class="student-secondary-link">ダッシュボードへ戻る</a>
+    </div>
+    </section>
+</div>
+{% endblock %}
+{% block script %}
+{% endblock %}

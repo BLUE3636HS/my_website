@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{% block title %}先生用ページ{% endblock %}</title>
+        <link rel="stylesheet" href="/static/teacher/base.css">
+        <link rel="icon" href="/static/icon.ico">
+        {% block css %}
+        {% endblock %}
+    </head>
+    <body>
+        {% set current_path = request.url.path %}
+        <div class="teacher-layout">
+            <aside class="teacher-sidebar">
+                <a class="teacher-brand" href="/teacher">
+                    <img src="/static/top.png" alt="TEKNE工作室">
+                </a>
+                <nav class="teacher-nav" aria-label="先生用メニュー">
+                    <a class="teacher-nav-link" href="/teacher"{% if current_path == '/teacher' %} aria-current="page"{% endif %}>ダッシュボード</a>
+                    <a class="teacher-nav-link" href="/teacher/studylist"{% if current_path == '/teacher/studylist' or current_path.startswith('/teacher/studylist/') %} aria-current="page"{% endif %}>自校提出物確認</a>
+                    <a class="teacher-nav-link" href="/teacher/notifications"{% if current_path == '/teacher/notifications' or current_path.startswith('/teacher/notifications/') %} aria-current="page"{% endif %}>通知送信</a>
+                    <a class="teacher-nav-link" href="/teacher/edit"{% if current_path == '/teacher/edit' or current_path.startswith('/teacher/edit/') %} aria-current="page"{% endif %}>マイページ</a>
+                </nav>
+                <a class="teacher-logout-link" href="/logout">Logout</a>
+            </aside>
+
+            <div class="teacher-main">
+                <header class="teacher-header">
+                    <p>{% block page_title %}{{ self.title() }}{% endblock %}</p>
+                    <span>{{ teacher_id }}</span>
+                </header>
+                <main class="teacher-content">
+                    {% block content %}
+                    {% endblock %}
+                </main>
+            </div>
+        </div>
+        {% block script %}
+        {% endblock %}
+    </body>
+</html>

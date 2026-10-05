@@ -1,0 +1,8 @@
+.admin-community-content { min-width: 280px; max-width: 520px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.admin-table .is-deleted { color: #849388; background: #f7f9f7; }
+.admin-community-delete { border: 0; border-radius: 6px; padding: 7px 12px; background: #a33b3b; color: #fff; cursor: pointer; }
+.admin-community-notice { padding: 11px 14px; border-radius: 7px; }
+.admin-community-notice.success { background: #e7f4eb; color: #25613e; }
+.admin-community-notice.error { background: #fff0f0; color: #a12b2b; }
+.admin-community-pagination { display: flex; justify-content: center; gap: 18px; margin-top: 20px; }
+.admin-community-pagination a { color: #25613e; font-weight: 700; }

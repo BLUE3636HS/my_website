@@ -1,0 +1,2 @@
+cd C:\Users\Rie16\Desktop\programing\my_website\main
+..\.venv\Scripts\python.exe -m uvicorn main:app --reload

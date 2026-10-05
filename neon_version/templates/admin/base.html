@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{% block title %}管理者画面{% endblock %}</title>
+        <link rel="icon" href="/static/icon.ico">
+        <link rel="stylesheet" href="/static/admin/admin.css">
+
+        {% block css %}
+        {% endblock %}
+    </head>
+    <body>
+        {% set current_path = request.url.path %}
+        <div class="admin-layout">
+            <aside class="sidebar">
+                <a class="brand" href="/admin/mypage">Admin</a>
+                <nav class="nav-menu" aria-label="管理者メニュー">
+                    <a class="nav-link" href="/admin/reservation"{% if current_path == '/admin/reservation' or current_path.startswith('/admin/reservation/') %} aria-current="page"{% endif %}>TEKNE工作室予約確認</a>
+                    <a class="nav-link" href="/admin/reservation-schedule"{% if current_path == '/admin/reservation-schedule' or current_path.startswith('/admin/reservation-schedule/') %} aria-current="page"{% endif %}>予約可能時間設定</a>
+                    <a class="nav-link" href="/admin/mentor-profile"{% if current_path.startswith('/admin/mentor-profile') %} aria-current="page"{% endif %}>大学生メンター情報</a>
+                    <a class="nav-link" href="/admin/mentor-schedule"{% if current_path.startswith('/admin/mentor-schedule') %} aria-current="page"{% endif %}>メンター対応可能時間</a>
+                    <a class="nav-link" href="/admin/mentor-reservations"{% if current_path.startswith('/admin/mentor-reservations') %} aria-current="page"{% endif %}>メンター予約確認</a>
+                    <a class="nav-link" href="/admin/equipment-reservation"{% if current_path == '/admin/equipment-reservation' or current_path.startswith('/admin/equipment-reservation/') %} aria-current="page"{% endif %}>実験器具予約確認</a>
+                    <a class="nav-link" href="/admin/studies"{% if current_path == '/admin/studies' or current_path.startswith('/admin/studies/') %} aria-current="page"{% endif %}>研究成果管理</a>
+                    <a class="nav-link" href="/admin/study-templates"{% if current_path == '/admin/study-templates' or current_path.startswith('/admin/study-templates/') %} aria-current="page"{% endif %}>テンプレート管理</a>
+                    <a class="nav-link" href="/admin/community"{% if current_path == '/admin/community' or current_path.startswith('/admin/community/') %} aria-current="page"{% endif %}>TEKNEコミュニティ管理</a>
+                    <a class="nav-link" href="/admin/notifications"{% if current_path == '/admin/notifications' or current_path.startswith('/admin/notifications/') %} aria-current="page"{% endif %}>通知管理</a>
+                    <a class="nav-link" href="/admin/accounts"{% if current_path == '/admin/accounts' or current_path.startswith('/admin/accounts/') %} aria-current="page"{% endif %}>アカウント一覧</a>
+                </nav>
+                <a class="nav-link admin-mypage-link" href="/admin/mypage"{% if current_path == '/admin/mypage' or current_path.startswith('/admin/mypage/') %} aria-current="page"{% endif %}>マイページ</a>
+                <a class="logout-link" href="/admin/logout">Logout</a>
+            </aside>
+            <main class="admin-main">
+                <header class="admin-header">
+                    <p>{% block page_title %}{{ self.title() }}{% endblock %}</p>
+                    <span>{{ admin_id }}</span>
+                </header>
+                <section class="admin-content">
+                    {% block content %}{% endblock %}
+                </section>
+            </main>
+        </div>
+        {% block scripts %}{% endblock %}
+    </body>
+</html>

@@ -1,0 +1,85 @@
+.study-table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    border: 1px solid #d6e0ea;
+    border-radius: 10px;
+}
+
+.studylist-panel table {
+    width: 100%;
+    min-width: 700px;
+    border-collapse: collapse;
+    border: 0;
+}
+
+.studylist-panel th,
+.studylist-panel td {
+    padding: 15px;
+    border: 0;
+    border-bottom: 1px solid #dce3ea;
+    vertical-align: middle;
+}
+
+.studylist-panel th {
+    background: #1f4e79;
+    color: #fff;
+    text-align: center;
+}
+
+.studylist-panel td {
+    background: #fff;
+    font-size: 15px;
+}
+
+.studylist-panel tr:nth-child(even) td {
+    background: #f5f8fc;
+}
+
+.studylist-panel tr:hover td {
+    background: #e8f1fa;
+}
+
+.studylist-panel th:nth-child(1),
+.studylist-panel td:nth-child(1) {
+    min-width: 250px;
+    text-align: center;
+    font-weight: 700;
+}
+
+.studylist-panel th:nth-child(2),
+.studylist-panel td:nth-child(2) {
+    min-width: 300px;
+    text-align: left;
+}
+
+.studylist-panel th:nth-child(3),
+.studylist-panel td:nth-child(3) {
+    width: 160px;
+    min-width: 160px;
+    text-align: center;
+}
+
+.studylist-panel td:nth-child(2) {
+    word-break: break-word;
+}
+
+.studylist-panel a {
+    color: #1f4e79;
+    font-weight: 700;
+    text-decoration: none;
+    word-break: break-all;
+}
+
+.studylist-panel a:hover {
+    text-decoration: underline;
+}
+
+.studylist-actions {
+    display: flex;
+    justify-content: center;
+    margin-top: 24px;
+}
+
+.studylist-actions a:hover {
+    text-decoration: none;
+}

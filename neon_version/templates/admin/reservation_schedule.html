@@ -1,0 +1,78 @@
+{% extends "admin/base.html" %}
+{% block title %}予約可能時間設定{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/admin/reservation_schedule.css">{% endblock %}
+{% block content %}
+<div class="schedule-page" id="schedule-page" data-today="{{ today }}" data-selected-day="{{ selected_day }}">
+    <header class="schedule-header">
+        <p class="schedule-eyebrow">Schedule</p>
+        <h1>予約可能時間の設定</h1>
+        <p>日付を選択し、30分単位で受付時間を設定します。</p>
+    </header>
+
+    {% if notice %}<div class="schedule-notice is-{{ notice.type }}" role="status">{{ notice.message }}</div>{% endif %}
+    <div class="schedule-notice is-error" id="schedule-load-error" role="alert" hidden></div>
+
+    <div class="schedule-workspace">
+        <section class="schedule-calendar-card" aria-labelledby="schedule-calendar-title">
+            <div class="schedule-calendar-nav">
+                <button type="button" id="schedule-prev-month" aria-label="前月">‹</button>
+                <h2 id="schedule-calendar-title"></h2>
+                <button type="button" id="schedule-next-month" aria-label="翌月">›</button>
+            </div>
+            <div class="schedule-weekdays" aria-hidden="true">
+                <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+            </div>
+            <div class="schedule-calendar-days" id="schedule-calendar-days"></div>
+        </section>
+
+        <section class="schedule-settings-card" aria-labelledby="schedule-selected-title">
+            <h2 id="schedule-selected-title"><span id="schedule-selected-day">{{ selected_day }}</span> の設定</h2>
+            <form method="post" action="/admin/reservation-schedule" id="schedule-update-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="day" id="schedule-form-day" value="{{ selected_day }}">
+                <input type="hidden" name="start_time" id="schedule-start-time" value="">
+                <input type="hidden" name="end_time" id="schedule-end-time" value="">
+                <h3>設定済みの時間帯</h3>
+                <p class="schedule-drag-help">時間帯を開始枠から終了枠までドラッグして選択してください。1枠だけの場合はクリックしてください。</p>
+                <div class="schedule-legend" aria-label="時間枠の凡例">
+                    <span class="is-available">空きあり</span><span class="is-full">満席</span><span class="is-unset">未設定</span><span class="is-closed">受付終了</span><span class="is-own">自分が設定</span>
+                </div>
+
+                <div class="schedule-timeline-scroll" tabindex="0" aria-label="9時から22時までの予約可能時間">
+                    <div class="schedule-timeline-stage">
+                        <div class="schedule-time-scale" id="schedule-time-scale"></div>
+                        <div class="schedule-timeline" id="schedule-timeline"></div>
+                    </div>
+                </div>
+                <p class="schedule-loading" id="schedule-loading" hidden>予約状況を読み込んでいます...</p>
+
+                <article class="schedule-slot-detail" id="schedule-slot-detail" aria-live="polite">
+                    <div class="schedule-detail-heading">
+                        <strong id="schedule-detail-time">時間帯をドラッグして選択してください</strong>
+                        <span id="schedule-detail-own" hidden>自分が設定</span>
+                    </div>
+                    <dl>
+                        <div><dt>最小登録枠</dt><dd id="schedule-detail-capacity">-</dd></div>
+                        <div><dt>最大予約数</dt><dd id="schedule-detail-reserved">-</dd></div>
+                        <div><dt>最小残り枠</dt><dd id="schedule-detail-remaining">-</dd></div>
+                    </dl>
+                </article>
+
+                <div class="schedule-divider"></div>
+                <div class="schedule-controls">
+                    <fieldset class="schedule-action-field">
+                        <legend>選択した時間帯の操作</legend>
+                        <div class="schedule-action-switch">
+                            <label><input type="radio" name="action" value="add" checked><span>追加</span></label>
+                            <label><input type="radio" name="action" value="delete"><span>削除</span></label>
+                        </div>
+                    </fieldset>
+                </div>
+                <button type="submit" class="schedule-submit" id="schedule-submit" disabled>時間帯を選択してください</button>
+            </form>
+        </section>
+    </div>
+</div>
+<script type="application/json" id="schedule-initial-slots">{{ slots | tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/static/admin/reservation_schedule.js"></script>{% endblock %}

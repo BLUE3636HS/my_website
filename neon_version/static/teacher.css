@@ -1,0 +1,9 @@
+.teacher-dashboard-card { padding: 32px; border: 1px solid #ead8cf; border-radius: 16px; background: #fff; box-shadow: 0 8px 26px rgba(184,92,56,.1); }
+.teacher-dashboard-card h1 { margin: 0; color: #4a3b32; font-size: clamp(26px,4vw,38px); }
+.teacher-guide-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; margin-top: 22px; }
+.teacher-guide-card { display: block; padding: 26px; border: 1px solid #ead8cf; border-radius: 14px; background: #fff; color: #4a3b32; text-decoration: none; box-shadow: 0 5px 18px rgba(94,62,47,.07); transition: transform .2s, box-shadow .2s, border-color .2s; }
+.teacher-guide-card:hover { border-color: #d7a48d; box-shadow: 0 9px 24px rgba(184,92,56,.14); transform: translateY(-2px); }
+.teacher-guide-card span { display: block; margin-bottom: 8px; color: #b85c38; font-size: 12px; font-weight: 800; }
+.teacher-guide-card strong { display: block; font-size: 21px; }
+.teacher-guide-card p { margin: 10px 0 0; color: #78665d; line-height: 1.7; }
+@container (max-width: 680px) { .teacher-guide-grid { grid-template-columns: 1fr; } .teacher-dashboard-card, .teacher-guide-card { padding: 22px; } }

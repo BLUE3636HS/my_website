@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}マイページ{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/mypage.css">{% endblock %}
+{% block content %}
+<div class="student-page mypage-page">
+    <section class="student-page-hero">
+        <p class="student-page-eyebrow">MY PAGE</p>
+        <h1>マイページ</h1>
+        <p>予約カレンダーとプロフィール情報を確認できます。</p>
+    </section>
+    <section class="student-panel mypage-calendar-panel" aria-labelledby="calendar-heading">
+        <h2 id="calendar-heading">予約カレンダー</h2>
+        {% for notice in [mentor_reservation_notice, reservation_notice] %}
+        {% if notice %}<p role="status" class="mypage-notice is-{{ notice.type }}">{{ notice.message }}</p>{% endif %}
+        {% endfor %}
+        <div class="calendar-legend" aria-label="予約の種類">
+            <span class="category-mentor">大学生メンター</span>
+            <span class="category-room">TEKNE工作室</span>
+            <span class="category-equipment">実験器具</span>
+        </div>
+        <div class="calendar-toolbar">
+            <h3 id="calendar-month" aria-live="polite"></h3>
+            <div><button type="button" id="calendar-prev" aria-label="前月">‹</button>
+            <button type="button" id="calendar-today">今日</button>
+            <button type="button" id="calendar-next" aria-label="翌月">›</button></div>
+        </div>
+        <div id="mypage-calendar" data-today="{{ calendar_today }}" aria-label="月別予約カレンダー"></div>
+        <p class="calendar-help">日付を選ぶと予約詳細を表示します。帯は器具の持ち出し期間です。</p>
+        <noscript><p>カレンダー表示にはJavaScriptが必要です。予約内容は下で確認できます。</p></noscript>
+    </section>
+    <section class="student-panel student-mypage-details" aria-labelledby="calendar-detail-title">
+        <h2 id="calendar-detail-title" tabindex="-1">予約詳細</h2>
+        <div class="mypage-detail-scroll" tabindex="0" role="region" aria-labelledby="calendar-detail-title">
+        <p id="calendar-empty" role="status" hidden>この日の予約はありません。</p>
+        <div id="calendar-details">
+        {% set category_names = {'mentor': '大学生メンター', 'room': 'TEKNE工作室', 'equipment': '実験器具'} %}
+        {% for event in calendar_events %}
+            <article id="detail-{{ event.key }}" class="reservation-detail category-{{ event.category }}{% if event.isMuted %} is-muted{% endif %}" tabindex="-1">
+                <span class="detail-category">{{ category_names[event.category] }}</span>
+                <h3>{{ event.title }}</h3>
+                <p class="detail-date">{{ event.start }}{% if event.end != event.start %} ～ {{ event.end }}{% endif %}
+                {% if event.startTime %} {{ event.startTime }}〜{{ event.endTime }}{% else %}（持ち出し期間）{% endif %}</p>
+                <details class="reservation-expanded-details">
+                <summary>詳細を表示</summary>
+                <dl>{% for label, value in event.details %}<dt>{{ label }}</dt><dd>{% if label == 'Google Meet' %}<a href="{{ value }}" target="_blank" rel="noopener noreferrer">Google Meetを開く</a>{% else %}{{ value }}{% endif %}</dd>{% endfor %}</dl>
+                {% if event.can_cancel %}
+                    {% if event.cancel_method == 'post' %}
+                    <form method="post" action="{{ event.cancel_url }}" class="reservation-cancel-form">
+                        {% if event.kind == 'mentor' %}<input type="hidden" name="csrf" value="{{ mentor_reservation_csrf_token }}">{% endif %}
+                        {% if event.kind == 'room' %}<input type="hidden" name="csrf_token" value="{{ reservation_csrf_token }}">{% endif %}
+                        <button class="cancel-reservation" type="submit">この予約をキャンセル</button>
+                    </form>
+                    {% else %}<a class="cancel-reservation" href="{{ event.cancel_url }}">この予約をキャンセル</a>{% endif %}
+                {% endif %}
+                </details>
+            </article>
+        {% endfor %}
+        </div>
+        </div>
+    </section>
+    <section class="student-panel student-mypage-profile" aria-labelledby="student-profile-heading">
+    <h2 id="student-profile-heading">プロフィール情報</h2>
+    <div class="mypage-profile-image-wrap">
+        <img class="profile-image" src="{{ profile_image_url }}" alt="現在のプロフィール画像">
+    </div>
+    <table border="1">
+        <tr>
+            <th>id</th>
+            <td>{{user_id}}</td>
+        </tr>
+        <tr>
+            <th>pwd</th>
+            <td>********</td>
+        </tr>
+        <tr>
+            <th>在籍校</th>
+            <td>{{user_school}}</td>
+        </tr>
+    </table>
+    <div class="mypage-actions">
+        <a href="/mypage/edit" class="student-primary-button">プロフィール情報編集</a>
+    </div>
+    </section>
+</div>
+<script id="mypage-calendar-data" type="application/json">{{ calendar_events|tojson }}</script>
+{% endblock %}
+{% block script %}<script src="/static/mypage.js"></script>{% endblock %}
