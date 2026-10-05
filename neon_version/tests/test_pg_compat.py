@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch
 
 import pg_compat
+from mypage_calendar import admin_calendar_reservations
 
 
 class FakeCursor:
@@ -19,6 +20,9 @@ class FakeCursor:
 
     def fetchone(self):
         return (41,)
+
+    def fetchall(self):
+        return []
 
 
 class FakeConnection:
@@ -80,6 +84,15 @@ class PostgreSQLAdapterTests(unittest.TestCase):
         row = pg_compat.Row((7, "A"), ("id", "name"))
         self.assertEqual((row[0], row["name"], dict(row)),
                          (7, "A", {"id": 7, "name": "A"}))
+
+    def test_cursor_exposes_description(self):
+        db = pg_compat.connect()
+        cursor = db.execute("SELECT id FROM student")
+        self.assertEqual(cursor.description, self.raw.cursor_instance.description)
+
+    def test_admin_calendar_reads_column_metadata(self):
+        db = pg_compat.connect()
+        self.assertEqual(admin_calendar_reservations(db), [])
 
 
 if __name__ == "__main__":

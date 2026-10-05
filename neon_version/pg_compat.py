@@ -161,6 +161,10 @@ class Cursor:
         return self._local.current.rowcount
 
     @property
+    def description(self):
+        return self._local.current.description
+
+    @property
     def lastrowid(self):
         return getattr(self._local, "lastrowid", None)
 

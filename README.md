@@ -28,7 +28,7 @@ cd neon_version
 ..\.venv\Scripts\python.exe -m uvicorn main:app --reload --port 8001
 ```
 
-Neon 版のアップロードは `neon_version/uploads/` に新規作成されます。SQLite データやファイルは Neon に移行しません。前日予約通知は各版の `scripts/create_reservation_reminders.py` で実行できます。
+`init_db.py`、`verify_db.py`、`create_admin.py` を単独で起動して `DATABASE_URL` が未設定の場合は、接続 URL の非表示入力が出ます。Neon 版のアップロードは `neon_version/uploads/` に新規作成されます。SQLite データやファイルは Neon に移行しません。前日予約通知は各版の `scripts/create_reservation_reminders.py` で実行できます。
 
 `git_save.bat` はリポジトリ全体を対象にします。2版の変更をまとめて保存する際に使用してください。
 

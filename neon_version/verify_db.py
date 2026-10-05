@@ -3,12 +3,21 @@
 This command deliberately rolls back all test records.
 """
 from contextlib import closing
+import getpass
+import os
 from uuid import uuid4
 
 import pg_compat as dbapi
 
 
 def main():
+    if not os.environ.get("DATABASE_URL"):
+        database_url = getpass.getpass("Neon DATABASE_URL: ").strip()
+        if not database_url:
+            print("DATABASE_URL が必要です。Neon の接続文字列を入力してください。")
+            return 1
+        os.environ["DATABASE_URL"] = database_url
+
     with closing(dbapi.connect()) as db:
         tables = {row[0] for row in db.execute(
             "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = current_schema()"
@@ -47,7 +56,8 @@ def main():
             db.rollback()
 
     print("Neon schema, INSERT, SELECT, UPDATE, DELETE, and reservation lock: OK")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
