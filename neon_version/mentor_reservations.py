@@ -7,10 +7,13 @@ from contextlib import closing
 from pathlib import Path
 from urllib.parse import urlencode
 from uuid import uuid4
-from file_storage import prepare_upload_directory, require_persistent_file_storage
+from file_storage import (StorageConfigurationError, StorageOperationError, delete as storage_delete,
+                          download as storage_download, object_key, require_storage, upload as storage_upload,
+                          valid_key)
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.concurrency import run_in_threadpool
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from google_calendar import GoogleCalendarError, create_mentor_event, delete_mentor_event
@@ -90,10 +93,9 @@ def initialize_mentor_tables(db):
 def mentor_image_url(filename):
     if not filename:
         return MENTOR_DEFAULT_IMAGE_URL
-    safe_name = Path(filename).name
-    if safe_name != filename or not safe_name.endswith(".webp"):
+    if not isinstance(filename, str) or not valid_key(filename, "mentor-profile", {"webp"}):
         return MENTOR_DEFAULT_IMAGE_URL
-    return f"/uploads/mentor-profile/{safe_name}"
+    return f"/uploads/mentor-profile/{filename.split('/')[-1]}"
 
 
 def process_mentor_image(contents):
@@ -120,19 +122,6 @@ def process_mentor_image(contents):
             return output.getvalue(), None
     except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
         return None, "画像ファイルを読み込めませんでした。"
-
-
-def delete_mentor_image(uploads_dir, filename):
-    if not filename or Path(filename).name != filename or not filename.endswith(".webp"):
-        return
-    uploads_dir = Path(uploads_dir).resolve()
-    target = (uploads_dir / filename).resolve()
-    if target.parent != uploads_dir:
-        return
-    try:
-        target.unlink(missing_ok=True)
-    except OSError:
-        pass
 
 
 def time_to_minutes(value):
@@ -194,8 +183,22 @@ def mentor_reservations_for_student(db, student_id):
 
 def build_router(database_path, templates, uploads_dir=None):
     router = APIRouter()
-    uploads_dir = Path(uploads_dir or (Path(database_path).resolve().parent / "mentor-profile-uploads")).resolve()
-    prepare_upload_directory(uploads_dir)
+
+    @router.get("/uploads/mentor-profile/{filename}")
+    async def get_mentor_image(filename: str):
+        if Path(filename).name != filename or not filename.endswith(".webp"):
+            raise HTTPException(404)
+        with closing(dbapi.connect(database_path)) as db:
+            rows = db.execute("SELECT profile_image FROM mentor_profile WHERE profile_image LIKE ?",
+                              ("mentor-profile/%/" + filename,)).fetchall()
+        key = next((row[0] for row in rows if valid_key(row[0], "mentor-profile", {"webp"})), None)
+        if not key:
+            raise HTTPException(404)
+        try:
+            content = await run_in_threadpool(storage_download, key)
+        except (StorageConfigurationError, StorageOperationError):
+            raise HTTPException(503, "メンター画像を取得できませんでした。")
+        return Response(content, media_type="image/webp", headers={"Cache-Control": "private, max-age=300"})
 
     @router.get("/admin/mentor-profile", response_class=HTMLResponse)
     async def admin_mentor_profile(request: Request):
@@ -245,35 +248,46 @@ def build_router(database_path, templates, uploads_dir=None):
                 request.session["mentor_profile_notice"] = {"type": "error", "message": error}
                 return RedirectResponse("/admin/mentor-profile", 303)
         if processed:
-            require_persistent_file_storage()
+            try:
+                require_storage()
+            except HTTPException:
+                request.session["mentor_profile_notice"] = {"type": "error", "message": "Neon Storageの設定または接続を確認してください。"}
+                return RedirectResponse("/admin/mentor-profile", 303)
         now = datetime.datetime.now(JST).isoformat()
         new_filename = f"{uuid4().hex}.webp" if processed else None
-        temporary_path = uploads_dir / f".{new_filename}.tmp" if new_filename else None
-        final_path = uploads_dir / new_filename if new_filename else None
+        new_key = object_key("mentor-profile", admin_id, new_filename) if new_filename else None
         old_filename = None
         try:
-            if processed:
-                temporary_path.write_bytes(processed)
-                temporary_path.replace(final_path)
             with closing(dbapi.connect(database_path, timeout=10)) as db:
                 old_row = db.execute("SELECT profile_image FROM mentor_profile WHERE admin_id=?", (admin_id,)).fetchone()
                 old_filename = old_row[0] if old_row else None
+            if processed:
+                storage_upload(new_key, processed, "image/webp")
+            with closing(dbapi.connect(database_path, timeout=10)) as db:
                 db.execute("""INSERT INTO mentor_profile(admin_id,is_published,display_name,description,profile_image,created_at,updated_at)
                     VALUES(?,?,?,?,?,?,?) ON CONFLICT(admin_id) DO UPDATE SET
                     is_published=excluded.is_published,display_name=excluded.display_name,
                     description=excluded.description,profile_image=COALESCE(excluded.profile_image,mentor_profile.profile_image),
                     updated_at=excluded.updated_at""",
-                    (admin_id, published, name, description or None, new_filename, now, now))
+                    (admin_id, published, name, description or None, new_key, now, now))
                 db.commit()
-        except (OSError, dbapi.Error):
-            if temporary_path:
-                temporary_path.unlink(missing_ok=True)
-            if final_path:
-                final_path.unlink(missing_ok=True)
-            request.session["mentor_profile_notice"] = {"type": "error", "message": "大学生メンター情報を保存できませんでした。"}
+        except (dbapi.Error, StorageConfigurationError, StorageOperationError):
+            if new_key:
+                try:
+                    storage_delete(new_key)
+                except Exception:
+                    LOGGER.exception("Failed to clean up unreferenced mentor image")
+            request.session["mentor_profile_notice"] = {"type": "error", "message": "大学生メンター情報を保存できませんでした。StorageまたはDBの状態を確認してください。"}
             return RedirectResponse("/admin/mentor-profile", 303)
-        if new_filename:
-            delete_mentor_image(uploads_dir, old_filename)
+        if new_key and old_filename and valid_key(old_filename, "mentor-profile", {"webp"}):
+            try:
+                storage_delete(old_filename)
+            except (StorageConfigurationError, StorageOperationError):
+                LOGGER.exception("Failed to delete obsolete mentor image object")
+                request.session["mentor_profile_notice"] = {
+                    "type": "warning", "message": "情報は保存されましたが、旧画像をStorageから削除できませんでした。管理者へ連絡してください。"}
+                request.session["mentor_profile_csrf"] = secrets.token_urlsafe(32)
+                return RedirectResponse("/admin/mentor-profile", 303)
         request.session["mentor_profile_csrf"] = secrets.token_urlsafe(32)
         request.session["mentor_profile_notice"] = {"type": "success", "message": "大学生メンター情報を保存しました。"}
         return RedirectResponse("/admin/mentor-profile", 303)
@@ -288,14 +302,16 @@ def build_router(database_path, templates, uploads_dir=None):
             with closing(dbapi.connect(database_path, timeout=10)) as db:
                 row = db.execute("SELECT profile_image FROM mentor_profile WHERE admin_id=?", (admin_id,)).fetchone()
                 old_filename = row[0] if row else None
+            if old_filename and valid_key(old_filename, "mentor-profile", {"webp"}):
+                storage_delete(old_filename)
+            with closing(dbapi.connect(database_path, timeout=10)) as db:
                 if row:
                     db.execute("UPDATE mentor_profile SET profile_image=NULL,updated_at=? WHERE admin_id=?",
                                (datetime.datetime.now(JST).isoformat(), admin_id))
                     db.commit()
-        except dbapi.Error:
+        except (dbapi.Error, StorageConfigurationError, StorageOperationError):
             request.session["mentor_profile_notice"] = {"type": "error", "message": "画像を削除できませんでした。"}
             return RedirectResponse("/admin/mentor-profile", 303)
-        delete_mentor_image(uploads_dir, old_filename)
         request.session["mentor_profile_csrf"] = secrets.token_urlsafe(32)
         request.session["mentor_profile_notice"] = {"type": "success", "message": "メンター画像を削除しました。"}
         return RedirectResponse("/admin/mentor-profile", 303)

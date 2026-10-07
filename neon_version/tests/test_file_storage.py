@@ -1,48 +1,65 @@
-import asyncio
-import importlib
 import os
-from pathlib import Path
-import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from starlette.exceptions import HTTPException
-from file_storage import prepare_upload_directory, require_persistent_file_storage, UploadStaticFiles
+from fastapi import HTTPException
+from file_storage import (delete, download, object_key,
+                          require_storage, upload, valid_key)
 
 
 class FileStorageTests(unittest.TestCase):
-    def test_vercel_import_never_writes_or_connects(self):
-        with patch.dict(os.environ, {"VERCEL": "1", "DATABASE_URL": "postgresql://example.invalid/test"}), \
-                patch.object(Path, "mkdir", side_effect=AssertionError("read-only filesystem")), \
-                patch("psycopg.connect", side_effect=AssertionError("import must not connect")):
-            app_module = importlib.import_module("main")
-            self.assertTrue(app_module.app.routes)
+    def test_keys_are_scoped_and_safe(self):
+        key = object_key("study-images", "student/..", "image.jpg")
+        self.assertRegex(key, r"^study-images/student_../[a-f0-9]{32}\.jpg$")
+        self.assertTrue(valid_key(key, "study-images", {"jpg", "png"}))
+        self.assertFalse(valid_key("study-images/../secret.jpg", "study-images", {"jpg"}))
+        self.assertFalse(valid_key("study-images/1/../secret.jpg", "study-images", {"jpg"}))
 
-    def test_local_upload_directory_is_created(self):
-        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {"VERCEL": ""}):
-            directory = Path(root) / "uploads" / "profile"
-            prepare_upload_directory(directory)
-            self.assertTrue(directory.is_dir())
-            require_persistent_file_storage()
+    def test_missing_environment_is_clear(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(HTTPException) as http_error:
+                require_storage()
+            self.assertEqual(http_error.exception.status_code, 503)
+            self.assertIn("AWS_ENDPOINT_URL_S3", str(http_error.exception.detail))
 
-    def test_vercel_upload_rejected_explicitly(self):
-        with patch.dict(os.environ, {"VERCEL": "1"}):
-            with self.assertRaises(HTTPException) as error:
-                require_persistent_file_storage()
-            self.assertEqual(error.exception.status_code, 503)
+    def test_upload_download_delete_use_private_bucket_and_content_type(self):
+        client = MagicMock()
+        client.get_object.return_value = {"Body": MagicMock(read=lambda: b"payload")}
+        settings = {"AWS_ENDPOINT_URL_S3": "https://storage.example", "AWS_ACCESS_KEY_ID": "key",
+                    "AWS_SECRET_ACCESS_KEY": "secret", "AWS_REGION": "region", "STORAGE_BUCKET": "uploads"}
+        with patch.dict(os.environ, settings), patch("file_storage._client", return_value=client):
+            upload("profile/1/" + "a" * 32 + ".webp", b"image", "image/webp")
+            self.assertEqual(download("profile/1/" + "a" * 32 + ".webp"), b"payload")
+            delete("profile/1/" + "a" * 32 + ".webp")
+        client.put_object.assert_called_once_with(Bucket="uploads", Key="profile/1/" + "a" * 32 + ".webp",
+                                                  Body=b"image", ContentType="image/webp")
+        client.delete_object.assert_called_once()
 
-    def test_missing_upload_folder_returns_404(self):
-        with tempfile.TemporaryDirectory() as root:
-            files = UploadStaticFiles(Path(root) / "missing")
-            asyncio.run(files.check_config())
-            with self.assertRaises(HTTPException) as error:
-                asyncio.run(files.get_response("missing.webp", {"method": "GET"}))
-            self.assertEqual(error.exception.status_code, 404)
+    def test_storage_error_hides_client_details(self):
+        client = MagicMock()
+        client.put_object.side_effect = RuntimeError("https://private.example?secret=bad")
+        settings = {"AWS_ENDPOINT_URL_S3": "https://storage.example", "AWS_ACCESS_KEY_ID": "key",
+                    "AWS_SECRET_ACCESS_KEY": "secret", "AWS_REGION": "region", "STORAGE_BUCKET": "uploads"}
+        with patch.dict(os.environ, settings), patch("file_storage._client", return_value=client):
+            with self.assertRaises(Exception) as error:
+                upload("profile/1/" + "a" * 32 + ".webp", b"image", "image/webp")
+        self.assertNotIn("private.example", str(error.exception))
 
-    def test_existing_upload_remains_readable_on_vercel(self):
-        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {"VERCEL": "1"}):
-            (Path(root) / "sample.webp").write_bytes(b"existing-file")
-            files = UploadStaticFiles(root)
-            asyncio.run(files.check_config())
-            response = asyncio.run(files.get_response("sample.webp", {"method": "GET", "headers": []}))
-            self.assertEqual(response.status_code, 200)
+    def test_failed_upload_uses_safe_error_message(self):
+        client = MagicMock()
+        client.put_object.side_effect = RuntimeError("credential=secret")
+        settings = {"AWS_ENDPOINT_URL_S3": "https://storage.example", "AWS_ACCESS_KEY_ID": "key",
+                    "AWS_SECRET_ACCESS_KEY": "secret", "AWS_REGION": "region", "STORAGE_BUCKET": "uploads"}
+        with patch.dict(os.environ, settings), patch("file_storage._client", return_value=client):
+            with self.assertRaises(Exception) as error:
+                upload("profile/1/" + "a" * 32 + ".webp", b"image", "image/webp")
+        self.assertNotIn("credential", str(error.exception))
+
+    def test_private_download_requires_database_registered_valid_key(self):
+        key = object_key("profile", "student-1", "image.webp")
+        self.assertTrue(valid_key(key, "profile", {"webp"}))
+        self.assertFalse(valid_key("profile/student-1/../../secret.webp", "profile", {"webp"}))
+
+
+if __name__ == "__main__":
+    unittest.main()

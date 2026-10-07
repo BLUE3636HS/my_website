@@ -8,6 +8,7 @@
     <section class="teacher-studylist-card">
     <p class="teacher-eyebrow">Submissions</p>
     <h1>自校提出物確認</h1>
+    {% if storage_notice %}<p role="alert" class="storage-error-notice">{{ storage_notice }}</p>{% endif %}
     <div class="teacher-table-scroll">
     <table border="1">
         <thead>

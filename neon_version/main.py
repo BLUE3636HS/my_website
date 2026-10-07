@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 from study_pdf import render_study_pdf
 from template_management import create_template_router
@@ -10,14 +10,16 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import closing
 from pathlib import Path
 from uuid import uuid4
-from file_storage import prepare_upload_directory, require_persistent_file_storage, UploadStaticFiles
+from file_storage import (StorageConfigurationError, StorageOperationError, delete as storage_delete,
+                          download as storage_download, object_key, require_storage, upload as storage_upload,
+                          valid_key)
 
 import pg_compat as dbapi
-import shutil, bcrypt, datetime, csv, secrets, io
+import bcrypt, datetime, csv, secrets, io
 import hashlib, hmac, logging
 from starlette.datastructures import UploadFile as StarletteUploadFile
-from studies import connect_studies, initialize_studies, get_templates, study_pdf_path, validate_pdf
-from study_images import normalize_study_image, study_image_path
+from studies import connect_studies, initialize_studies, get_templates, validate_pdf
+from study_images import normalize_study_image
 from urllib.parse import urlencode
 from PIL import Image, ImageOps, UnidentifiedImageError
 from notifications import (
@@ -34,13 +36,6 @@ from mentor_reservations import (
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "database" / "database.db"
-UPLOADS_DIR = (BASE_DIR / "uploads").resolve()
-PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "profile").resolve()
-STUDY_IMAGE_UPLOADS_DIR = (UPLOADS_DIR / "study-images").resolve()
-MENTOR_PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "mentor-profile").resolve()
-prepare_upload_directory(PROFILE_UPLOADS_DIR)
-prepare_upload_directory(STUDY_IMAGE_UPLOADS_DIR)
-prepare_upload_directory(MENTOR_PROFILE_UPLOADS_DIR)
 PROFILE_MAX_BYTES = 5 * 1024 * 1024
 PROFILE_MAX_PIXELS = 25_000_000
 PROFILE_IMAGE_SIZE = (512, 512)
@@ -212,8 +207,6 @@ def initialize_schema():
         initialize_studies(study_db)
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
-app.mount("/uploads/profile", UploadStaticFiles(PROFILE_UPLOADS_DIR), name="profile_uploads")
-app.mount("/uploads/mentor-profile", UploadStaticFiles(MENTOR_PROFILE_UPLOADS_DIR), name="mentor_profile_uploads")
 
 def student_template_context(request):
     user_id = request.session.get("user_id")
@@ -229,7 +222,7 @@ def student_template_context(request):
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"), context_processors=[student_template_context])
 app.include_router(create_template_router(lambda: DATABASE_PATH, templates))
-app.include_router(build_mentor_router(DATABASE_PATH, templates, MENTOR_PROFILE_UPLOADS_DIR))
+app.include_router(build_mentor_router(DATABASE_PATH, templates))
 
 COMMUNITY_PAGE_SIZE = 20
 
@@ -280,10 +273,9 @@ def cleanup_deleted_community_posts(db):
 def profile_image_url(filename):
     if not filename:
         return "/static/images/default_profile.svg"
-    safe_name = Path(filename).name
-    if safe_name != filename or not safe_name.endswith(".webp"):
+    if not isinstance(filename, str) or not valid_key(filename, "profile", {"webp"}):
         return "/static/images/default_profile.svg"
-    return f"/uploads/profile/{safe_name}"
+    return f"/uploads/profile/{filename.split('/')[-1]}"
 
 
 def profile_csrf_token(request):
@@ -300,15 +292,29 @@ def valid_profile_csrf(request, token):
 
 
 def delete_profile_file(filename):
-    if not filename or Path(filename).name != filename or not filename.endswith(".webp"):
-        return
-    target = (PROFILE_UPLOADS_DIR / filename).resolve()
-    if target.parent != PROFILE_UPLOADS_DIR:
+    if not filename or not valid_key(filename, "profile", {"webp"}):
         return
     try:
-        target.unlink(missing_ok=True)
-    except OSError:
-        pass
+        storage_delete(filename)
+    except (StorageConfigurationError, StorageOperationError):
+        logging.exception("Failed to delete obsolete profile object")
+
+
+@app.get("/uploads/profile/{filename}")
+async def get_profile_image(filename: str):
+    if Path(filename).name != filename or not filename.endswith(".webp"):
+        raise HTTPException(404)
+    with closing(dbapi.connect(DATABASE_PATH)) as db:
+        rows = db.execute("SELECT profile_image FROM student WHERE profile_image LIKE ?",
+                          ("profile/%/" + filename,)).fetchall()
+    key = next((row[0] for row in rows if valid_key(row[0], "profile", {"webp"})), None)
+    if not key:
+        raise HTTPException(404)
+    try:
+        content = await run_in_threadpool(storage_download, key)
+    except (StorageConfigurationError, StorageOperationError):
+        raise HTTPException(503, "プロフィール画像を取得できませんでした。")
+    return Response(content, media_type="image/webp", headers={"Cache-Control": "private, max-age=300"})
 
 
 def process_profile_image(contents):
@@ -586,8 +592,16 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
         # 静的ファイルなどはそのまま通す
         if (
             request.url.path.startswith("/static") or
-            request.url.path.startswith("/uploads")
+            request.url.path.startswith("/uploads/mentor-profile/")
         ):
+            return await call_next(request)
+
+        if request.url.path.startswith("/uploads/profile/"):
+            if request.session.get("user_login") is True or request.session.get("teacher_login") is True or request.session.get("admin_login") is True:
+                return await call_next(request)
+            return RedirectResponse("/login", status_code=303)
+
+        if request.url.path.startswith("/uploads/"):
             return await call_next(request)
 
         # public_paths は誰でもアクセス可能
@@ -863,32 +877,43 @@ async def pdf(id: int, request: Request):
                     continue
                 images = db.execute("""SELECT stored_name, caption FROM study_field_image
                     WHERE study_id=? AND field_id=? ORDER BY position,id""", (id, field[0])).fetchall()
+                downloaded_images = []
+                for name, caption in images:
+                    if not valid_key(name, "study-images", {"jpg", "png"}):
+                        raise HTTPException(404, "研究画像が見つかりません。", headers=headers)
+                    try:
+                        downloaded_images.append((io.BytesIO(await run_in_threadpool(storage_download, name)), caption))
+                    except (StorageConfigurationError, StorageOperationError):
+                        raise HTTPException(503, "研究画像を取得できませんでした。Storage設定を確認してください。", headers=headers)
                 sections.append({
                     'type': 'image', 'label': field[1], 'heading_font_size': field[3],
                     'body_font_size': field[4], 'hide_heading': bool(field[5]),
                     'heading_alignment': field[6], 'body_alignment': field[7],
                     'heading_bold': bool(field[8]), 'body_bold': bool(field[9]),
                     'image_size': field[11], 'image_alignment': field[12],
-                    'images': [(str(study_image_path(STUDY_IMAGE_UPLOADS_DIR, name)), caption)
-                               for name, caption in images]
+                    'images': downloaded_images
                 })
     if not study:
         raise HTTPException(404, "PDFが見つかりません。")
+    if study[1] == "pdf" and not valid_key(study[0], "study-pdfs", {"pdf"}):
+        # Existing local uploads are intentionally not migrated.
+        raise HTTPException(404, "PDFが見つかりません。", headers=headers)
     headers["Content-Disposition"] = f'inline; filename="study-{id}.pdf"'
     if study[1] == 'template':
         try:
             content = await run_in_threadpool(render_study_pdf, sections, study[3])
+        except (StorageConfigurationError, StorageOperationError):
+            raise HTTPException(503, "研究PDFの生成に必要な画像を取得できませんでした。", headers=headers)
         except Exception:
             logging.exception("Failed to render research PDF %s", id)
             raise HTTPException(500, "PDFの生成に失敗しました。", headers=headers)
         return Response(content, media_type="application/pdf", headers=headers)
     try:
-        target = study_pdf_path(UPLOADS_DIR, study[0])
-    except ValueError:
-        raise HTTPException(404, "PDFが見つかりません。")
-    if not target.is_file():
-        raise HTTPException(404, "PDFが見つかりません。")
-    return FileResponse(target, media_type="application/pdf", headers=headers)
+        content = await run_in_threadpool(storage_download, study[0])
+    except (StorageConfigurationError, StorageOperationError):
+        raise HTTPException(503, "研究PDFを取得できませんでした。Storage設定を確認してください。", headers=headers)
+    headers["Content-Type"] = "application/pdf"
+    return Response(content, media_type="application/pdf", headers=headers)
 
 @app.get("/reservation", response_class = HTMLResponse)
 async def ReservationPage(request: Request, day: str = None):
@@ -1621,7 +1646,8 @@ async def AdminStudiesPage(request: Request):
         context={
             "request": request,
             "admin_id": request.session.get("admin_id"),
-            "studies": studies
+            "studies": studies,
+            "storage_notice": request.session.pop("admin_studies_notice", None)
         }
     )
 
@@ -1644,28 +1670,21 @@ async def AdminDeleteStudy(request: Request, study_id: int):
 
             image_names = [row[0] for row in db.execute(
                 "SELECT stored_name FROM study_field_image WHERE study_id=?", (study_id,)).fetchall()]
+            # Delete stored objects before removing their database references.
+            if valid_key(study[0], "study-pdfs", {"pdf"}):
+                storage_delete(study[0])
+            for key in image_names:
+                if valid_key(key, "study-images", {"jpg", "png"}):
+                    storage_delete(key)
             db.execute("DELETE FROM study WHERE id = ?", (study_id,))
             db.commit()
-        except dbapi.Error:
-            db.rollback()
-            raise
-
-    pdfpath = study[0]
-    if pdfpath:
-        try:
-            target_path = study_pdf_path(UPLOADS_DIR, pdfpath)
-        except ValueError:
-            pass
-        else:
+        except (dbapi.Error, StorageConfigurationError, StorageOperationError):
             try:
-                target_path.unlink(missing_ok=True)
-            except OSError:
-                logging.exception("Failed to delete research PDF %s", target_path)
-    for stored_name in image_names:
-        try:
-            study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name).unlink(missing_ok=True)
-        except (ValueError, OSError):
-            logging.exception("Failed to delete research image %s", stored_name)
+                db.rollback()
+            except dbapi.Error:
+                pass
+            request.session["admin_studies_notice"] = "ファイルを削除できませんでした。Storageの設定または接続を確認してください。"
+            return RedirectResponse("/admin/studies", status_code=303)
 
     return RedirectResponse("/admin/studies", status_code=303)
 
@@ -2140,23 +2159,31 @@ async def UpdateProfileImage(
         request.session["profile_notice"] = {"type": "error", "message": error}
         return RedirectResponse("/mypage/edit", status_code=303)
 
-    require_persistent_file_storage()
-    new_filename = f"{uuid4().hex}.webp"
-    final_path = PROFILE_UPLOADS_DIR / new_filename
-    temporary_path = PROFILE_UPLOADS_DIR / f".{new_filename}.tmp"
     try:
-        temporary_path.write_bytes(processed)
-        temporary_path.replace(final_path)
+        require_storage()
+    except HTTPException:
+        request.session["profile_notice"] = {"type": "error", "message": "Neon Storageの設定または接続を確認してください。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+    new_filename = object_key("profile", user_id, "image.webp")
+    uploaded = False
+    try:
+        old_row = None
         with closing(dbapi.connect(DATABASE_PATH, timeout=10)) as db:
             old_row = db.execute("SELECT profile_image FROM student WHERE id = ?", (user_id,)).fetchone()
             if old_row is None:
                 raise RuntimeError("student not found")
             old_filename = old_row[0]
+        storage_upload(new_filename, processed, "image/webp")
+        uploaded = True
+        with closing(dbapi.connect(DATABASE_PATH, timeout=10)) as db:
             db.execute("UPDATE student SET profile_image = ? WHERE id = ?", (new_filename, user_id))
             db.commit()
-    except (OSError, dbapi.Error, RuntimeError):
-        temporary_path.unlink(missing_ok=True)
-        final_path.unlink(missing_ok=True)
+    except (dbapi.Error, RuntimeError, StorageConfigurationError, StorageOperationError):
+        if uploaded:
+            try:
+                storage_delete(new_filename)
+            except Exception:
+                logging.exception("Failed to clean up unreferenced profile image")
         request.session["profile_notice"] = {"type": "error", "message": "プロフィール画像の保存に失敗しました。"}
         return RedirectResponse("/mypage/edit", status_code=303)
 
@@ -2180,9 +2207,12 @@ async def DeleteProfileImage(request: Request, csrf_token: str = Form("")):
             if row is None:
                 raise RuntimeError("student not found")
             old_filename = row[0]
+        if old_filename and valid_key(old_filename, "profile", {"webp"}):
+            storage_delete(old_filename)
+        with closing(dbapi.connect(DATABASE_PATH, timeout=10)) as db:
             db.execute("UPDATE student SET profile_image = NULL WHERE id = ?", (user_id,))
             db.commit()
-    except (dbapi.Error, RuntimeError):
+    except (dbapi.Error, RuntimeError, StorageConfigurationError, StorageOperationError):
         request.session["profile_notice"] = {"type": "error", "message": "プロフィール画像の削除に失敗しました。"}
         return RedirectResponse("/mypage/edit", status_code=303)
     delete_profile_file(old_filename)
@@ -2679,7 +2709,8 @@ async def StudyList(request: Request):
             "teacher_login": request.session.get("teacher_login"),
             "teacher_id": teacher_id,
             "csrf_token": csrf_token,
-            "delete_succeeded": delete_succeeded
+            "delete_succeeded": delete_succeeded,
+            "storage_notice": request.session.pop("teacher_studylist_notice", None)
         }
     )
 
@@ -2727,6 +2758,11 @@ async def TeacherDeleteStudy(
 
             image_names = [row[0] for row in db.execute(
                 "SELECT stored_name FROM study_field_image WHERE study_id=?", (study_id,)).fetchall()]
+            if valid_key(study[0], "study-pdfs", {"pdf"}):
+                storage_delete(study[0])
+            for key in image_names:
+                if valid_key(key, "study-images", {"jpg", "png"}):
+                    storage_delete(key)
             deleted_count = db.execute("""
                 DELETE FROM study
                 WHERE id = ?
@@ -2741,28 +2777,15 @@ async def TeacherDeleteStudy(
                 db.rollback()
                 return redirect
             db.commit()
-        except dbapi.Error:
-            db.rollback()
+        except (dbapi.Error, StorageConfigurationError, StorageOperationError):
+            try:
+                db.rollback()
+            except dbapi.Error:
+                pass
+            request.session["teacher_studylist_notice"] = "ファイルを削除できませんでした。Storageの設定または接続を確認してください。"
             return redirect
 
     request.session["teacher_studylist_csrf_token"] = secrets.token_urlsafe(32)
-    pdfpath = study[0]
-    if pdfpath:
-        try:
-            target_path = study_pdf_path(UPLOADS_DIR, pdfpath)
-        except ValueError:
-            pass
-        else:
-            try:
-                target_path.unlink(missing_ok=True)
-            except OSError:
-                logging.exception("Failed to delete research PDF %s", target_path)
-    for stored_name in image_names:
-        try:
-            study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name).unlink(missing_ok=True)
-        except (ValueError, OSError):
-            logging.exception("Failed to delete research image %s", stored_name)
-
     request.session["teacher_studylist_delete_succeeded"] = True
     return redirect
 
@@ -2960,11 +2983,9 @@ async def Add(request: Request):
             raise HTTPException(422, "名前を入力してください。")
         if not introduce.strip():
             raise HTTPException(422, "紹介文を入力してください。")
-        temporary = final = None
-        created_image_paths = []
+        uploaded_objects = []
         try:
             with closing(connect_studies(DATABASE_PATH)) as db:
-                # Serialize duplicate requests before checking the unique key.
                 with db:
                     db.execute("BEGIN IMMEDIATE")
                     previous = db.execute("SELECT id FROM study WHERE submission_key = ?", (submission_key,)).fetchone()
@@ -3018,16 +3039,10 @@ async def Add(request: Request):
                                     content, image_format, width, height, suffix, original_name = normalize_study_image(upload)
                                 except ValueError as exc:
                                     raise HTTPException(422, f"「{label}」: {exc}")
-                                require_persistent_file_storage()
-                                stored_name = uuid4().hex + suffix
-                                image_final = study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name)
-                                image_temporary = image_final.with_name("." + image_final.name + ".tmp")
-                                created_image_paths.append(image_temporary)
-                                with image_temporary.open("xb") as output:
-                                    output.write(content)
-                                image_temporary.replace(image_final)
-                                created_image_paths.remove(image_temporary)
-                                created_image_paths.append(image_final)
+                                require_storage()
+                                stored_name = object_key("study-images", user_id, "image" + suffix)
+                                storage_upload(stored_name, content, "image/jpeg" if image_format == "JPEG" else "image/png")
+                                uploaded_objects.append(stored_name)
                                 image_values.append((field_id, position, stored_name, original_name,
                                                      caption, image_format, width, height))
                     else:
@@ -3038,14 +3053,12 @@ async def Add(request: Request):
                             validate_pdf(upload)
                         except ValueError as exc:
                             raise HTTPException(422, str(exc))
-                        require_persistent_file_storage()
+                        require_storage()
                         filename = upload.filename.replace("\\", "/").rsplit("/", 1)[-1]
-                        pdfpath = uuid4().hex + ".pdf"
-                        final = study_pdf_path(UPLOADS_DIR, pdfpath)
-                        temporary = final.with_suffix(".tmp")
-                        with temporary.open("xb") as output:
-                            shutil.copyfileobj(upload.file, output)
-                        temporary.replace(final)
+                        pdfpath = object_key("study-pdfs", user_id, "document.pdf")
+                        upload.file.seek(0)
+                        storage_upload(pdfpath, upload.file.read(), "application/pdf")
+                        uploaded_objects.append(pdfpath)
                     result = db.execute("""INSERT INTO study
                         (name, introduce, filename, pdfpath, userid, time, registration_type, template_id, submission_key)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
@@ -3060,17 +3073,16 @@ async def Add(request: Request):
                         [(study_id, *value) for value in image_values])
             return JSONResponse({"ok": True, "id": study_id}, status_code=201)
         except Exception as exc:
-            for path in (temporary, final):
-                if path is not None:
-                    try:
-                        path.unlink(missing_ok=True)
-                    except OSError:
-                        logging.exception("Failed to clean research file %s", path)
-            for path in created_image_paths:
+            cleanup_failed = False
+            for key in uploaded_objects:
                 try:
-                    path.unlink(missing_ok=True)
-                except OSError:
-                    logging.exception("Failed to clean research image %s", path)
+                    storage_delete(key)
+                except Exception:
+                    cleanup_failed = True
+                    logging.exception("Failed to clean unreferenced research object")
+            if isinstance(exc, (StorageConfigurationError, StorageOperationError)) or cleanup_failed:
+                logging.exception("Research Storage operation failed")
+                raise HTTPException(503, "ファイルの保存に失敗しました。Storage設定を確認してください。")
             if isinstance(exc, HTTPException):
                 raise
             logging.exception("Research submission failed")

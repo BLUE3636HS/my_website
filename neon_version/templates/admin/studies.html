@@ -18,6 +18,8 @@
             <span class="studies-count" aria-label="登録件数">{{ studies|length }} 件</span>
         </div>
 
+        {% if storage_notice %}<p role="alert" class="storage-error-notice">{{ storage_notice }}</p>{% endif %}
+
         <div class="studies-table-container">
             {% if studies %}
             <table class="studies-admin-table">
