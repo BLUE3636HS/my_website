@@ -7,6 +7,7 @@ from contextlib import closing
 from pathlib import Path
 from urllib.parse import urlencode
 from uuid import uuid4
+from file_storage import prepare_upload_directory, require_persistent_file_storage
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -194,7 +195,7 @@ def mentor_reservations_for_student(db, student_id):
 def build_router(database_path, templates, uploads_dir=None):
     router = APIRouter()
     uploads_dir = Path(uploads_dir or (Path(database_path).resolve().parent / "mentor-profile-uploads")).resolve()
-    uploads_dir.mkdir(parents=True, exist_ok=True)
+    prepare_upload_directory(uploads_dir)
 
     @router.get("/admin/mentor-profile", response_class=HTMLResponse)
     async def admin_mentor_profile(request: Request):
@@ -243,6 +244,8 @@ def build_router(database_path, templates, uploads_dir=None):
             if error:
                 request.session["mentor_profile_notice"] = {"type": "error", "message": error}
                 return RedirectResponse("/admin/mentor-profile", 303)
+        if processed:
+            require_persistent_file_storage()
         now = datetime.datetime.now(JST).isoformat()
         new_filename = f"{uuid4().hex}.webp" if processed else None
         temporary_path = uploads_dir / f".{new_filename}.tmp" if new_filename else None

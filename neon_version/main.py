@@ -10,6 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import closing
 from pathlib import Path
 from uuid import uuid4
+from file_storage import prepare_upload_directory, require_persistent_file_storage, UploadStaticFiles
 
 import pg_compat as dbapi
 import shutil, bcrypt, datetime, csv, secrets, io
@@ -37,9 +38,9 @@ UPLOADS_DIR = (BASE_DIR / "uploads").resolve()
 PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "profile").resolve()
 STUDY_IMAGE_UPLOADS_DIR = (UPLOADS_DIR / "study-images").resolve()
 MENTOR_PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "mentor-profile").resolve()
-PROFILE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-STUDY_IMAGE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-MENTOR_PROFILE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+prepare_upload_directory(PROFILE_UPLOADS_DIR)
+prepare_upload_directory(STUDY_IMAGE_UPLOADS_DIR)
+prepare_upload_directory(MENTOR_PROFILE_UPLOADS_DIR)
 PROFILE_MAX_BYTES = 5 * 1024 * 1024
 PROFILE_MAX_PIXELS = 25_000_000
 PROFILE_IMAGE_SIZE = (512, 512)
@@ -211,8 +212,8 @@ def initialize_schema():
         initialize_studies(study_db)
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
-app.mount("/uploads/profile", StaticFiles(directory=str(PROFILE_UPLOADS_DIR)), name="profile_uploads")
-app.mount("/uploads/mentor-profile", StaticFiles(directory=str(MENTOR_PROFILE_UPLOADS_DIR)), name="mentor_profile_uploads")
+app.mount("/uploads/profile", UploadStaticFiles(PROFILE_UPLOADS_DIR), name="profile_uploads")
+app.mount("/uploads/mentor-profile", UploadStaticFiles(MENTOR_PROFILE_UPLOADS_DIR), name="mentor_profile_uploads")
 
 def student_template_context(request):
     user_id = request.session.get("user_id")
@@ -2139,6 +2140,7 @@ async def UpdateProfileImage(
         request.session["profile_notice"] = {"type": "error", "message": error}
         return RedirectResponse("/mypage/edit", status_code=303)
 
+    require_persistent_file_storage()
     new_filename = f"{uuid4().hex}.webp"
     final_path = PROFILE_UPLOADS_DIR / new_filename
     temporary_path = PROFILE_UPLOADS_DIR / f".{new_filename}.tmp"
@@ -3016,6 +3018,7 @@ async def Add(request: Request):
                                     content, image_format, width, height, suffix, original_name = normalize_study_image(upload)
                                 except ValueError as exc:
                                     raise HTTPException(422, f"「{label}」: {exc}")
+                                require_persistent_file_storage()
                                 stored_name = uuid4().hex + suffix
                                 image_final = study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name)
                                 image_temporary = image_final.with_name("." + image_final.name + ".tmp")
@@ -3035,6 +3038,7 @@ async def Add(request: Request):
                             validate_pdf(upload)
                         except ValueError as exc:
                             raise HTTPException(422, str(exc))
+                        require_persistent_file_storage()
                         filename = upload.filename.replace("\\", "/").rsplit("/", 1)[-1]
                         pdfpath = uuid4().hex + ".pdf"
                         final = study_pdf_path(UPLOADS_DIR, pdfpath)

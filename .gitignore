@@ -1,5 +1,6 @@
 # 仮想環境
 .venv/
+.test-venv/
 
 # Python
 __pycache__/
