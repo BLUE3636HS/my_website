@@ -10,44 +10,41 @@
         <link rel="stylesheet" href="/static/registration.css">
     </head>
     <body>
-        <main>
+        <main class="registration-page student-mode">
             <div id="tab">
-                <button id="student_form_btn" class="active">生徒用</button>
-                <button id="teacher_form_btn">先生用</button>
-            </div><br>
+                <button type="button" id="student_form_btn" class="active" aria-selected="true">生徒用</button>
+                <button type="button" id="teacher_form_btn" aria-selected="false">先生用</button>
+            </div>
             <div id="student_form">
-                <h2>生徒用会員登録</h2><br>
-                <label for="student_id">ID</label><br>
-                <input type="text" id="student_id"><br>
-                <em>8文字以上の半角英数字、記号も可</em><br><br>
-                <label for="student_pwd">パスワード</label><br>
-                <input type="password" id="student_pwd"><br>
-                <em>8文字以上の半角英数字どちらむ含む、記号も可</em><br><br>
-                <label for="student_school">学校</label><br>
-                <select id="student_school">
-                    <option value="notselect" selected disabled>学校を選択してください</option>
-                    {% for school in schools %}
-                    <option value="{{ school }}">{{ school }}</option>
-                    {% endfor %}
-                </select><br><br>
-                <button type="button" id="student_reg_btn">生徒登録</button><br><br>
+                <h2>生徒用会員登録</h2>
+                <label for="student_id">ID</label>
+                <input type="text" id="student_id" maxlength="128">
+                <em>8文字以上の半角英数字、記号も可</em>
+                <label for="student_pwd">パスワード</label>
+                <input type="password" id="student_pwd" autocomplete="new-password" maxlength="72">
+                <em>8文字以上の半角英数字どちらむ含む、記号も可</em>
+                <label for="student_email">メールアドレス</label>
+                <input type="email" id="student_email" autocomplete="email" maxlength="254">
+                <button type="button" id="student_reg_btn">生徒登録</button>
+                <p id="student_registration_message" role="status" aria-live="polite"></p>
+                <a id="school-register-link" href="/school-registration">学校用会員登録はこちら</a>
             </div>
             <div id="teacher_form">
-                <h2>先生用会員登録</h2><br>
-                <label for="teacher_id">ID</label><br>
-                <input type="text" id="teacher_id"><br>
-                <em>8文字以上の半角英数字、記号も可</em><br><br>
-                <label for="teacher_pwd">パスワード</label><br>
-                <input type="password" id="teacher_pwd"><br>
-                <em>8文字以上の半角英数字どちらむ含む、記号も可</em><br><br>
-                <label for="teacher_school">学校</label><br>
+                <h2>先生用会員登録</h2>
+                <label for="teacher_id">ID</label>
+                <input type="text" id="teacher_id">
+                <em>8文字以上の半角英数字、記号も可</em>
+                <label for="teacher_pwd">パスワード</label>
+                <input type="password" id="teacher_pwd">
+                <em>8文字以上の半角英数字どちらむ含む、記号も可</em>
+                <label for="teacher_school">学校</label>
                 <select id="teacher_school">
                     <option value="notselect" selected disabled>学校を選択してください</option>
                     {% for school in schools %}
                     <option value="{{ school }}">{{ school }}</option>
                     {% endfor %}
-                </select><br><br>
-                <button type="button" id="teacher_reg_btn">先生登録</button><br><br>
+                </select>
+                <button type="button" id="teacher_reg_btn">先生登録</button>
             </div>
             <a href="/login">ログインに戻る</a>
         </main>

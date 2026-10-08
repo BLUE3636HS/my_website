@@ -29,6 +29,10 @@ from mentor_reservations import (
     initialize_mentor_tables,
     mentor_image_url,
 )
+from school_registration import (
+    initialize_school_registration,
+    register_school_student,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "database" / "database.db"
@@ -161,6 +165,7 @@ if cursor.execute(
             "INSERT INTO schema_migration (name, applied_at) VALUES (?, ?)",
             (reservation_capacity_migration, datetime.datetime.now(JST).isoformat())
         )
+initialize_school_registration(conn)
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS reservation_available_slot (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -639,6 +644,7 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
         public_paths = [
             "/login",
             "/registration",
+            "/school-registration",
             "/session",
             "/logout",
             "/admin/login"
@@ -2099,6 +2105,14 @@ async def Registration(request: Request):
         }
     )
 
+@app.get("/school-registration")
+async def SchoolRegistration(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="school_registration.html",
+        context={"request": request},
+    )
+
 @app.get("/logout")
 async def Logout(request: Request):
     request.session.pop("user_login", None)
@@ -2904,51 +2918,17 @@ async def Login(
 
 @app.post("/registration")
 async def Registration(
+    request: Request,
     type: str = Form(...),
-    id: str = Form(...),
-    pwd: str = Form(...),
-    school: str = Form(...)
+    id: str = Form(""),
+    pwd: str = Form(""),
+    school: str = Form(""),
+    email: str = Form("")
 ):
     #生徒用
     if type == "student":
-        if (id.isascii() and
-            len(id) > 7 and
-            
-            pwd.isascii() and
-            len(pwd) > 7 and
-            any(i.isalpha() for i in pwd) and
-            any(i.isdigit() for i in pwd) and
-
-            school != "notselect"
-            ):
-            #IDがかぶっていないかチェック
-            cursor.execute(
-                "SELECT * FROM student WHERE id = ?",
-                (id,)
-            )
-
-            if cursor.fetchone() != None:
-                return {"result": 2}
-            else: 
-                #dbにIDとパスワードに追加
-                hashed_pwd = bcrypt.hashpw(
-                    pwd.encode(),
-                    bcrypt.gensalt()
-                ).decode()
-                cursor.execute(
-                    """
-                    INSERT INTO student (id, pwd, school)
-                    VALUES (?, ?, ?)
-                    """,
-                    (id, hashed_pwd, school)
-                )
-                conn.commit()
-                
-                print("dbに情報を追加")
-
-                return {"result": 0}
-        else:
-            return {"result": 1}
+        # メールはUIだけで受け取り保存しない。将来有効化する際は正規化と一意制約を追加する。
+        return {"result": 3, "message": "未実装の機能です"}
     #先生用
     elif type == "teacher":
         if (id.isascii() and
@@ -2989,6 +2969,44 @@ async def Registration(
                 return {"result": 0}
         else:
             return {"result": 1}
+
+@app.post("/school-registration")
+async def SchoolRegistrationPost(
+    request: Request,
+    id: str = Form(...),
+    pwd: str = Form(...),
+    school_id: str = Form(...),
+):
+    source_ip = request.client.host if request.client else "unknown"
+    result = await run_in_threadpool(
+        register_school_student,
+        DATABASE_PATH,
+        id,
+        pwd,
+        school_id,
+        source_ip,
+    )
+    if result == "created":
+        return {"result": 0, "message": "登録しました"}
+    if result == "rate_limited":
+        return JSONResponse(
+            status_code=429,
+            content={"result": 1, "message": "時間をおいて再度お試しください。"},
+        )
+    if result == "duplicate":
+        return JSONResponse(
+            status_code=409,
+            content={"result": 2, "message": "そのIDはすでに使用されています。"},
+        )
+    if result == "unavailable":
+        return JSONResponse(
+            status_code=500,
+            content={"result": 1, "message": "登録できませんでした。時間をおいて再度お試しください。"},
+        )
+    return JSONResponse(
+        status_code=400,
+        content={"result": 1, "message": "入力内容を確認してください。"},
+    )
 
 @app.post("/addform")
 async def Add(request: Request):

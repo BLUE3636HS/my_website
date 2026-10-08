@@ -8,6 +8,8 @@ __pycache__/
 
 # SQLite
 *.db-journal
+main/database/.school_id_pepper
+main/database/*.bak
 
 # Local secrets
 .env
