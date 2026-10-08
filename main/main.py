@@ -29,6 +29,11 @@ from mentor_reservations import (
     initialize_mentor_tables,
     mentor_image_url,
 )
+from admin_management import migrate_admin_database, build_admin_router, active_admin, session_secret, build_password_router
+from school_registration import (
+    initialize_school_registration,
+    register_school_student,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "database" / "database.db"
@@ -161,6 +166,7 @@ if cursor.execute(
             "INSERT INTO schema_migration (name, applied_at) VALUES (?, ?)",
             (reservation_capacity_migration, datetime.datetime.now(JST).isoformat())
         )
+initialize_school_registration(conn)
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS reservation_available_slot (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -263,12 +269,17 @@ if "returned" not in equipment_room_reservation_columns:
 initialize_notification_tables(conn)
 initialize_mentor_tables(conn)
 conn.commit()
+migrate_admin_database(DATABASE_PATH)
 with closing(connect_studies(DATABASE_PATH)) as study_db:
     initialize_studies(study_db)
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 app.mount("/uploads/profile", StaticFiles(directory=str(PROFILE_UPLOADS_DIR)), name="profile_uploads")
 app.mount("/uploads/mentor-profile", StaticFiles(directory=str(MENTOR_PROFILE_UPLOADS_DIR)), name="mentor_profile_uploads")
+
+def admin_template_context(request):
+    return {"is_super_admin": getattr(request.state, "admin_role", None) == "super_admin"}
+
 
 def student_template_context(request):
     user_id = request.session.get("user_id")
@@ -282,7 +293,9 @@ def student_template_context(request):
     return {"unread_notification_count": unread_count}
 
 
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"), context_processors=[student_template_context])
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"), context_processors=[student_template_context, admin_template_context])
+app.include_router(build_admin_router(DATABASE_PATH, templates))
+app.include_router(build_password_router(DATABASE_PATH))
 app.include_router(create_template_router(lambda: DATABASE_PATH, templates))
 app.include_router(build_mentor_router(DATABASE_PATH, templates, MENTOR_PROFILE_UPLOADS_DIR))
 
@@ -634,11 +647,23 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
                 request.session.pop("admin_time", None)
                 print("adminログアウト")
 
+        # Reload authority from SQLite on every request, including the login page.
+        request.state.admin_role = None
+        if request.session.get("admin_login") is True:
+            with closing(sqlite3.connect(DATABASE_PATH)) as db:
+                admin = active_admin(db, request)
+            if admin is None:
+                for key in ("admin_login", "admin_id", "admin_time"):
+                    request.session.pop(key, None)
+            else:
+                request.state.admin_role = admin[2]
+
         #ログインが必要なページにアクセスした場合、ログインページにリダイレクト
         #ログインなしでもアクセスできるページを定義
         public_paths = [
             "/login",
             "/registration",
+            "/school-registration",
             "/session",
             "/logout",
             "/admin/login"
@@ -681,7 +706,7 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
 app.add_middleware(LoginCheckMiddleware)
 app.add_middleware(
     SessionMiddleware,
-    secret_key="TEKNE"
+    secret_key=session_secret(DATABASE_PATH)
 )
 
 RESERVATION_OPEN_MINUTES = 9 * 60
@@ -725,7 +750,7 @@ def reservation_slot_summary(db, day, admin_id=None):
         """
         SELECT start_time, COUNT(*)
         FROM reservation_available_slot
-        WHERE day = ?
+        WHERE day = ? AND admin_id NOT IN (SELECT id FROM admin WHERE deleted_at IS NOT NULL)
         GROUP BY start_time
         """,
         (day,)
@@ -994,6 +1019,7 @@ async def ReservationAvailableDays(month: str):
                 """
                 SELECT DISTINCT day FROM reservation_available_slot
                 WHERE day >= ? AND day < ? AND day >= ?
+                AND admin_id NOT IN (SELECT id FROM admin WHERE deleted_at IS NOT NULL)
                 ORDER BY day
                 """,
                 (month_start.isoformat(), month_end.isoformat(), today.isoformat())
@@ -1055,7 +1081,7 @@ async def AdminLoginPage(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="admin/login.html",
-        context={"request": request}
+        context={"request": request, "notice": request.session.pop("admin_password_notice", None)}
     )
 
 @app.post("/admin/login")
@@ -1064,10 +1090,14 @@ async def AdminLogin(
     id: str = Form(...),
     pwd: str = Form(...)
 ):
-    cursor.execute("SELECT pwd FROM admin WHERE id = ?", (id,))
+    cursor.execute("SELECT pwd, session_version FROM admin WHERE id = ? AND deleted_at IS NULL", (id,))
     admin = cursor.fetchone()
 
-    if admin is None or not bcrypt.checkpw(pwd.encode(), admin[0].encode()):
+    try:
+        authenticated = admin is not None and bcrypt.checkpw(pwd.encode(), admin[0].encode())
+    except ValueError:
+        authenticated = False
+    if not authenticated:
         return templates.TemplateResponse(
             request=request,
             name="admin/login.html",
@@ -1075,8 +1105,10 @@ async def AdminLogin(
             status_code=401
         )
 
+    request.session.clear()
     request.session["admin_login"] = True
     request.session["admin_id"] = id
+    request.session["admin_session_version"] = admin[1]
     request.session["admin_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return RedirectResponse("/admin/mypage", status_code=303)
 
@@ -1818,7 +1850,7 @@ async def AdminDeleteAccount(
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
         try:
             admin = db.execute(
-                "SELECT pwd FROM admin WHERE id = ?",
+                "SELECT pwd FROM admin WHERE id = ? AND deleted_at IS NULL",
                 (session_admin_id,)
             ).fetchone()
 
@@ -2097,6 +2129,14 @@ async def Registration(request: Request):
             "request": request,
             "schools": schools
         }
+    )
+
+@app.get("/school-registration")
+async def SchoolRegistration(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="school_registration.html",
+        context={"request": request},
     )
 
 @app.get("/logout")
@@ -2904,51 +2944,17 @@ async def Login(
 
 @app.post("/registration")
 async def Registration(
+    request: Request,
     type: str = Form(...),
-    id: str = Form(...),
-    pwd: str = Form(...),
-    school: str = Form(...)
+    id: str = Form(""),
+    pwd: str = Form(""),
+    school: str = Form(""),
+    email: str = Form("")
 ):
     #生徒用
     if type == "student":
-        if (id.isascii() and
-            len(id) > 7 and
-            
-            pwd.isascii() and
-            len(pwd) > 7 and
-            any(i.isalpha() for i in pwd) and
-            any(i.isdigit() for i in pwd) and
-
-            school != "notselect"
-            ):
-            #IDがかぶっていないかチェック
-            cursor.execute(
-                "SELECT * FROM student WHERE id = ?",
-                (id,)
-            )
-
-            if cursor.fetchone() != None:
-                return {"result": 2}
-            else: 
-                #dbにIDとパスワードに追加
-                hashed_pwd = bcrypt.hashpw(
-                    pwd.encode(),
-                    bcrypt.gensalt()
-                ).decode()
-                cursor.execute(
-                    """
-                    INSERT INTO student (id, pwd, school)
-                    VALUES (?, ?, ?)
-                    """,
-                    (id, hashed_pwd, school)
-                )
-                conn.commit()
-                
-                print("dbに情報を追加")
-
-                return {"result": 0}
-        else:
-            return {"result": 1}
+        # メールはUIだけで受け取り保存しない。将来有効化する際は正規化と一意制約を追加する。
+        return {"result": 3, "message": "未実装の機能です"}
     #先生用
     elif type == "teacher":
         if (id.isascii() and
@@ -2989,6 +2995,44 @@ async def Registration(
                 return {"result": 0}
         else:
             return {"result": 1}
+
+@app.post("/school-registration")
+async def SchoolRegistrationPost(
+    request: Request,
+    id: str = Form(...),
+    pwd: str = Form(...),
+    school_id: str = Form(...),
+):
+    source_ip = request.client.host if request.client else "unknown"
+    result = await run_in_threadpool(
+        register_school_student,
+        DATABASE_PATH,
+        id,
+        pwd,
+        school_id,
+        source_ip,
+    )
+    if result == "created":
+        return {"result": 0, "message": "登録しました"}
+    if result == "rate_limited":
+        return JSONResponse(
+            status_code=429,
+            content={"result": 1, "message": "時間をおいて再度お試しください。"},
+        )
+    if result == "duplicate":
+        return JSONResponse(
+            status_code=409,
+            content={"result": 2, "message": "そのIDはすでに使用されています。"},
+        )
+    if result == "unavailable":
+        return JSONResponse(
+            status_code=500,
+            content={"result": 1, "message": "登録できませんでした。時間をおいて再度お試しください。"},
+        )
+    return JSONResponse(
+        status_code=400,
+        content={"result": 1, "message": "入力内容を確認してください。"},
+    )
 
 @app.post("/addform")
 async def Add(request: Request):

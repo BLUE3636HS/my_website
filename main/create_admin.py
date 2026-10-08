@@ -2,9 +2,11 @@
 
 import getpass
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import bcrypt
+from admin_management import migrate_admin_database, validate_admin
 
 
 DATABASE_PATH = Path(__file__).resolve().parent / "database" / "database.db"
@@ -14,21 +16,15 @@ def main():
     admin_id = input("Admin ID: ").strip()
     password = getpass.getpass("Password: ")
 
-    if not admin_id or len(admin_id) > 128:
-        print("管理者IDは1〜128文字で入力してください。")
-        return
-    if len(password) < 12:
-        print("パスワードは12文字以上で入力してください。")
+    name = ''  # The account owner sets their profile after login.
+    try:
+        validate_admin(admin_id, name, password)
+    except ValueError as exc:
+        print(str(exc))
         return
 
-    with sqlite3.connect(DATABASE_PATH) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS admin (
-                id TEXT PRIMARY KEY NOT NULL,
-                pwd TEXT NOT NULL
-            )
-        """)
-
+    migrate_admin_database(DATABASE_PATH)
+    with closing(sqlite3.connect(DATABASE_PATH)) as conn, conn:
         existing = conn.execute(
             "SELECT 1 FROM admin WHERE id = ?", (admin_id,)
         ).fetchone()
@@ -38,8 +34,8 @@ def main():
 
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         conn.execute(
-            "INSERT INTO admin (id, pwd) VALUES (?, ?)",
-            (admin_id, password_hash)
+            "INSERT INTO admin (id, pwd, name, role) VALUES (?, ?, ?, 'super_admin')",
+            (admin_id, password_hash, name)
         )
 
     print("管理者アカウントを登録しました。")

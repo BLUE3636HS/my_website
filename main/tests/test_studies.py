@@ -54,6 +54,8 @@ class StudyTests(unittest.TestCase):
         with closing(connect_studies(self.path)) as db:
             db.executescript("""CREATE TABLE student(id TEXT, pwd TEXT, school TEXT);
                 CREATE TABLE teacher(id TEXT, pwd TEXT, school TEXT);
+                CREATE TABLE admin(id TEXT PRIMARY KEY, pwd TEXT, name TEXT, role TEXT, deleted_at TEXT, session_version INTEGER DEFAULT 0);
+                INSERT INTO admin VALUES ('person', 'x', 'Person', 'admin', NULL, 0);
                 INSERT INTO student VALUES ('a', 'x', 'school1'), ('b', 'x', 'school2');
                 INSERT INTO teacher VALUES ('teacher1', 'x', 'school1');
                 CREATE TABLE unrelated(value TEXT);

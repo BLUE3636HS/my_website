@@ -18,7 +18,7 @@
                 <nav class="nav-menu" aria-label="管理者メニュー">
                     <a class="nav-link" href="/admin/reservation"{% if current_path == '/admin/reservation' or current_path.startswith('/admin/reservation/') %} aria-current="page"{% endif %}>TEKNE工作室予約確認</a>
                     <a class="nav-link" href="/admin/reservation-schedule"{% if current_path == '/admin/reservation-schedule' or current_path.startswith('/admin/reservation-schedule/') %} aria-current="page"{% endif %}>予約可能時間設定</a>
-                    <a class="nav-link" href="/admin/mentor-profile"{% if current_path.startswith('/admin/mentor-profile') %} aria-current="page"{% endif %}>大学生メンター情報</a>
+                    <a class="nav-link" href="/admin/profile"{% if current_path.startswith('/admin/profile') or current_path.startswith('/admin/mentor-profile') %} aria-current="page"{% endif %}>管理者情報</a>
                     <a class="nav-link" href="/admin/mentor-schedule"{% if current_path.startswith('/admin/mentor-schedule') %} aria-current="page"{% endif %}>メンター対応可能時間</a>
                     <a class="nav-link" href="/admin/mentor-reservations"{% if current_path.startswith('/admin/mentor-reservations') %} aria-current="page"{% endif %}>メンター予約確認</a>
                     <a class="nav-link" href="/admin/equipment-reservation"{% if current_path == '/admin/equipment-reservation' or current_path.startswith('/admin/equipment-reservation/') %} aria-current="page"{% endif %}>実験器具予約確認</a>
@@ -27,6 +27,9 @@
                     <a class="nav-link" href="/admin/community"{% if current_path == '/admin/community' or current_path.startswith('/admin/community/') %} aria-current="page"{% endif %}>TEKNEコミュニティ管理</a>
                     <a class="nav-link" href="/admin/notifications"{% if current_path == '/admin/notifications' or current_path.startswith('/admin/notifications/') %} aria-current="page"{% endif %}>通知管理</a>
                     <a class="nav-link" href="/admin/accounts"{% if current_path == '/admin/accounts' or current_path.startswith('/admin/accounts/') %} aria-current="page"{% endif %}>アカウント一覧</a>
+                    {% if is_super_admin %}
+                    <a class="nav-link" href="/admin/administrators"{% if current_path == '/admin/administrators' or current_path.startswith('/admin/administrators/') %} aria-current="page"{% endif %}>管理者管理</a>
+                    {% endif %}
                 </nav>
                 <a class="nav-link admin-mypage-link" href="/admin/mypage"{% if current_path == '/admin/mypage' or current_path.startswith('/admin/mypage/') %} aria-current="page"{% endif %}>マイページ</a>
                 <a class="logout-link" href="/admin/logout">Logout</a>

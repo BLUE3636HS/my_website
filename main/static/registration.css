@@ -1,186 +1,195 @@
-/* =========================
-   会員登録ページ専用CSS
-========================= */
-
-
-/* メイン領域 */
+/* Registration screens follow the student/teacher colors used on login. */
+body {
+    min-height: 100vh;
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 32px 16px;
+}
 
 main {
-
-    max-width: 500px;
-
-    margin: 60px auto;
-
-    background-color: white;
-
-    padding: 40px;
-
+    width: min(100%, 600px);
+    margin: 0 auto;
+    padding: 36px;
     border-radius: 15px;
-
-    box-shadow:
-        0 5px 20px rgba(0,0,0,0.1);
-
+    background: #fff;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, .1);
 }
 
+.registration-page {
+    --accent: #1f4e79;
+    --accent-hover: #163a5c;
+    --accent-soft: rgba(31, 78, 121, .3);
+}
 
+.registration-page.teacher-mode {
+    --accent: #b85c38;
+    --accent-hover: #94492c;
+    --accent-soft: rgba(184, 92, 56, .3);
+}
 
-/* タイトル */
+#tab {
+    display: flex;
+    margin-bottom: 24px;
+    border-bottom: 2px solid #e2e5e9;
+}
 
-main h1 {
+#tab button {
+    flex: 1;
+    padding: 14px 12px;
+    border: 0;
+    border-bottom: 4px solid transparent;
+    background: transparent;
+    color: #66717d;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    transition: color .2s ease, border-color .2s ease;
+}
 
+#tab button:hover,
+#tab button.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+#student_form,
+#teacher_form,
+#school_registration_form {
+    padding: 28px;
+    border: 1px solid #e1e5e9;
+    border-top: 4px solid var(--accent, #1f4e79);
+    border-radius: 10px;
+    background: #fafbfc;
+}
+
+#student_form h2,
+#teacher_form h2,
+main > h2 {
+    margin: 0 0 24px;
+    color: var(--accent, #1f4e79);
+    font-size: 25px;
     text-align: center;
-
-    color: #1f4e79;
-
-    font-size: 30px;
-
-    margin-bottom: 35px;
-
 }
 
-
-
-/* ラベル */
-
-main label {
-
+#student_form label,
+#teacher_form label,
+#school_registration_form label {
     display: block;
-
-    font-size: 16px;
-
-    font-weight: bold;
-
+    margin-bottom: 7px;
     color: #333;
-
-    margin-bottom: 8px;
-
+    font-weight: 700;
 }
-
-
-
-/* 入力欄・セレクトボックス */
 
 main input,
 main select {
-
+    display: block;
     width: 100%;
-
+    margin: 0 0 8px;
     padding: 12px;
-
-    font-size: 16px;
-
-    font-family: inherit;
-
-    border: 1px solid #ccc;
-
+    border: 1px solid #cbd1d8;
     border-radius: 8px;
-
-    margin-bottom: 5px;
-
+    background: #fff;
+    color: #333;
+    font: inherit;
 }
 
-
-
-/* フォーカス時 */
-
-main input:focus,
-main select:focus {
-
+#student_form input:focus,
+#teacher_form input:focus,
+#teacher_form select:focus,
+#school_registration_form input:focus {
     outline: none;
-
-    border-color: #1f4e79;
-
-    box-shadow:
-        0 0 5px rgba(31,78,121,0.3);
-
+    border-color: var(--accent, #1f4e79);
+    box-shadow: 0 0 0 3px var(--accent-soft, rgba(31, 78, 121, .3));
 }
-
-
-
-/* 説明文 */
 
 main em {
-
     display: block;
-
-    font-style: normal;
-
+    margin: 0 0 18px;
+    color: #687482;
     font-size: 13px;
-
-    color: #777;
-
-    margin-bottom: 20px;
-
+    font-style: normal;
+    line-height: 1.6;
 }
 
-
-
-/* 登録ボタン */
-
-main button {
-
+#student_reg_btn,
+#teacher_reg_btn,
+#school_registration_form button {
     display: block;
-
     width: 100%;
-
-    padding: 14px;
-
-    background-color: #1f4e79;
-
-    color: white;
-
-    border: none;
-
+    margin-top: 12px;
+    padding: 13px 16px;
+    border: 0;
     border-radius: 8px;
-
-    font-size: 17px;
-
-    font-weight: bold;
-
+    background: var(--accent, #1f4e79);
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
     cursor: pointer;
-
-    transition: 0.3s;
-
+    transition: background .2s ease;
 }
 
-
-
-/* ボタンホバー */
-
-main button:hover {
-
-    background-color: #163a5c;
-
+#student_reg_btn:hover,
+#teacher_reg_btn:hover,
+#school_registration_form button:hover {
+    background: var(--accent-hover, #163a5c);
 }
 
-
-
-/* ログインページに戻る */
-
-main > a {
-
-    display: block;
-
+#student_registration_message,
+#school_registration_message {
+    min-height: 1.5em;
+    margin: 12px 0 0;
+    color: #a13932;
     text-align: center;
-
-    margin-top: 25px;
-
-    color: #1f4e79;
-
-    font-weight: bold;
-
-    text-decoration: none;
-
-    transition: 0.3s;
-
 }
 
+#school-register-link,
+main > a {
+    display: block;
+    margin: 18px auto 0;
+    color: var(--accent, #1f4e79);
+    font-weight: 700;
+    text-align: center;
+    text-decoration: none;
+}
 
-
-/* リンクホバー */
-
+#school-register-link:hover,
 main > a:hover {
-
     text-decoration: underline;
+}
 
+main > a + a {
+    margin-top: 12px;
+}
+
+#teacher_form {
+    display: none;
+}
+
+.registration-page.teacher-mode #student_form {
+    display: none;
+}
+
+.registration-page.teacher-mode #teacher_form {
+    display: block;
+}
+
+.registration-page.student-mode #student_form {
+    display: block;
+}
+
+@media (max-width: 520px) {
+    body {
+        padding: 16px 10px;
+    }
+
+    main {
+        padding: 22px 16px;
+    }
+
+    #student_form,
+    #teacher_form,
+    #school_registration_form {
+        padding: 20px 16px;
+    }
 }

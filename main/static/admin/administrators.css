@@ -1,0 +1,14 @@
+.administrator-panel { padding: 24px; border-radius: 12px; background: white; }
+.administrator-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 20px; }
+.administrator-actions a { color: #25613e; }
+.administrator-actions .administrator-add { display: inline-block; padding: 10px 16px; border-radius: 6px; color: white; background: #25613e; text-decoration: none; font-weight: 600; }
+.administrator-actions .administrator-add:hover { background: #19472d; }
+.administrator-actions a:focus-visible { outline: 2px solid #25613e; outline-offset: 3px; }
+.administrator-form { max-width: 520px; }
+.administrator-form label { display: block; margin: 18px 0; font-weight: 600; }
+.administrator-form input { display: block; width: 100%; padding: 10px; margin-top: 8px; border: 1px solid #c7d8cc; border-radius: 6px; font: inherit; }
+.administrator-panel button { padding: 10px 16px; border: 0; border-radius: 6px; color: white; background: #25613e; font: inherit; cursor: pointer; }
+.administrator-panel .administrator-delete { background: #a12b2b; }
+.administrator-table { overflow-x: auto; }
+.administrator-table table { width: 100%; border-collapse: collapse; }
+.administrator-table th, .administrator-table td { padding: 14px; border-bottom: 1px solid #dce7df; text-align: left; }

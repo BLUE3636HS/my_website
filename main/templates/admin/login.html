@@ -12,6 +12,7 @@
             <p class="login-eyebrow">TEKNE</p>
             <h1>管理者ログイン</h1>
             <p class="login-description">サーバー管理者専用のログイン画面です。</p>
+            {% if notice %}<p role="status">{{ notice }}</p>{% endif %}
             {% if error %}
             <p class="login-error" role="alert">{{ error }}</p>
             {% endif %}
