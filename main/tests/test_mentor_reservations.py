@@ -22,6 +22,7 @@ from mentor_reservations import (
     validate_range,
 )
 from notifications import initialize_notification_tables
+from admin_management import initialize_admin_roles
 from google_calendar import GoogleCalendarError
 
 
@@ -30,9 +31,11 @@ class MentorReservationUnitTests(unittest.TestCase):
         db = sqlite3.connect(":memory:")
         self.addCleanup(db.close)
         initialize_mentor_tables(db)
+        initialize_admin_roles(db)
         now = datetime.datetime.now().isoformat()
         db.execute("INSERT INTO mentor_profile(admin_id,is_published,display_name,created_at,updated_at) VALUES('a',1,'A',?,?)", (now, now))
         initialize_mentor_tables(db)
+        initialize_admin_roles(db)
         self.assertEqual(db.execute("SELECT display_name FROM mentor_profile WHERE admin_id='a'").fetchone()[0], "A")
         self.assertIn("profile_image", {row[1] for row in db.execute("PRAGMA table_info(mentor_profile)")})
         columns = {row[1] for row in db.execute("PRAGMA table_info(mentor_reservation)")}
@@ -73,6 +76,7 @@ class MentorReservationUnitTests(unittest.TestCase):
         db = sqlite3.connect(":memory:")
         self.addCleanup(db.close)
         initialize_mentor_tables(db)
+        initialize_admin_roles(db)
         now = datetime.datetime.now().isoformat()
         db.execute("INSERT INTO mentor_profile(admin_id,is_published,display_name,created_at,updated_at) VALUES('a',1,'メンターA',?,?)", (now, now))
         db.execute("""INSERT INTO mentor_reservation(student_id,mentor_admin_id,day,start_time,end_time,meeting_type,consultation,status,created_at)
@@ -90,6 +94,7 @@ class MentorAvailabilityTests(unittest.TestCase):
         self.day = (datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).date() + datetime.timedelta(days=2)).isoformat()
         with closing(sqlite3.connect(self.path)) as db:
             initialize_mentor_tables(db)
+            initialize_admin_roles(db)
             db.execute("INSERT INTO mentor_profile(admin_id,is_published,display_name,description,created_at,updated_at) VALUES ('a',1,'A',NULL,'now','now')")
             db.executemany("INSERT INTO mentor_available_slot(admin_id,day,start_time,online_available,offline_available,created_at,updated_at) VALUES('a',?,?,?,?,'now','now')",
                            [(self.day, '13:00', 1, 0), (self.day, '13:30', 1, 1), (self.day, '14:00', 0, 1)])
@@ -142,6 +147,7 @@ class MentorGoogleIntegrationTests(unittest.TestCase):
                     + datetime.timedelta(days=2)).isoformat()
         with closing(sqlite3.connect(self.path)) as db:
             initialize_mentor_tables(db)
+            initialize_admin_roles(db)
             initialize_notification_tables(db)
             db.execute("CREATE TABLE student(id TEXT NOT NULL, pwd TEXT NOT NULL, school TEXT NOT NULL)")
             db.execute("INSERT INTO student VALUES('s','x','school')")
@@ -245,11 +251,13 @@ class MentorProfileUpdateTests(unittest.TestCase):
         self.uploads = root / "uploads"
         with closing(sqlite3.connect(self.path)) as db:
             initialize_mentor_tables(db)
+            initialize_admin_roles(db)
+            db.execute("INSERT INTO admin(id,pwd) VALUES ('a','unused')")
             db.commit()
         routes = build_router(self.path, None, self.uploads).routes
         self.update = next(r.endpoint for r in routes if r.path == "/admin/mentor-profile" and "POST" in r.methods)
         self.delete = next(r.endpoint for r in routes if r.path == "/admin/mentor-profile/image/delete")
-        self.request = Request({"type": "http", "session": {"admin_id": "a", "mentor_profile_csrf": "token"}})
+        self.request = Request({"type": "http", "session": {"admin_login": True, "admin_id": "a", "mentor_profile_csrf": "token"}})
 
     def image_upload(self):
         from PIL import Image

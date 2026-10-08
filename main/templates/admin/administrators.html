@@ -1,0 +1,33 @@
+{% extends 'admin/base.html' %}
+{% block title %}管理者管理{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/admin/administrators.css">{% endblock %}
+{% block content %}
+<section class="administrator-panel">
+<h1>{{ '管理者一覧' if page == 'list' else '管理者追加' }}</h1>
+<nav class="administrator-actions" aria-label="管理者管理メニュー">
+{% if page == 'list' %}<a class="administrator-add" href="/admin/administrators/new">管理者追加</a>{% else %}<a href="/admin/administrators">管理者一覧に戻る</a>{% endif %}
+</nav>
+{% if error %}<p class="login-error" role="alert">{{ error }}</p>{% endif %}
+{% if notice %}<p role="status">{{ notice }}</p>{% endif %}
+{% if page == 'new' %}
+<p>一般管理者（admin）を追加します。管理者名・画像・紹介文は本人がログイン後に設定します。</p>
+<form method="post" class="administrator-form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label>管理者ID<input name="admin_id" value="{{ values.get('admin_id', '') }}" required maxlength="128" autocomplete="off"></label>
+<label>パスワード<input type="password" name="password" required minlength="12" maxlength="72" autocomplete="new-password"></label>
+<p>パスワードは12文字以上、UTF-8で72バイト以内。削除済みのIDは再利用できません。</p>
+<button type="submit">一般管理者を追加</button>
+</form>
+{% else %}
+<p>削除はログイン停止として行い、履歴を保持します。今後の有効なメンター予約がある管理者は削除できません。</p>
+<div class="administrator-table"><table><thead><tr><th>管理者ID</th><th>管理者名</th><th>権限</th><th>状態</th><th>操作</th></tr></thead><tbody>
+{% for id, name, role, deleted_at in administrators %}
+<tr><td>{{ id }}</td><td>{{ name or '未登録' }}</td><td>{{ '最上位管理者' if role == 'super_admin' else '一般管理者' }}（{{ role }}）</td><td>{{ '削除済み' if deleted_at else '有効' }}</td><td>
+{% if role == 'admin' and not deleted_at %}
+<form method="post" action="/admin/administrators/delete" onsubmit="return confirm('この管理者を削除し、ログインと新規予約受付を停止しますか？履歴は保持されます。');">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="admin_id" value="{{ id }}"><button class="administrator-delete" type="submit">削除</button>
+</form>{% else %}—{% endif %}</td></tr>
+{% endfor %}</tbody></table></div>
+{% endif %}
+</section>
+{% endblock %}

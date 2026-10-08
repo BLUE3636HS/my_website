@@ -6,7 +6,7 @@
     <section class="admin-mypage-hero">
         <p class="dashboard-eyebrow">MY PAGE</p>
         <h1>マイページ</h1>
-        <p>全生徒の予約と、管理者・メンター情報を確認できます。</p>
+        <p>全生徒の予約と、管理者情報を確認できます。</p>
     </section>
     <section class="admin-mypage-panel mypage-calendar-panel" aria-labelledby="calendar-heading">
         <h2 id="calendar-heading">予約カレンダー</h2>
@@ -43,19 +43,19 @@
         </div>
     </section>
     <section class="admin-mypage-panel admin-mypage-profile" aria-labelledby="admin-profile-heading">
-        <h2 id="admin-profile-heading">管理者・メンター情報</h2>
-        <img class="admin-mentor-profile-image" src="{{ mentor_image_url }}" alt="現在のメンター画像">
+        <h2 id="admin-profile-heading">管理者情報</h2>
+        <img class="admin-mentor-profile-image" src="{{ mentor_image_url }}" alt="現在の管理者画像">
         <dl class="admin-profile-details">
             <dt>管理者ID</dt><dd>{{ admin_id }}</dd>
             {% if mentor_profile is not none %}
-            <dt>メンター表示名</dt><dd>{{ mentor_profile.display_name or '未設定' }}</dd>
+            <dt>管理者名</dt><dd>{{ mentor_profile.display_name or '未設定' }}</dd>
             <dt>紹介文</dt><dd class="admin-profile-description">{{ mentor_profile.description or '未設定' }}</dd>
             <dt>公開状態</dt><dd>{{ '公開中' if mentor_profile.is_published else '非公開' }}</dd>
             {% else %}
-            <dt>メンター情報</dt><dd>未登録</dd>
+            <dt>管理者情報</dt><dd>未登録</dd>
             {% endif %}
         </dl>
-        <a class="admin-mypage-button" href="/admin/mentor-profile">大学生メンター情報を設定・編集</a>
+        <a class="admin-mypage-button" href="/admin/profile">管理者情報を設定・編集</a>
     </section>
 </div>
 <script id="mypage-calendar-data" type="application/json">{{ calendar_events|tojson }}</script>

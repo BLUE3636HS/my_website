@@ -16,6 +16,7 @@ from notifications import create_notification, create_reservation_reminders, ini
 SCHEMA = """
 CREATE TABLE student (id TEXT NOT NULL, pwd TEXT NOT NULL, school TEXT NOT NULL, profile_image TEXT);
 CREATE TABLE teacher (id TEXT NOT NULL, pwd TEXT NOT NULL, school TEXT NOT NULL);
+CREATE TABLE admin (id TEXT PRIMARY KEY, pwd TEXT NOT NULL, deleted_at TEXT);
 CREATE TABLE reservation (id INTEGER PRIMARY KEY AUTOINCREMENT, userid TEXT NOT NULL, day TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, purpose TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', created_at TEXT, cancelled_at TEXT, cancelled_by_type TEXT, cancelled_by_id TEXT);
 CREATE TABLE reservation_available_slot (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id TEXT NOT NULL, day TEXT NOT NULL, start_time TEXT NOT NULL);
 CREATE TABLE equipment_reservation (id INTEGER PRIMARY KEY AUTOINCREMENT, userid TEXT NOT NULL, equipment TEXT NOT NULL, start_day TEXT NOT NULL, end_day TEXT NOT NULL, quantity INTEGER NOT NULL, purpose TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', equipment_id TEXT, returned INTEGER NOT NULL DEFAULT 0);
