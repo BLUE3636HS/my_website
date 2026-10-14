@@ -41,6 +41,7 @@ def initialize_admin_roles(db):
         "role": "TEXT NOT NULL DEFAULT 'admin' CHECK(role IN ('admin','super_admin'))",
         "deleted_at": "TEXT",
         "session_version": "INTEGER NOT NULL DEFAULT 0",
+        "must_change_password": "INTEGER NOT NULL DEFAULT 0",
     }.items():
         if name not in columns:
             db.execute(f"ALTER TABLE admin ADD COLUMN {name} {definition}")
@@ -95,9 +96,13 @@ def require_super_admin(db, request):
     return admin
 
 
-def validate_admin(admin_id, name, password):
+def validate_admin_id(admin_id):
     if not admin_id or len(admin_id) > 128 or any(ord(c) < 32 for c in admin_id):
         raise ValueError("管理者IDは制御文字を含まない1〜128文字で入力してください。")
+
+
+def validate_admin(admin_id, name, password):
+    validate_admin_id(admin_id)
     if len(name) > 128 or any(ord(c) < 32 for c in name):
         raise ValueError("管理者名は制御文字を含まない1〜128文字で入力してください。")
     if len(password) < 12 or len(password.encode('utf-8')) > 72:
@@ -116,7 +121,8 @@ def build_admin_router(database_path, templates):
             context={'request': request, 'admin_id': request.session.get('admin_id'),
                      'page': page, 'administrators': rows, 'csrf_token': token,
                      'error': error, 'values': values or {},
-                     'notice': request.session.pop('admin_management_notice', None)}, status_code=status_code)
+                     'notice': request.session.pop('admin_management_notice', None)}, status_code=status_code,
+            headers={'Cache-Control': 'no-store'} if page == 'created' else None)
 
     def csrf(request, token):
         expected = request.session.get('admin_management_csrf')
@@ -133,25 +139,25 @@ def build_admin_router(database_path, templates):
 
     @router.post('/new')
     async def administrator_create(request: Request, admin_id: str = Form(...),
-                                   password: str = Form(...), csrf_token: str = Form(...)):
+                                   csrf_token: str = Form(...)):
         admin_id, name = admin_id.strip(), ''
         with closing(sqlite3.connect(database_path, timeout=10)) as db:
             db.execute('BEGIN IMMEDIATE')
             require_super_admin(db, request)
             csrf(request, csrf_token)
             try:
-                validate_admin(admin_id, name, password)
+                validate_admin_id(admin_id)
+                password = secrets.token_urlsafe(18)
                 password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-                db.execute("INSERT INTO admin(id,name,pwd,role) VALUES (?,?,?,'admin')",
+                db.execute("INSERT INTO admin(id,name,pwd,role,must_change_password) VALUES (?,?,?,'admin',1)",
                            (admin_id, name, password_hash))
                 db.commit()
             except (ValueError, sqlite3.IntegrityError) as exc:
                 db.rollback()
                 message = 'その管理者IDはすでに使用されています（削除済みも含む）。' if isinstance(exc, sqlite3.IntegrityError) else str(exc)
-                return render(request, 'new', message, 400, {'admin_id': admin_id, 'name': name})
-        request.session['admin_management_notice'] = '一般管理者を追加しました。'
+                return render(request, 'new', message, 400, {'admin_id': admin_id})
         request.session['admin_management_csrf'] = secrets.token_urlsafe(32)
-        return RedirectResponse('/admin/administrators', status_code=303)
+        return render(request, 'created', values={'admin_id': admin_id, 'password': password})
 
     @router.post('/delete')
     async def administrator_delete(request: Request, admin_id: str = Form(...), csrf_token: str = Form(...)):
@@ -185,6 +191,52 @@ def build_admin_router(database_path, templates):
 
 def build_password_router(database_path):
     router = APIRouter()
+    from fastapi.templating import Jinja2Templates
+    templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / 'templates'))
+
+    @router.get('/admin/first-password')
+    async def first_password_page(request: Request):
+        with closing(sqlite3.connect(database_path, timeout=10)) as db:
+            account = active_admin(db, request)
+            if account is None:
+                raise HTTPException(403, '管理者としてログインしてください。')
+            required = db.execute('SELECT must_change_password FROM admin WHERE id=?', (account[0],)).fetchone()[0]
+        if not required:
+            return RedirectResponse('/admin/mypage', 303)
+        token = request.session.setdefault('admin_first_password_csrf', secrets.token_urlsafe(32))
+        return templates.TemplateResponse(request=request, name='admin/first_password.html',
+            context={'request': request, 'csrf_token': token})
+
+    @router.post('/admin/first-password')
+    async def first_password_change(request: Request, new_password: str = Form(...),
+                                   confirm_password: str = Form(...), csrf_token: str = Form(...)):
+        with closing(sqlite3.connect(database_path, timeout=10)) as db:
+            db.execute('BEGIN IMMEDIATE')
+            account = active_admin(db, request)
+            if account is None:
+                raise HTTPException(403, '管理者としてログインしてください。')
+            token = request.session.get('admin_first_password_csrf', '')
+            if not token or not secrets.compare_digest(token.encode(), csrf_token.encode()):
+                raise HTTPException(403, 'CSRFトークンが不正です。')
+            required = db.execute('SELECT must_change_password FROM admin WHERE id=?', (account[0],)).fetchone()[0]
+            if not required:
+                return RedirectResponse('/admin/mypage', 303)
+            try:
+                validate_admin(account[0], '', new_password)
+                if new_password != confirm_password:
+                    raise ValueError('新しいパスワードと確認用パスワードが一致しません。')
+                hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+                db.execute('UPDATE admin SET pwd=?,must_change_password=0,session_version=session_version+1 WHERE id=?',
+                           (hashed, account[0]))
+                db.commit()
+            except ValueError as exc:
+                db.rollback()
+                token = request.session.setdefault('admin_first_password_csrf', secrets.token_urlsafe(32))
+                return templates.TemplateResponse(request=request, name='admin/first_password.html',
+                    context={'request': request, 'csrf_token': token, 'error': str(exc)}, status_code=400)
+        request.session.clear()
+        request.session['admin_password_notice'] = 'パスワードを設定しました。新しいパスワードでログインしてください。'
+        return RedirectResponse('/admin/login', 303)
 
     @router.post('/admin/profile/password')
     async def change_password(request: Request, current_password: str = Form(...),

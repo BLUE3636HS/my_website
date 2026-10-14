@@ -3,9 +3,9 @@
 {% block css %}<link rel="stylesheet" href="/static/admin/administrators.css">{% endblock %}
 {% block content %}
 <section class="administrator-panel">
-<h1>{{ '管理者一覧' if page == 'list' else '管理者追加' }}</h1>
+<h1>{{ '管理者一覧' if page == 'list' else ('追加完了' if page == 'created' else '管理者追加') }}</h1>
 <nav class="administrator-actions" aria-label="管理者管理メニュー">
-{% if page == 'list' %}<a class="administrator-add" href="/admin/administrators/new">管理者追加</a>{% else %}<a href="/admin/administrators">管理者一覧に戻る</a>{% endif %}
+{% if page == 'list' %}<a class="administrator-add" href="/admin/administrators/new">管理者追加</a>{% elif page != 'created' %}<a href="/admin/administrators">管理者一覧に戻る</a>{% endif %}
 </nav>
 {% if error %}<p class="login-error" role="alert">{{ error }}</p>{% endif %}
 {% if notice %}<p role="status">{{ notice }}</p>{% endif %}
@@ -14,10 +14,14 @@
 <form method="post" class="administrator-form">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 <label>管理者ID<input name="admin_id" value="{{ values.get('admin_id', '') }}" required maxlength="128" autocomplete="off"></label>
-<label>パスワード<input type="password" name="password" required minlength="12" maxlength="72" autocomplete="new-password"></label>
-<p>パスワードは12文字以上、UTF-8で72バイト以内。削除済みのIDは再利用できません。</p>
+<p>臨時パスワードは追加後に一度だけ表示されます。削除済みのIDは再利用できません。</p>
 <button type="submit">一般管理者を追加</button>
 </form>
+{% elif page == 'created' %}
+<p role="status">一般管理者を追加しました。次の臨時パスワードを本人へ安全に伝えてください。この画面を離れると再表示できません。</p>
+<dl><dt>管理者ID</dt><dd>{{ values.get('admin_id', '') }}</dd><dt>臨時パスワード</dt><dd><code>{{ values.get('password', '') }}</code></dd></dl>
+<p>本人は<a href="/admin/login">管理者ログイン画面</a>でログインし、初回に自分のパスワードを設定します。</p>
+<a href="/admin/administrators">管理者一覧へ戻る</a>
 {% else %}
 <p>削除はログイン停止として行い、履歴を保持します。今後の有効なメンター予約がある管理者は削除できません。</p>
 <div class="administrator-table"><table><thead><tr><th>管理者ID</th><th>管理者名</th><th>権限</th><th>状態</th><th>操作</th></tr></thead><tbody>

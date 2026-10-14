@@ -119,23 +119,35 @@ class AdminManagementTests(unittest.TestCase):
         self.assertNotIn('管理者管理', html)
         self.assertIn('研究成果管理', html)
 
-    def test_create_validation_csrf_duplicate_and_forced_role(self):
+    def test_create_issues_one_time_password_and_forces_first_change(self):
         cookie = self.login('26A001')
         token, cookie = self.token(cookie)
-        data = {'admin_id': 'new', 'name': '<script>Name</script>', 'password': self.password, 'csrf_token': token, 'role': 'super_admin'}
+        data = {'admin_id': 'new', 'csrf_token': token, 'role': 'super_admin'}
         self.assertEqual(self.http('/admin/administrators/new', cookie, 'POST', dict(data, csrf_token='bad'))[0], 403)
-        self.assertEqual(self.http('/admin/administrators/new', cookie, 'POST', dict(data, password='short'))[0], 400)
-        self.assertEqual(self.http('/admin/administrators/new', cookie, 'POST', dict(data, password='あ'*25))[0], 400)
-        status, _, cookie = self.http('/admin/administrators/new', cookie, 'POST', data)
+        status, html, cookie = self.http('/admin/administrators/new', cookie, 'POST', data)
+        self.assertEqual(status, 200)
+        import re
+        temporary_password = re.search(r'<dd><code>([^<]+)</code></dd>', html).group(1)
+        row = self.db.execute("SELECT pwd,role,must_change_password FROM admin WHERE id='new'").fetchone()
+        self.assertTrue(bcrypt.checkpw(temporary_password.encode(), row[0].encode()))
+        self.assertEqual(row[1:], ('admin', 1))
+        status, _, new_cookie = self.http('/admin/login', method='POST', data={'id': 'new', 'pwd': temporary_password})
         self.assertEqual(status, 303)
-        row = self.db.execute("SELECT pwd,role FROM admin WHERE id='new'").fetchone()
-        self.assertTrue(bcrypt.checkpw(self.password.encode(), row[0].encode()))
-        self.assertEqual(row[1], 'admin')
+        status, html, new_cookie = self.http('/admin/first-password', new_cookie)
+        self.assertEqual(status, 200)
+        self.assertIn('初回パスワード設定', html)
+        self.assertEqual(self.http('/admin/administrators', new_cookie)[0], 303)
+        csrf = re.search('name="csrf_token" value="([^"]+)"', html).group(1)
+        first_password = 'new-admin-password-456'
+        self.assertEqual(self.http('/admin/first-password', new_cookie, 'POST', {
+            'new_password': first_password, 'confirm_password': first_password, 'csrf_token': csrf,
+        })[0], 303)
+        self.assertEqual(self.db.execute("SELECT must_change_password FROM admin WHERE id='new'").fetchone()[0], 0)
+        self.assertEqual(self.http('/admin/login', method='POST', data={'id': 'new', 'pwd': first_password})[0], 303)
         token, cookie = self.token(cookie)
-        self.assertEqual(self.http('/admin/administrators/new', cookie, 'POST', dict(data, csrf_token=token))[0], 400)
+        self.assertEqual(self.http('/admin/administrators/new', cookie, 'POST', dict(data, admin_id='new', csrf_token=token))[0], 400)
         html = self.http('/admin/administrators', cookie)[1]
         self.assertEqual(self.db.execute("SELECT name FROM admin WHERE id='new'").fetchone()[0], '')
-        self.assertNotIn('<script>Name</script>', html)
         self.assertNotIn(row[0], html)
 
     def test_delete_protection_history_and_session_revocation(self):
@@ -285,11 +297,11 @@ class AdminManagementTests(unittest.TestCase):
         self.db.commit()
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM mentor_profile').fetchone()[0], 1)
 
-    def test_add_form_only_requests_id_and_password(self):
+    def test_add_form_only_requests_id(self):
         _, html, _ = self.http('/admin/administrators/new', self.login('26A001'))
         self.assertNotIn('name="name"', html)
         self.assertIn('name="admin_id"', html)
-        self.assertIn('name="password"', html)
+        self.assertNotIn('name="password"', html)
 
 
 if __name__ == '__main__':

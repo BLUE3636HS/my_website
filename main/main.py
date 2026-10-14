@@ -652,11 +652,17 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
         if request.session.get("admin_login") is True:
             with closing(sqlite3.connect(DATABASE_PATH)) as db:
                 admin = active_admin(db, request)
+                must_change_password = False
+                if admin is not None:
+                    must_change_password = bool(db.execute(
+                        "SELECT must_change_password FROM admin WHERE id=?", (admin[0],)
+                    ).fetchone()[0])
             if admin is None:
                 for key in ("admin_login", "admin_id", "admin_time"):
                     request.session.pop(key, None)
             else:
                 request.state.admin_role = admin[2]
+                request.state.admin_must_change_password = must_change_password
 
         #ログインが必要なページにアクセスした場合、ログインページにリダイレクト
         #ログインなしでもアクセスできるページを定義
@@ -683,6 +689,12 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
         # admin 配下は admin 用セッションだけを許可する
         if request.url.path.startswith("/admin"):
             if request.session.get("admin_login") == True:
+                if getattr(request.state, "admin_must_change_password", False) and request.url.path not in {
+                    "/admin/first-password", "/admin/logout"
+                }:
+                    return RedirectResponse("/admin/first-password", status_code=303)
+                if not getattr(request.state, "admin_must_change_password", False) and request.url.path == "/admin/first-password":
+                    return RedirectResponse("/admin/mypage", status_code=303)
                 return await call_next(request)
             return RedirectResponse("/admin/login", status_code=303)
 
@@ -1090,7 +1102,7 @@ async def AdminLogin(
     id: str = Form(...),
     pwd: str = Form(...)
 ):
-    cursor.execute("SELECT pwd, session_version FROM admin WHERE id = ? AND deleted_at IS NULL", (id,))
+    cursor.execute("SELECT pwd, session_version, must_change_password FROM admin WHERE id = ? AND deleted_at IS NULL", (id,))
     admin = cursor.fetchone()
 
     try:
@@ -1110,6 +1122,8 @@ async def AdminLogin(
     request.session["admin_id"] = id
     request.session["admin_session_version"] = admin[1]
     request.session["admin_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if admin[2]:
+        return RedirectResponse("/admin/first-password", status_code=303)
     return RedirectResponse("/admin/mypage", status_code=303)
 
 @app.get("/admin/logout")
