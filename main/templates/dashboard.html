@@ -32,7 +32,7 @@
     </section>
 
     <div class="dashboard-grid">
-        <section class="student-panel dashboard-card">
+        {% if student_features.workshop_reservation %}<section class="student-panel dashboard-card">
             <p class="dashboard-card-label">NEXT RESERVATION</p>
             <h2>次のTEKNE工作室予約</h2>
             {% if next_reservation %}
@@ -47,9 +47,9 @@
                 <a class="student-primary-button" href="/reservation">TEKNE工作室を予約する</a>
             </div>
             {% endif %}
-        </section>
+        </section>{% endif %}
 
-        <section class="student-panel dashboard-card">
+        {% if student_features.equipment_reservation %}<section class="student-panel dashboard-card">
             <p class="dashboard-card-label">NEXT EQUIPMENT</p>
             <h2>次の実験器具予約</h2>
             {% if next_equipment_reservation %}
@@ -65,7 +65,7 @@
                 <a class="student-primary-button" href="/equipment-reservation">実験器具を予約する</a>
             </div>
             {% endif %}
-        </section>
+        </section>{% endif %}
     </div>
 
     <div class="dashboard-actions">

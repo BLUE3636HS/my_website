@@ -28,7 +28,7 @@
     </table>
     </div>
     <div class="studylist-actions">
-        <a href="/dashboard" class="student-secondary-link">ダッシュボードへ戻る</a>
+        {% if student_features.dashboard %}<a href="/dashboard" class="student-secondary-link">ダッシュボードへ戻る</a>{% endif %}
     </div>
     </section>
 </div>

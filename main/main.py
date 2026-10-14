@@ -34,6 +34,14 @@ from school_registration import (
     initialize_school_registration,
     register_school_student,
 )
+from school_features import (
+    FEATURES as STUDENT_FEATURES,
+    build_school_feature_router,
+    enabled_for_student,
+    feature_for_student_path,
+    school_feature_flags,
+    seed_school_feature_settings,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "database" / "database.db"
@@ -270,6 +278,7 @@ initialize_notification_tables(conn)
 initialize_mentor_tables(conn)
 conn.commit()
 migrate_admin_database(DATABASE_PATH)
+seed_school_feature_settings(DATABASE_PATH)
 with closing(connect_studies(DATABASE_PATH)) as study_db:
     initialize_studies(study_db)
 
@@ -290,11 +299,18 @@ def student_template_context(request):
                 "SELECT COUNT(*) FROM notification WHERE recipient_user_id = ? AND is_read = 0",
                 (user_id,)
             ).fetchone()[0]
-    return {"unread_notification_count": unread_count}
+    features = {key: True for key, _ in STUDENT_FEATURES}
+    if request.session.get("user_login") is True and user_id:
+        with closing(sqlite3.connect(DATABASE_PATH)) as db:
+            student = db.execute("SELECT school FROM student WHERE id=?", (user_id,)).fetchone()
+            if student:
+                features = school_feature_flags(db, student[0])
+    return {"unread_notification_count": unread_count, "student_features": features}
 
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"), context_processors=[student_template_context, admin_template_context])
 app.include_router(build_admin_router(DATABASE_PATH, templates))
+app.include_router(build_school_feature_router(DATABASE_PATH, templates))
 app.include_router(build_password_router(DATABASE_PATH))
 app.include_router(create_template_router(lambda: DATABASE_PATH, templates))
 app.include_router(build_mentor_router(DATABASE_PATH, templates, MENTOR_PROFILE_UPLOADS_DIR))
@@ -708,6 +724,9 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
         # 一般ユーザーログイン済みなら teacher 配下以外を許可
         if request.session.get("user_login") == True:
             if not request.url.path.startswith("/teacher"):
+                feature = feature_for_student_path(request.url.path)
+                if feature and not enabled_for_student(DATABASE_PATH, request.session.get("user_id"), feature):
+                    return JSONResponse({"detail": "この機能は現在利用できません。"}, status_code=404)
                 return await call_next(request)
             else:
                 return RedirectResponse("/login", status_code=303)
@@ -945,6 +964,10 @@ async def pdf(id: int, request: Request):
     headers = {"Cache-Control": "private, no-store"}
     if not authenticated:
         return RedirectResponse("/login", status_code=303, headers=headers)
+    if request.session.get("user_login") is True and not enabled_for_student(
+        DATABASE_PATH, request.session.get("user_id"), "studies_list"
+    ):
+        raise HTTPException(404, "この機能は現在利用できません。")
     with closing(connect_studies(DATABASE_PATH)) as db:
         study = db.execute("SELECT pdfpath, registration_type, template_id, userid FROM study WHERE id = ?", (id,)).fetchone()
         sections = []

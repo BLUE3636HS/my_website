@@ -29,6 +29,7 @@
                     <a class="nav-link" href="/admin/accounts"{% if current_path == '/admin/accounts' or current_path.startswith('/admin/accounts/') %} aria-current="page"{% endif %}>アカウント一覧</a>
                     {% if is_super_admin %}
                     <a class="nav-link" href="/admin/administrators"{% if current_path == '/admin/administrators' or current_path.startswith('/admin/administrators/') %} aria-current="page"{% endif %}>管理者管理</a>
+                    <a class="nav-link" href="/admin/school-features"{% if current_path == '/admin/school-features' or current_path.startswith('/admin/school-features/') %} aria-current="page"{% endif %}>学校別機能設定</a>
                     {% endif %}
                 </nav>
                 <a class="nav-link admin-mypage-link" href="/admin/mypage"{% if current_path == '/admin/mypage' or current_path.startswith('/admin/mypage/') %} aria-current="page"{% endif %}>マイページ</a>

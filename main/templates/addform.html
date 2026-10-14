@@ -38,7 +38,7 @@
         <p id="submission-status" role="status" aria-live="polite"></p>
         <div class="addform-actions">
             <button type="submit" id="add_btn" class="student-primary-button">研究成果を追加</button>
-            <a href="/dashboard" class="student-secondary-link">ダッシュボードへ戻る</a>
+            {% if student_features.dashboard %}<a href="/dashboard" class="student-secondary-link">ダッシュボードへ戻る</a>{% endif %}
         </div>
     </form>
 </div>

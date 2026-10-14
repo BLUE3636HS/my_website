@@ -20,13 +20,13 @@
                     <img src="/static/top.png" alt="TEKNE工作室">
                 </div>
                 <nav class="student-nav" aria-label="生徒用メニュー">
-                    <a class="student-nav-link" href="/dashboard"{% if current_path == '/dashboard' %} aria-current="page"{% endif %}>ダッシュボード</a>
-                    <a class="student-nav-link" href="/addform"{% if current_path == '/addform' or current_path.startswith('/addform/') %} aria-current="page"{% endif %}>研究成果追加フォーム</a>
-                    <a class="student-nav-link" href="/studylist"{% if current_path == '/studylist' or current_path.startswith('/studylist/') %} aria-current="page"{% endif %}>研究成果一覧</a>
-                    <a class="student-nav-link" href="/community"{% if current_path == '/community' or current_path.startswith('/community/') %} aria-current="page"{% endif %}>TEKNEコミュニティ</a>
-                    <a class="student-nav-link" href="/reservation"{% if current_path == '/reservation' or current_path.startswith('/reservation/') %} aria-current="page"{% endif %}>TEKNE工作室予約</a>
-                    <a class="student-nav-link" href="/mentor-reservation"{% if current_path == '/mentor-reservation' or current_path.startswith('/mentor-reservation/') %} aria-current="page"{% endif %}>大学生メンター予約</a>
-                    <a class="student-nav-link" href="/equipment-reservation"{% if current_path == '/equipment-reservation' or current_path.startswith('/equipment-reservation/') %} aria-current="page"{% endif %}>実験器具の貸し出し予約</a>
+                    {% if student_features.dashboard %}<a class="student-nav-link" href="/dashboard"{% if current_path == '/dashboard' %} aria-current="page"{% endif %}>ダッシュボード</a>{% endif %}
+                    {% if student_features.studies_add %}<a class="student-nav-link" href="/addform"{% if current_path == '/addform' or current_path.startswith('/addform/') %} aria-current="page"{% endif %}>研究成果追加フォーム</a>{% endif %}
+                    {% if student_features.studies_list %}<a class="student-nav-link" href="/studylist"{% if current_path == '/studylist' or current_path.startswith('/studylist/') %} aria-current="page"{% endif %}>研究成果一覧</a>{% endif %}
+                    {% if student_features.community %}<a class="student-nav-link" href="/community"{% if current_path == '/community' or current_path.startswith('/community/') %} aria-current="page"{% endif %}>TEKNEコミュニティ</a>{% endif %}
+                    {% if student_features.workshop_reservation %}<a class="student-nav-link" href="/reservation"{% if current_path == '/reservation' or current_path.startswith('/reservation/') %} aria-current="page"{% endif %}>TEKNE工作室予約</a>{% endif %}
+                    {% if student_features.mentor_reservation %}<a class="student-nav-link" href="/mentor-reservation"{% if current_path == '/mentor-reservation' or current_path.startswith('/mentor-reservation/') %} aria-current="page"{% endif %}>大学生メンター予約</a>{% endif %}
+                    {% if student_features.equipment_reservation %}<a class="student-nav-link" href="/equipment-reservation"{% if current_path == '/equipment-reservation' or current_path.startswith('/equipment-reservation/') %} aria-current="page"{% endif %}>実験器具の貸し出し予約</a>{% endif %}
                 </nav>
                 <a class="student-mypage-link" href="/mypage"{% if current_path == '/mypage' or current_path.startswith('/mypage/') %} aria-current="page"{% endif %}>マイページ</a>
                 <a class="student-notification-link" href="/notifications"{% if current_path == '/notifications' or current_path.startswith('/notifications/') %} aria-current="page"{% endif %}>
