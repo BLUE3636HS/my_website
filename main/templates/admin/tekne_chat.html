@@ -1,0 +1,30 @@
+{% extends "admin/base.html" %}
+{% block title %}TEKNEチャット管理{% endblock %}
+{% block page_title %}TEKNEチャット管理{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/admin/tekne_chat.css">{% endblock %}
+{% block content %}
+<div id="tc-admin-app" data-csrf="{{ csrf_token }}">
+    <section class="tc-admin-groups">
+        <form method="get" action="/admin/tekne-chat" class="tc-admin-search">
+            <label for="tc-admin-query">グループ・学校を検索</label>
+            <input id="tc-admin-query" name="q" value="{{ query }}">
+            <button type="submit">検索</button>
+        </form>
+        <p>{{ total_groups }}件</p>
+        <div class="tc-admin-group-list">
+        {% for group in groups %}
+            <button class="tc-admin-group" type="button" data-group-id="{{ group.id }}">
+                <strong>{{ group.name }}</strong><span>{{ group.school_name }}</span>
+                <small>メンバー {{ group.member_count }}人・メッセージ {{ group.message_count }}件・ファイル {{ group.file_count }}件</small>
+            </button>
+        {% else %}<p>グループはありません。</p>{% endfor %}
+        </div>
+        <div class="tc-admin-pagination">
+            {% if offset > 0 %}<a href="/admin/tekne-chat?q={{ query|urlencode }}&offset={{ [offset - 100, 0]|max }}">前へ</a>{% endif %}
+            {% if offset + groups|length < total_groups %}<a href="/admin/tekne-chat?q={{ query|urlencode }}&offset={{ offset + 100 }}">次へ</a>{% endif %}
+        </div>
+    </section>
+    <section id="tc-admin-detail" class="tc-admin-detail"><p class="tc-admin-empty">左側からグループを選択してください。</p></section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/admin/tekne_chat.js" defer></script>{% endblock %}

@@ -43,6 +43,14 @@ from school_features import (
     school_feature_flags,
     seed_school_feature_settings,
 )
+from tekne_chat import (
+    build_tekne_chat_router,
+    create_chat_session,
+    initialize_tekne_chat,
+    rename_student_identity,
+    revoke_chat_session,
+    revoke_student_identity,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "database" / "database.db"
@@ -50,6 +58,7 @@ UPLOADS_DIR = (BASE_DIR / "uploads").resolve()
 PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "profile").resolve()
 STUDY_IMAGE_UPLOADS_DIR = (UPLOADS_DIR / "study-images").resolve()
 MENTOR_PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "mentor-profile").resolve()
+TEKNE_CHAT_STORAGE_DIR = (UPLOADS_DIR / "tekne-chat").resolve()
 PROFILE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 STUDY_IMAGE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 MENTOR_PROFILE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
@@ -176,6 +185,7 @@ if cursor.execute(
             (reservation_capacity_migration, datetime.datetime.now(JST).isoformat())
         )
 initialize_school_registration(conn)
+initialize_tekne_chat(conn)
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS reservation_available_slot (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -315,6 +325,8 @@ app.include_router(build_school_feature_router(DATABASE_PATH, templates))
 app.include_router(build_password_router(DATABASE_PATH))
 app.include_router(create_template_router(lambda: DATABASE_PATH, templates))
 app.include_router(build_mentor_router(DATABASE_PATH, templates, MENTOR_PROFILE_UPLOADS_DIR))
+tekne_chat_router, tekne_chat_service = build_tekne_chat_router(DATABASE_PATH, templates, TEKNE_CHAT_STORAGE_DIR)
+app.include_router(tekne_chat_router)
 
 COMMUNITY_PAGE_SIZE = 20
 
@@ -648,9 +660,16 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
                 "%Y-%m-%d %H:%M:%S"
             )
             if (datetime.datetime.now() - login_time).days >= 1:
+                try:
+                    chat_token = request.session.get("tekne_chat_session")
+                    revoke_chat_session(DATABASE_PATH, chat_token)
+                    await tekne_chat_service.connections.close_session(chat_token)
+                except sqlite3.Error:
+                    logging.exception("Failed to revoke expired TEKNE chat session")
                 request.session.pop("user_login", None)
                 request.session.pop("user_id", None)
                 request.session.pop("user_time", None)
+                request.session.pop("tekne_chat_session", None)
                 print("userログアウト")
 
         if request.session.get("admin_login") == True:
@@ -1141,6 +1160,12 @@ async def AdminLogin(
             status_code=401
         )
 
+    chat_token = request.session.get("tekne_chat_session")
+    try:
+        revoke_chat_session(DATABASE_PATH, chat_token)
+        await tekne_chat_service.connections.close_session(chat_token)
+    except sqlite3.Error:
+        logging.exception("Failed to revoke TEKNE chat session during administrator login")
     request.session.clear()
     request.session["admin_login"] = True
     request.session["admin_id"] = id
@@ -1922,6 +1947,11 @@ async def AdminDeleteAccount(
                 return RedirectResponse(redirect_url, status_code=303)
 
             db.execute(
+                "BEGIN IMMEDIATE"
+            )
+            if account_type == "student":
+                revoke_student_identity(db, account_id)
+            db.execute(
                 f"DELETE FROM {table_name} WHERE rowid = ? AND id = ?",
                 (account_rowid, account_id)
             )
@@ -1929,6 +1959,9 @@ async def AdminDeleteAccount(
         except sqlite3.Error:
             db.rollback()
             raise
+
+    if account_type == "student":
+        await tekne_chat_service.connections.close_login_id(account_id)
 
     account_label = "生徒" if account_type == "student" else "先生"
     request.session["account_notice"] = {
@@ -2176,9 +2209,16 @@ async def SchoolRegistration(request: Request):
 
 @app.get("/logout")
 async def Logout(request: Request):
+    chat_token = request.session.get("tekne_chat_session")
+    try:
+        revoke_chat_session(DATABASE_PATH, chat_token)
+        await tekne_chat_service.connections.close_session(chat_token)
+    except sqlite3.Error:
+        logging.exception("Failed to revoke TEKNE chat session during logout")
     request.session.pop("user_login", None)
     request.session.pop("user_id", None)
     request.session.pop("user_time", None)
+    request.session.pop("tekne_chat_session", None)
     request.session.pop("teacher_login", None)
     request.session.pop("teacher_id", None)
     request.session.pop("teacher_time", None)
@@ -2939,12 +2979,16 @@ async def Login(
             )
 
         if pwdcheck:
+            chat_token = request.session.get("tekne_chat_session")
+            revoke_chat_session(DATABASE_PATH, chat_token)
+            await tekne_chat_service.connections.close_session(chat_token)
             request.session.pop("teacher_login", None)
             request.session.pop("teacher_id", None)
             request.session.pop("teacher_time", None)
             request.session["user_login"] = True
             request.session["user_id"] = id
             request.session["user_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            request.session["tekne_chat_session"] = create_chat_session(DATABASE_PATH, id)
             return {"result": True}
         else:
             return {"result": False}
@@ -2967,6 +3011,10 @@ async def Login(
             )
 
         if pwdcheck:
+            chat_token = request.session.get("tekne_chat_session")
+            revoke_chat_session(DATABASE_PATH, chat_token)
+            await tekne_chat_service.connections.close_session(chat_token)
+            request.session.pop("tekne_chat_session", None)
             request.session.pop("user_login", None)
             request.session.pop("user_id", None)
             request.session.pop("user_time", None)
@@ -3321,14 +3369,21 @@ async def Edit(
                 new_id.isascii() and
                 len(new_id) > 7
             ):
-                cursor.execute("""
-                UPDATE student
-                SET id = ?
-                WHERE id = ?
-                """, (new_id, current_id))
-                conn.commit()
-                request.session["user_id"] = new_id
-                return {"result": 3}
+                try:
+                    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as identity_db:
+                        identity_db.execute("BEGIN IMMEDIATE")
+                        rename_student_identity(identity_db, current_id, new_id)
+                        changed = identity_db.execute("UPDATE student SET id=? WHERE id=?", (new_id, current_id)).rowcount
+                        if changed != 1:
+                            identity_db.rollback()
+                            return {"result": False}
+                        identity_db.commit()
+                    await tekne_chat_service.connections.close_login_id(current_id)
+                    request.session["user_id"] = new_id
+                    return {"result": 3}
+                except Exception:
+                    logging.exception("Failed to update student chat identity during ID change")
+                    return {"result": False}
             else:
                 return {"result": 2}
     else:

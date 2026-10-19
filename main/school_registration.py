@@ -222,6 +222,9 @@ def register_school_account(database_path, user_id, password, school_id, source_
                 password_hash = bcrypt.hashpw(password.encode("ascii"), bcrypt.gensalt()).decode("ascii")
                 table = "student" if account_type == "student" else "teacher"
                 db.execute(f"INSERT INTO {table} (id, pwd, school) VALUES (?, ?, ?)", (user_id, password_hash, school_name))
+                if account_type == "student":
+                    from tekne_chat import link_student_identity
+                    link_student_identity(db, user_id, school_name)
                 return "created"
     except sqlite3.IntegrityError:
         return "duplicate"
