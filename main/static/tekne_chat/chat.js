@@ -9,7 +9,8 @@
     const sidePanel = $("tc-side-panel");
     const notice = $("tc-notice");
     const state = { groups: [], group: null, members: [], messages: new Map(), socket: null, retry: 0,
-        reconnectTimer: null, folderId: null, searchTimer: null, lastId: 0, historyBeforeId: null, panel: "members", loading: false, movingFileId: null, sending: false };
+        reconnectTimer: null, folderId: null, folderTree: [], expandedFolders: new Set(), searchTimer: null,
+        lastId: 0, historyBeforeId: null, fileRequestId: 0, selectedEntry: null, panel: "members", loading: false, movingFileId: null, sending: false };
 
     function api(path, options = {}) {
         return fetch(path, { credentials: "same-origin", ...options }).then(async (response) => {
@@ -28,7 +29,7 @@
     function clearError() { notice.textContent = ""; }
     function newEventId() { return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
     function setEnabled(enabled) {
-        for (const id of ["tc-message-input", "tc-send-message", "tc-rename-group", "tc-toggle-members", "tc-toggle-files", "tc-new-folder", "tc-upload-file", "tc-leave-group"]) $(id).disabled = !enabled;
+        for (const id of ["tc-message-input", "tc-send-message", "tc-rename-group", "tc-toggle-members", "tc-toggle-files", "tc-new-folder", "tc-upload-file", "tc-leave-group", "tc-selected-download", "tc-selected-rename", "tc-selected-move", "tc-selected-delete"]) $(id).disabled = !enabled;
     }
     function groupIcon(group) {
         const avatar = document.createElement("div");
@@ -189,7 +190,7 @@
         if (state.group) {
             const refreshed = state.groups.find((group) => group.id === state.group.id);
             if (!refreshed) {
-                state.socket?.close(); state.group = null; setEnabled(false); $("tc-current-name").textContent = "グループを選択";
+                state.socket?.close(); state.group = null; state.selectedEntry = null; renderSelectionActions(); setEnabled(false); $("tc-current-name").textContent = "グループを選択";
                 messagesEl.replaceChildren();
             } else {
                 state.group = refreshed;
@@ -201,20 +202,22 @@
     async function openGroup(groupId, options = {}) {
         clearError();
         state.socket?.close(); clearTimeout(state.reconnectTimer);
+        state.fileRequestId += 1;
+        state.folderId = null; state.folderTree = []; state.expandedFolders.clear(); state.selectedEntry = null;
         state.group = state.groups.find((group) => group.id === groupId) || { id: groupId, name: "読み込み中" };
         const group = state.group;
         $("tc-current-name").textContent = group.name;
         const currentIcon = groupIcon(group); currentIcon.id = "tc-current-icon";
         $("tc-current-icon").replaceWith(currentIcon);
         $("tc-current-members").textContent = "";
-        setEnabled(true); renderGroups();
+        setEnabled(true); renderSelectionActions(); renderGroups();
         state.messages.clear(); state.lastId = 0; state.historyBeforeId = null; messagesEl.replaceChildren();
         await loadMessages({ replace: true });
         if (state.group?.id !== groupId) return;
         connectSocket(groupId);
         await loadMembers();
         if (options.fileId) await openFileTarget(options.fileId);
-        else if (options.folderId) { state.folderId = options.folderId; await loadFiles(); }
+        else if (options.folderId) { state.folderId = options.folderId; await openPanel("files"); }
         else if (!sidePanel.hidden && state.panel === "files") await loadFiles();
     }
     async function loadMembers() {
@@ -228,59 +231,162 @@
             const name = document.createElement("span"); name.textContent = member.login_id || "削除済みユーザー"; row.append(name); list.append(row);
         }
     }
+    function folderMap() { return new Map(state.folderTree.map((folder) => [String(folder.id), folder])); }
+    function expandFolderAncestors(folderId) {
+        const folders = folderMap();
+        let folder = folders.get(String(folderId));
+        while (folder?.parent_id) {
+            state.expandedFolders.add(String(folder.parent_id));
+            folder = folders.get(String(folder.parent_id));
+        }
+    }
+    function renderFolderTree() {
+        const tree = $("tc-folder-tree");
+        tree.replaceChildren();
+        const childrenByParent = new Map();
+        for (const folder of state.folderTree) {
+            const key = folder.parent_id ? String(folder.parent_id) : "";
+            if (!childrenByParent.has(key)) childrenByParent.set(key, []);
+            childrenByParent.get(key).push(folder);
+        }
+        const root = document.createElement("button");
+        root.type = "button"; root.className = "tc-tree-item tc-tree-root"; root.setAttribute("role", "treeitem");
+        root.setAttribute("aria-selected", state.folderId ? "false" : "true"); root.textContent = "📁 ルート";
+        root.addEventListener("click", () => selectFolder(null).catch(showError)); tree.append(root);
+
+        function appendChildren(parent, parentId = "", depth = 0) {
+            for (const folder of childrenByParent.get(parentId) || []) {
+                const id = String(folder.id);
+                const row = document.createElement("div"); row.className = "tc-tree-row"; row.style.setProperty("--tc-tree-depth", depth);
+                const children = childrenByParent.get(id) || [];
+                const toggle = document.createElement("button"); toggle.type = "button"; toggle.className = "tc-tree-toggle";
+                toggle.textContent = children.length ? (state.expandedFolders.has(id) ? "▾" : "▸") : "";
+                toggle.disabled = !children.length; toggle.tabIndex = -1; toggle.setAttribute("aria-label", `${folder.name}を${state.expandedFolders.has(id) ? "折りたたむ" : "展開"}`);
+                toggle.addEventListener("click", () => { if (state.expandedFolders.has(id)) state.expandedFolders.delete(id); else state.expandedFolders.add(id); renderFolderTree(); });
+                const select = document.createElement("button"); select.type = "button"; select.className = "tc-tree-item";
+                select.setAttribute("role", "treeitem"); select.setAttribute("aria-selected", String(state.folderId) === id ? "true" : "false");
+                if (children.length) select.setAttribute("aria-expanded", String(state.expandedFolders.has(id)));
+                select.textContent = `📁 ${folder.name}`; select.addEventListener("click", () => selectFolder(id).catch(showError));
+                row.append(toggle, select); parent.append(row);
+                if (children.length) {
+                    const group = document.createElement("div"); group.setAttribute("role", "group"); group.hidden = !state.expandedFolders.has(id);
+                    appendChildren(group, id, depth + 1); parent.append(group);
+                }
+            }
+        }
+        appendChildren(tree);
+    }
+    async function loadFolderTree() {
+        if (!state.group) return;
+        const groupId = state.group.id;
+        const result = await api(`/tekne-chat/api/groups/${encodeURIComponent(groupId)}/folder-tree`);
+        if (state.group?.id !== groupId) return;
+        state.folderTree = result.folders;
+        const existing = new Set(state.folderTree.map((folder) => String(folder.id)));
+        state.expandedFolders = new Set([...state.expandedFolders].filter((id) => existing.has(id)));
+        if (state.folderId && !existing.has(String(state.folderId))) state.folderId = null;
+        if (state.folderId) expandFolderAncestors(state.folderId);
+        renderFolderTree();
+    }
+    async function selectFolder(folderId) {
+        state.folderId = folderId;
+        $("tc-file-search").value = "";
+        if (folderId) expandFolderAncestors(folderId);
+        renderFolderTree();
+        await loadFiles();
+    }
+    function formatDate(value) {
+        if (!value) return "—";
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? value : date.toLocaleString("ja-JP");
+    }
+    function formatSize(value) {
+        const size = Number(value);
+        if (!Number.isFinite(size)) return "—";
+        if (size < 1024) return `${size} B`;
+        if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+        if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+        return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    }
+    function renderSelectionActions() {
+        const selected = state.selectedEntry;
+        const hasEntry = Boolean(selected);
+        $("tc-selection-status").textContent = selected ? `選択中: ${selected.item.name || selected.item.display_name}` : "項目を選択してください";
+        $("tc-selected-download").disabled = !hasEntry || selected.kind !== "file";
+        $("tc-selected-rename").disabled = !hasEntry;
+        $("tc-selected-move").disabled = !hasEntry || selected.kind !== "file";
+        $("tc-selected-delete").disabled = !hasEntry;
+    }
+    function setSelectedEntry(kind, item) {
+        state.selectedEntry = kind && item ? { kind, item } : null;
+        renderSelectionActions();
+        for (const checkbox of document.querySelectorAll(".tc-entry-select")) {
+            const selected = state.selectedEntry && String(state.selectedEntry.item.id) === checkbox.value && state.selectedEntry.kind === checkbox.dataset.kind;
+            checkbox.checked = Boolean(selected);
+            checkbox.closest(".tc-file-row")?.classList.toggle("tc-selected", Boolean(selected));
+        }
+    }
+    function createEntryRow({ item, kind, icon, uploader = "—", createdAt = "", size = "—", path = "", onOpen }) {
+        const row = document.createElement("div"); row.className = "tc-file-row";
+        const select = document.createElement("input"); select.type = "checkbox"; select.className = "tc-entry-select";
+        select.value = String(item.id); select.dataset.kind = kind; select.setAttribute("aria-label", `${item.name || item.display_name}を選択`);
+        select.checked = state.selectedEntry?.kind === kind && String(state.selectedEntry.item.id) === String(item.id);
+        row.classList.toggle("tc-selected", select.checked);
+        select.addEventListener("change", () => setSelectedEntry(select.checked ? kind : null, select.checked ? item : null));
+        const title = document.createElement("div"); title.className = "tc-file-entry-title";
+        const name = item.name || item.display_name;
+        const open = document.createElement("button"); open.type = "button"; open.className = "tc-file-entry-link";
+        open.textContent = `${icon} ${name}`; open.title = path || name;
+        open.addEventListener("click", () => Promise.resolve(onOpen?.()).catch(showError)); title.append(open);
+        if (path) { const location = document.createElement("small"); location.textContent = path; title.append(location); }
+        const uploaderCell = document.createElement("span"); uploaderCell.className = "tc-file-cell"; uploaderCell.dataset.label = "投稿者"; uploaderCell.textContent = uploader || "—";
+        const dateCell = document.createElement("span"); dateCell.className = "tc-file-cell"; dateCell.dataset.label = "登録日時"; dateCell.textContent = formatDate(createdAt);
+        const sizeCell = document.createElement("span"); sizeCell.className = "tc-file-cell"; sizeCell.dataset.label = "サイズ"; sizeCell.textContent = size;
+        row.append(select, title, uploaderCell, dateCell, sizeCell);
+        return row;
+    }
     async function loadFiles() {
         if (!state.group) return;
+        const groupId = state.group.id;
+        if (!state.folderTree.length) await loadFolderTree();
+        if (state.group?.id !== groupId) return;
+        const requestId = ++state.fileRequestId;
         const params = new URLSearchParams();
         const query = $("tc-file-search").value.trim();
         if (query) params.set("q", query); else if (state.folderId) params.set("folder_id", state.folderId);
-        const result = await api(`/tekne-chat/api/groups/${encodeURIComponent(state.group.id)}/folders?${params}`);
-        $("tc-folder-path").textContent = result.folder_path;
+        const result = await api(`/tekne-chat/api/groups/${encodeURIComponent(groupId)}/folders?${params}`);
+        if (state.group?.id !== groupId || requestId !== state.fileRequestId) return;
+        if (state.selectedEntry) {
+            const selectedId = String(state.selectedEntry.item.id);
+            const collection = state.selectedEntry.kind === "file" ? result.files : result.folders;
+            if (!collection.some((item) => String(item.id) === selectedId)) setSelectedEntry(null, null);
+        }
+        $("tc-folder-path").textContent = query ? `検索結果: ${query}` : (result.folder_path || "ルート");
         const list = $("tc-file-list"); list.replaceChildren();
         for (const folder of result.folders) {
-            const row = document.createElement("div"); row.className = "tc-panel-row";
-            const name = document.createElement("button"); name.className = "tc-file-row-name"; name.textContent = `📁 ${folder.name}`;
-            name.addEventListener("click", () => { state.folderId = folder.id; $("tc-file-search").value = ""; loadFiles(); });
-            const rename = document.createElement("button"); rename.textContent = "名前変更";
-            rename.addEventListener("click", async () => { const value = prompt("新しいフォルダ名", folder.name); if (!value) return; try { await api(`/tekne-chat/api/folders/${folder.id}`, { method: "PATCH", body: form({ name: value }) }); await loadFiles(); } catch (error) { showError(error); } });
-            const remove = document.createElement("button"); remove.textContent = "削除";
-            remove.addEventListener("click", async () => { if (!confirm(`「${folder.name}」と中のファイルを削除しますか？`)) return; try { await api(`/tekne-chat/api/folders/${folder.id}`, { method: "DELETE", body: form() }); await loadFiles(); } catch (error) { showError(error); } });
-            row.append(name, rename, remove); list.append(row);
+            const path = folderMap().get(String(folder.id))?.path || folder.name;
+            list.append(createEntryRow({ item: folder, kind: "folder", name: folder.name, icon: "📁", createdAt: folder.created_at, path, onOpen: () => selectFolder(folder.id) }));
         }
         for (const file of result.files) {
-            const row = document.createElement("div"); row.className = "tc-panel-row";
-            const download = document.createElement("a"); download.className = "tc-file-row-name"; download.textContent = `📄 ${file.display_name}`;
-            download.href = `/tekne-chat/api/files/${encodeURIComponent(file.id)}/download`;
-            const rename = document.createElement("button"); rename.textContent = "名前変更";
-            rename.addEventListener("click", async () => { const value = prompt("新しいファイル名", file.display_name); if (!value) return; try { await api(`/tekne-chat/api/files/${file.id}`, { method: "PATCH", body: form({ name: value }) }); await loadFiles(); } catch (error) { showError(error); } });
-            const move = document.createElement("button"); move.textContent = "移動";
-            move.addEventListener("click", async () => {
-                try {
-                    const tree = await api(`/tekne-chat/api/groups/${state.group.id}/folder-tree`);
-                    const select = $("tc-move-target"); select.replaceChildren(new Option("ルート", ""));
-                    for (const folder of tree.folders) select.add(new Option(folder.path, folder.id));
-                    select.value = file.folder_id || ""; state.movingFileId = file.id; $("tc-move-dialog").showModal();
-                } catch (error) { showError(error); }
-            });
-            const remove = document.createElement("button"); remove.textContent = "削除";
-            remove.addEventListener("click", async () => { if (!confirm(`「${file.display_name}」を削除しますか？`)) return; try { await api(`/tekne-chat/api/files/${file.id}`, { method: "DELETE", body: form() }); await loadFiles(); } catch (error) { showError(error); } });
-            row.append(download, rename, move, remove); list.append(row);
+            const path = file.folder_id ? folderMap().get(String(file.folder_id))?.path || "" : "ルート";
+            const open = () => { window.location.href = `/tekne-chat/api/files/${encodeURIComponent(file.id)}/download`; };
+            list.append(createEntryRow({ item: file, kind: "file", icon: "📄", uploader: file.uploaded_by_login_id || "削除済みユーザー", createdAt: file.created_at, size: formatSize(file.size_bytes), path, onOpen: open }));
         }
-        if (!result.files.length && !result.folders.length) { const empty = document.createElement("p"); empty.className = "tc-empty"; empty.textContent = "項目はありません"; list.append(empty); }
+        if (!result.files.length && !result.folders.length) { const empty = document.createElement("p"); empty.className = "tc-empty"; empty.textContent = query ? "検索結果がありません" : "項目はありません"; list.append(empty); }
     }
     async function openFileTarget(fileId) {
         try {
             const file = await api(`/tekne-chat/api/files/${encodeURIComponent(fileId)}`);
             state.folderId = file.folder_id;
-            sidePanel.hidden = false; state.panel = "files"; $("tc-panel-title").textContent = "共有フォルダ";
-            $("tc-members-panel").hidden = true; $("tc-files-panel").hidden = false;
-            await loadFiles();
-            const link = document.createElement("a"); link.href = `/tekne-chat/api/files/${encodeURIComponent(file.id)}/download`; link.textContent = `${file.display_name}をダウンロード`;
-            link.className = "tc-panel-row"; $("tc-file-list").prepend(link);
+            await openPanel("files");
         } catch (error) { showError(error); }
     }
     async function refreshCurrentData() {
         await refreshGroups();
-        if (state.group) { await loadMembers().catch(showError); if (state.panel === "files") await loadFiles().catch(showError); }
+        if (state.group) {
+            await loadMembers().catch(showError);
+            if (state.panel === "files") { await loadFolderTree().catch(showError); await loadFiles().catch(showError); }
+        }
     }
     async function editMessage(message) {
         const body = prompt("メッセージを編集", message.body); if (body === null) return;
@@ -351,12 +457,57 @@
         state.panel = panel; sidePanel.hidden = false;
         const members = panel === "members";
         $("tc-panel-title").textContent = members ? "メンバー" : "共有フォルダ";
+        $("tc-close-panel").setAttribute("aria-label", members ? "閉じる" : "チャットに戻る");
+        app.classList.toggle("tc-show-files", !members);
         $("tc-members-panel").hidden = !members; $("tc-files-panel").hidden = members;
-        if (members) loadMembers().catch(showError); else loadFiles().catch(showError);
+        return members ? loadMembers().catch(showError) : loadFiles().catch(showError);
     }
     $("tc-toggle-members").addEventListener("click", () => openPanel("members"));
     $("tc-toggle-files").addEventListener("click", () => openPanel("files"));
-    $("tc-close-panel").addEventListener("click", () => { sidePanel.hidden = true; });
+    $("tc-close-panel").addEventListener("click", () => { sidePanel.hidden = true; app.classList.remove("tc-show-files"); });
+    $("tc-selected-download").addEventListener("click", () => {
+        const selected = state.selectedEntry;
+        if (selected?.kind === "file") window.location.href = `/tekne-chat/api/files/${encodeURIComponent(selected.item.id)}/download`;
+    });
+    $("tc-selected-rename").addEventListener("click", async () => {
+        const selected = state.selectedEntry;
+        if (!selected) return;
+        const currentName = selected.item.name || selected.item.display_name;
+        const name = prompt("新しい名前", currentName);
+        if (!name) return;
+        try {
+            const path = selected.kind === "folder" ? `/tekne-chat/api/folders/${selected.item.id}` : `/tekne-chat/api/files/${selected.item.id}`;
+            await api(path, { method: "PATCH", body: form({ name }) });
+            if (selected.kind === "folder") { selected.item.name = name; await loadFolderTree(); }
+            else selected.item.display_name = name;
+            renderSelectionActions(); await loadFiles();
+        } catch (error) { showError(error); }
+    });
+    $("tc-selected-move").addEventListener("click", async () => {
+        const selected = state.selectedEntry;
+        if (selected?.kind !== "file") return;
+        try {
+            const tree = await api(`/tekne-chat/api/groups/${encodeURIComponent(state.group.id)}/folder-tree`);
+            const target = $("tc-move-target"); target.replaceChildren(new Option("ルート", ""));
+            for (const folder of tree.folders) target.add(new Option(folder.path, folder.id));
+            target.value = selected.item.folder_id || ""; state.movingFileId = selected.item.id; $("tc-move-dialog").showModal();
+        } catch (error) { showError(error); }
+    });
+    $("tc-selected-delete").addEventListener("click", async () => {
+        const selected = state.selectedEntry;
+        if (!selected) return;
+        const isFolder = selected.kind === "folder";
+        const name = selected.item.name || selected.item.display_name;
+        const promptText = isFolder ? `「${name}」と中のファイルを削除しますか？` : `「${name}」を削除しますか？`;
+        if (!confirm(promptText)) return;
+        try {
+            const path = isFolder ? `/tekne-chat/api/folders/${selected.item.id}` : `/tekne-chat/api/files/${selected.item.id}`;
+            await api(path, { method: "DELETE", body: form() });
+            setSelectedEntry(null, null);
+            if (isFolder) await loadFolderTree();
+            await loadFiles();
+        } catch (error) { showError(error); }
+    });
     $("tc-move-form").addEventListener("submit", async (event) => {
         event.preventDefault(); if (!state.movingFileId) return;
         try { await api(`/tekne-chat/api/files/${state.movingFileId}/move`, { method: "POST", body: form({ folder_id: $("tc-move-target").value }) }); $("tc-move-dialog").close(); state.movingFileId = null; await loadFiles(); }
@@ -381,17 +532,21 @@
     });
     $("tc-leave-group").addEventListener("click", async () => {
         if (!state.group || !confirm("このグループを退出しますか？")) return;
-        try { await api(`/tekne-chat/api/groups/${state.group.id}/members/me`, { method: "DELETE", body: form() }); state.socket?.close(); state.group = null; messagesEl.replaceChildren(); setEnabled(false); $("tc-current-name").textContent = "グループを選択"; await refreshGroups(); }
+        try { await api(`/tekne-chat/api/groups/${state.group.id}/members/me`, { method: "DELETE", body: form() }); state.socket?.close(); state.group = null; setSelectedEntry(null, null); messagesEl.replaceChildren(); setEnabled(false); $("tc-current-name").textContent = "グループを選択"; await refreshGroups(); }
         catch (error) { showError(error); }
     });
     $("tc-new-folder").addEventListener("click", async () => {
         const name = prompt("フォルダ名"); if (!name || !state.group) return;
-        try { await api(`/tekne-chat/api/groups/${state.group.id}/folders`, { method: "POST", body: form({ name, parent_id: state.folderId || "" }) }); await loadFiles(); }
+        try {
+            await api(`/tekne-chat/api/groups/${state.group.id}/folders`, { method: "POST", body: form({ name, parent_id: state.folderId || "" }) });
+            if (state.folderId) state.expandedFolders.add(String(state.folderId));
+            await loadFolderTree(); await loadFiles();
+        }
         catch (error) { showError(error); }
     });
     $("tc-up-folder").addEventListener("click", async () => {
         if (!state.folderId || !state.group) return;
-        try { const data = await api(`/tekne-chat/api/groups/${state.group.id}/folders?folder_id=${encodeURIComponent(state.folderId)}`); state.folderId = data.current_parent_id || null; await loadFiles(); }
+        try { const data = await api(`/tekne-chat/api/groups/${state.group.id}/folders?folder_id=${encodeURIComponent(state.folderId)}`); await selectFolder(data.current_parent_id || null); }
         catch (error) { showError(error); }
     });
     $("tc-file-search").addEventListener("input", () => { clearTimeout(state.searchTimer); state.searchTimer = setTimeout(() => loadFiles().catch(showError), 220); });

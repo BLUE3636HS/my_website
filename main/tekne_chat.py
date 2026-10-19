@@ -778,9 +778,11 @@ class TekneChatService:
                 current_parent = current[0]
             if query:
                 pattern = "%" + _like(query.strip()) + "%"
-                files = db.execute("""SELECT id,folder_id,display_name,size_bytes,content_type,uploaded_by,created_at
-                    FROM tekne_chat_file WHERE group_id=? AND deleted_at IS NULL AND display_name LIKE ? ESCAPE '\\'
-                    ORDER BY display_name,id""", (group_id, pattern)).fetchall()
+                files = db.execute("""SELECT f.id,f.folder_id,f.display_name,f.size_bytes,f.content_type,f.uploaded_by,
+                    i.login_id AS uploaded_by_login_id,f.created_at
+                    FROM tekne_chat_file f LEFT JOIN tekne_student_identity i ON i.id=f.uploaded_by
+                    WHERE f.group_id=? AND f.deleted_at IS NULL AND f.display_name LIKE ? ESCAPE '\\'
+                    ORDER BY f.display_name,f.id""", (group_id, pattern)).fetchall()
                 folders = db.execute("""SELECT id,parent_id,name,created_at FROM tekne_chat_folder
                     WHERE group_id=? AND deleted_at IS NULL AND name LIKE ? ESCAPE '\\' ORDER BY name,id""",
                     (group_id, pattern)).fetchall()
@@ -788,8 +790,10 @@ class TekneChatService:
                 if folder_id and not db.execute("SELECT 1 FROM tekne_chat_folder WHERE id=? AND group_id=? AND deleted_at IS NULL",
                                                 (folder_id, group_id)).fetchone():
                     raise HTTPException(404, "フォルダが見つかりません。")
-                files = db.execute("""SELECT id,folder_id,display_name,size_bytes,content_type,uploaded_by,created_at
-                    FROM tekne_chat_file WHERE group_id=? AND folder_id IS ? AND deleted_at IS NULL ORDER BY display_name,id""",
+                files = db.execute("""SELECT f.id,f.folder_id,f.display_name,f.size_bytes,f.content_type,f.uploaded_by,
+                    i.login_id AS uploaded_by_login_id,f.created_at
+                    FROM tekne_chat_file f LEFT JOIN tekne_student_identity i ON i.id=f.uploaded_by
+                    WHERE f.group_id=? AND f.folder_id IS ? AND f.deleted_at IS NULL ORDER BY f.display_name,f.id""",
                     (group_id, folder_id)).fetchall()
                 folders = db.execute("""SELECT id,parent_id,name,created_at FROM tekne_chat_folder
                     WHERE group_id=? AND parent_id IS ? AND deleted_at IS NULL ORDER BY name,id""",

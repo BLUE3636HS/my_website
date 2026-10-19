@@ -38,7 +38,7 @@
         </form>
     </main>
     <aside id="tc-side-panel" class="tc-side-panel" hidden>
-        <div class="tc-panel-heading"><h2 id="tc-panel-title">メンバー</h2><button id="tc-close-panel" type="button" aria-label="閉じる">×</button></div>
+        <div class="tc-panel-heading"><h2 id="tc-panel-title">メンバー</h2><button id="tc-close-panel" type="button" aria-label="チャットに戻る">×</button></div>
         <section id="tc-members-panel" hidden>
             <label for="tc-student-search">同じ学校の生徒を招待</label>
             <input id="tc-student-search" type="search" placeholder="生徒IDを2文字以上入力">
@@ -47,15 +47,32 @@
             <button id="tc-leave-group" class="tc-danger-button" type="button">このグループを退出</button>
         </section>
         <section id="tc-files-panel" hidden>
-            <div class="tc-file-toolbar">
-                <button id="tc-up-folder" type="button">上の階層</button>
-                <button id="tc-new-folder" type="button">フォルダ作成</button>
-                <label class="tc-upload-button">ファイルをアップロード<input id="tc-upload-file" type="file" hidden></label>
+            <div class="tc-file-layout">
+                <nav class="tc-folder-navigation" aria-label="フォルダ階層">
+                    <div class="tc-folder-nav-heading"><h3>フォルダ</h3><button id="tc-up-folder" type="button" title="上の階層へ">↑</button></div>
+                    <div id="tc-folder-tree" class="tc-folder-tree" role="tree"></div>
+                </nav>
+                <div class="tc-file-content">
+                    <div class="tc-file-toolbar">
+                        <div class="tc-file-toolbar-primary">
+                            <button id="tc-new-folder" type="button">フォルダ作成</button>
+                            <label class="tc-upload-button">ファイルをアップロード<input id="tc-upload-file" type="file" hidden></label>
+                        </div>
+                        <div class="tc-file-toolbar-actions" role="group" aria-label="選択した項目の操作">
+                            <span id="tc-selection-status" class="tc-selection-status">項目を選択してください</span>
+                            <button id="tc-selected-download" type="button" disabled>ダウンロード</button>
+                            <button id="tc-selected-rename" type="button" disabled>名前変更</button>
+                            <button id="tc-selected-move" type="button" disabled>移動</button>
+                            <button id="tc-selected-delete" type="button" disabled>削除</button>
+                        </div>
+                    </div>
+                    <label for="tc-file-search">ファイル・フォルダ検索</label>
+                    <input id="tc-file-search" type="search" placeholder="グループ内を検索">
+                    <p id="tc-folder-path" class="tc-folder-path">ルート</p>
+                    <div class="tc-file-table-header" aria-hidden="true"><span></span><span>名前</span><span>アップロード者</span><span>登録日時</span><span>サイズ</span></div>
+                    <div id="tc-file-list" class="tc-file-list" aria-live="polite"></div>
+                </div>
             </div>
-            <label for="tc-file-search">ファイル・フォルダ検索</label>
-            <input id="tc-file-search" type="search" placeholder="名前で検索">
-            <p id="tc-folder-path" class="tc-folder-path">ルート</p>
-            <div id="tc-file-list" class="tc-panel-list"></div>
         </section>
     </aside>
 </div>

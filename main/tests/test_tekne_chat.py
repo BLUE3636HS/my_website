@@ -222,6 +222,7 @@ class TekneChatTests(unittest.TestCase):
         self.assertEqual(moved["folder_id"], folder["id"])
         results = self.service.list_files(self.sessions["student_0001"], group_id, query="final")
         self.assertEqual(results["files"][0]["id"], file_id)
+        self.assertEqual(results["files"][0]["uploaded_by_login_id"], "student_0001")
 
     def test_admin_can_remove_member_and_delete_other_users_message(self):
         group_id = self._create_group()
