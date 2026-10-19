@@ -13,6 +13,7 @@ from school_registration import (
     initialize_school_registration,
     issue_school_id,
     register_school_student,
+    register_school_teacher,
     verify_school_id,
 )
 
@@ -33,6 +34,7 @@ class SchoolRegistrationTests(unittest.TestCase):
         with closing(sqlite3.connect(self.db_path)) as db:
             with db:
                 db.execute("CREATE TABLE student (id TEXT NOT NULL, pwd TEXT NOT NULL, school TEXT NOT NULL)")
+                db.execute("CREATE TABLE teacher (id TEXT NOT NULL, pwd TEXT NOT NULL, school TEXT NOT NULL)")
                 db.execute("CREATE TABLE admin (id TEXT PRIMARY KEY, pwd TEXT NOT NULL)")
                 db.execute("INSERT INTO admin VALUES ('admin', 'keep-this-hash')")
                 initialize_school_registration(db)
@@ -86,6 +88,16 @@ class SchoolRegistrationTests(unittest.TestCase):
             self.assertEqual(register_school_student(self.db_path, "student_0001", "password1", "wrong", "192.0.2.1"), "invalid")
         self.assertEqual(register_school_student(self.db_path, "student_0001", "password1", school_id, "192.0.2.1"), "rate_limited")
 
+    def test_school_teacher_registration_requires_valid_code_and_uses_school_name(self):
+        school_id = self.issue()
+        self.assertEqual(register_school_teacher(self.db_path, "teacher_0001", "password1", "wrong", "192.0.2.1"), "invalid")
+        self.assertEqual(register_school_teacher(self.db_path, "teacher_0001", "password1", school_id, "192.0.2.2"), "created")
+        with closing(sqlite3.connect(self.db_path)) as db:
+            row = db.execute("SELECT id, pwd, school FROM teacher").fetchone()
+            self.assertEqual((row[0], row[2]), ("teacher_0001", "Example School"))
+            self.assertTrue(bcrypt.checkpw(b"password1", row[1].encode()))
+        self.assertEqual(register_school_student(self.db_path, "teacher_0001", "password2", school_id, "192.0.2.3"), "duplicate")
+
     def test_additive_upgrade_of_previous_school_table(self):
         legacy_path = Path(self.temp.name) / "legacy-main.db"
         legacy_id = "oldselector.old-secret-value"
@@ -131,8 +143,14 @@ class SchoolRegistrationTests(unittest.TestCase):
         response = asyncio.run(namespace["Registration"](object(), "student"))
         self.assertEqual(response, {"result": 3, "message": "未実装の機能です"})
         page = (MAIN_DIR / "templates" / "registration.html").read_text(encoding="utf-8")
-        self.assertIn('type="email" id="student_email"', page)
-        self.assertIn('href="/school-registration"', page)
+        self.assertIn('id="school_registration_form"', page)
+        self.assertIn('id="school_id"', page)
+        self.assertIn('src="/static/school_registration.js"', page)
+        self.assertNotIn('type="email"', page)
+        self.assertNotIn('href="/school-registration"', page)
+        self.assertIn('id="teacher_registration_form"', page)
+        self.assertIn('id="teacher_school_id"', page)
+        self.assertNotIn('id="teacher_school"', page)
         self.assertNotIn('id="student_school"', page)
 
 

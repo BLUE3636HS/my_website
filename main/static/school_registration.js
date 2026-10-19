@@ -1,4 +1,6 @@
-document.getElementById("school_registration_form").addEventListener("submit", async (event) => {
+const schoolRegistrationForm = document.getElementById("school_registration_form");
+
+if (schoolRegistrationForm) schoolRegistrationForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData();
     form.append("id", document.getElementById("school_student_id").value);

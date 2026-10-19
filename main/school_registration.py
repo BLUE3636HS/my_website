@@ -181,8 +181,10 @@ def validate_student_credentials(user_id, password):
     )
 
 
-def register_school_student(database_path, user_id, password, school_id, source_ip, *, now=None):
-    """Rate-limit and create one student in a serialized local SQLite transaction."""
+def register_school_account(database_path, user_id, password, school_id, source_ip, account_type, *, now=None):
+    """Rate-limit and create a school-linked student or teacher account."""
+    if account_type not in ("student", "teacher"):
+        return "invalid"
     if not validate_student_credentials(user_id, password):
         return "invalid"
     attempt_time = int((now or datetime.datetime.now(datetime.timezone.utc)).timestamp())
@@ -215,15 +217,21 @@ def register_school_student(database_path, user_id, password, school_id, source_
                 )
                 if school_name is None:
                     return "invalid"
-                if db.execute("SELECT 1 FROM student WHERE id = ? LIMIT 1", (user_id,)).fetchone():
+                if db.execute("SELECT 1 FROM student WHERE id = ? UNION ALL SELECT 1 FROM teacher WHERE id = ? LIMIT 1", (user_id, user_id)).fetchone():
                     return "duplicate"
                 password_hash = bcrypt.hashpw(password.encode("ascii"), bcrypt.gensalt()).decode("ascii")
-                db.execute(
-                    "INSERT INTO student (id, pwd, school) VALUES (?, ?, ?)",
-                    (user_id, password_hash, school_name),
-                )
+                table = "student" if account_type == "student" else "teacher"
+                db.execute(f"INSERT INTO {table} (id, pwd, school) VALUES (?, ?, ?)", (user_id, password_hash, school_name))
                 return "created"
     except sqlite3.IntegrityError:
         return "duplicate"
     except sqlite3.Error:
         return "unavailable"
+
+
+def register_school_student(database_path, user_id, password, school_id, source_ip, *, now=None):
+    return register_school_account(database_path, user_id, password, school_id, source_ip, "student", now=now)
+
+
+def register_school_teacher(database_path, user_id, password, school_id, source_ip, *, now=None):
+    return register_school_account(database_path, user_id, password, school_id, source_ip, "teacher", now=now)

@@ -33,6 +33,7 @@ from admin_management import migrate_admin_database, build_admin_router, active_
 from school_registration import (
     initialize_school_registration,
     register_school_student,
+    register_school_teacher,
 )
 from school_features import (
     FEATURES as STUDENT_FEATURES,
@@ -2157,14 +2158,11 @@ async def EquipmentReservationPage(request: Request):
 
 @app.get("/registration")
 async def Registration(request: Request):
-    schools = load_schools()
-
     return templates.TemplateResponse(
         request = request,
         name = "registration.html",
         context = {
-            "request": request,
-            "schools": schools
+            "request": request
         }
     )
 
@@ -2985,7 +2983,7 @@ async def Registration(
     type: str = Form(...),
     id: str = Form(""),
     pwd: str = Form(""),
-    school: str = Form(""),
+    school_id: str = Form(""),
     email: str = Form("")
 ):
     #生徒用
@@ -2994,44 +2992,24 @@ async def Registration(
         return {"result": 3, "message": "未実装の機能です"}
     #先生用
     elif type == "teacher":
-        if (id.isascii() and
-            len(id) > 7 and
-            
-            pwd.isascii() and
-            len(pwd) > 7 and
-            any(i.isalpha() for i in pwd) and
-            any(i.isdigit() for i in pwd) and
-    
-            school != "notselect"
-            ):
-            #IDがかぶっていないかチェック
-            cursor.execute(
-                "SELECT * FROM teacher WHERE id = ?",
-                (id,)
-            )
-    
-            if cursor.fetchone() != None:
-                return {"result": 2}
-            else: 
-                #dbにIDとパスワードに追加
-                hashed_pwd = bcrypt.hashpw(
-                    pwd.encode(),
-                    bcrypt.gensalt()
-                ).decode()
-                cursor.execute(
-                    """
-                    INSERT INTO teacher (id, pwd, school)
-                    VALUES (?, ?, ?)
-                    """,
-                    (id, hashed_pwd, school)
-                )
-                conn.commit()
-                
-                print("dbに情報を追加")
-    
-                return {"result": 0}
-        else:
-            return {"result": 1}
+        source_ip = request.client.host if request.client else "unknown"
+        result = await run_in_threadpool(
+            register_school_teacher,
+            DATABASE_PATH,
+            id,
+            pwd,
+            school_id,
+            source_ip,
+        )
+        if result == "created":
+            return {"result": 0, "message": "登録しました"}
+        if result == "duplicate":
+            return {"result": 2, "message": "そのIDはすでに使用されています。"}
+        if result == "rate_limited":
+            return JSONResponse(status_code=429, content={"result": 1, "message": "時間をおいて再度お試しください。"})
+        if result == "unavailable":
+            return JSONResponse(status_code=500, content={"result": 1, "message": "登録できませんでした。時間をおいて再度お試しください。"})
+        return JSONResponse(status_code=400, content={"result": 1, "message": "ID・パスワード・学校コードを確認してください。"})
 
 @app.post("/school-registration")
 async def SchoolRegistrationPost(

@@ -16,8 +16,8 @@
             <aside class="sidebar">
                 <a class="brand" href="/admin/mypage">Admin</a>
                 <nav class="nav-menu" aria-label="管理者メニュー">
-                    <a class="nav-link" href="/admin/reservation"{% if current_path == '/admin/reservation' or current_path.startswith('/admin/reservation/') %} aria-current="page"{% endif %}>TEKNE工作室予約確認</a>
-                    <a class="nav-link" href="/admin/reservation-schedule"{% if current_path == '/admin/reservation-schedule' or current_path.startswith('/admin/reservation-schedule/') %} aria-current="page"{% endif %}>予約可能時間設定</a>
+                    <a class="nav-link" href="/admin/reservation"{% if current_path == '/admin/reservation' or current_path.startswith('/admin/reservation/') %} aria-current="page"{% endif %}>工作室予約確認</a>
+                    <a class="nav-link" href="/admin/reservation-schedule"{% if current_path == '/admin/reservation-schedule' or current_path.startswith('/admin/reservation-schedule/') %} aria-current="page"{% endif %}>工作室予約可能時間設定</a>
                     <a class="nav-link" href="/admin/profile"{% if current_path.startswith('/admin/profile') or current_path.startswith('/admin/mentor-profile') %} aria-current="page"{% endif %}>管理者情報</a>
                     <a class="nav-link" href="/admin/mentor-schedule"{% if current_path.startswith('/admin/mentor-schedule') %} aria-current="page"{% endif %}>メンター対応可能時間</a>
                     <a class="nav-link" href="/admin/mentor-reservations"{% if current_path.startswith('/admin/mentor-reservations') %} aria-current="page"{% endif %}>メンター予約確認</a>
