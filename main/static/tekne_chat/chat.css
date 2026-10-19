@@ -1,7 +1,9 @@
 .tekne-chat-app {
     display: grid;
     grid-template-columns: 270px minmax(360px, 1fr) 300px;
-    height: 100%;
+    grid-template-rows: minmax(0, 1fr);
+    flex: 1 1 0;
+    height: auto;
     min-height: 0;
     overflow: hidden;
     color: #1d2939;
@@ -30,7 +32,8 @@
 .tc-group-copy strong, .tc-group-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tc-group-copy strong { font-size: 14px; }
 .tc-group-copy span { margin-top: 3px; color: #667085; font-size: 12px; }
-.tc-conversation { display: flex; min-width: 0; flex-direction: column; background: #fff; }
+.student-content:has(.tekne-chat-app) { display: flex; overflow: hidden; }
+.tc-conversation { display: flex; min-width: 0; min-height: 0; flex-direction: column; background: #fff; }
 .tc-conversation-header { min-height: 70px; justify-content: space-between; gap: 10px; padding: 0 18px; border-bottom: 1px solid #e6ebf2; }
 .tc-conversation-title { min-width: 0; gap: 10px; }
 .tc-conversation-title h2 { overflow: hidden; margin: 0 0 3px; font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
@@ -81,7 +84,7 @@
     .tc-header-actions button { padding: 7px; }
 }
 @media (max-width: 700px) {
-    .tekne-chat-app, .tekne-chat-app:has(.tc-side-panel[hidden]) { height: 100%; min-height: 0; grid-template-columns: 1fr; }
+    .tekne-chat-app, .tekne-chat-app:has(.tc-side-panel[hidden]) { min-height: 0; grid-template-columns: 1fr; }
     .tc-groups { display: none; }
     .tc-header-actions { gap: 3px; }
     .tc-header-actions button { padding: 6px; font-size: 10px; }
