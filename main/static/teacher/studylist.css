@@ -1,5 +1,9 @@
+.teacher-studylist-page { width: 100%; max-width: none; }
 .teacher-studylist-card { min-width: 0; padding: 32px; border: 1px solid #ead8cf; border-radius: 16px; background: #fff; box-shadow: 0 8px 26px rgba(184,92,56,.09); }
 .teacher-studylist-card h1 { margin: 0 0 28px; color: #4a3b32; font-size: clamp(26px,4vw,36px); }
+.teacher-study-search-wrap { display: grid; gap: 7px; width: min(100%, 560px); margin: 0 0 20px; color: #4a3b32; font-weight: 700; }
+.teacher-study-search { width: 100%; min-width: 0; padding: 11px 13px; border: 1px solid #d8c7be; border-radius: 8px; background: #fffdfa; color: inherit; font: inherit; }
+.teacher-study-search:focus-visible { outline: 3px solid rgba(184,92,56,.3); border-color: #b85c38; }
 .teacher-table-scroll { overflow-x: auto; }
 .teacher-studylist-card table { width: 100%; min-width: 820px; border-collapse: collapse; }
 .teacher-studylist-card th, .teacher-studylist-card td { padding: 15px; border: 1px solid #e3d6cf; vertical-align: middle; }

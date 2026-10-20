@@ -565,6 +565,21 @@ class TekneChatService:
                 (identity["school_id"], identity["id"])).fetchall()
             return [dict(row) for row in rows]
 
+    def submission_group_snapshot(self, db, session, group_id):
+        """Validate current membership and return submitter identities using the caller's DB transaction."""
+        identity, group = self._member(db, session, group_id)
+        members = db.execute("""SELECT i.id, i.login_id
+            FROM tekne_chat_member m
+            JOIN tekne_student_identity i ON i.id=m.student_id AND i.school_id=m.school_id
+            JOIN student s ON s.id=i.login_id AND s.school=(
+                SELECT school_name FROM tekne_school_identity WHERE id=i.school_id)
+            WHERE m.group_id=? AND m.school_id=? AND m.left_at IS NULL
+              AND i.deleted_at IS NULL AND i.login_id IS NOT NULL
+            ORDER BY m.joined_at, i.login_id""", (group_id, identity[1])).fetchall()
+        if not members or identity[0] not in {row[0] for row in members}:
+            raise HTTPException(422, "選択したグループの在籍状況を確認できません。画面を再読み込みしてください。")
+        return {"id": group[0], "name": group[2], "members": members}
+
     def create_group(self, session, name):
         clean = _clean_name(name, max_length=100)
         if not clean:

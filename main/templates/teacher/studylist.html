@@ -8,21 +8,29 @@
     <section class="teacher-studylist-card">
     <p class="teacher-eyebrow">Submissions</p>
     <h1>自校提出物確認</h1>
+    <div class="teacher-study-search-wrap">
+        <label for="teacher-study-search">提出物を検索</label>
+        <input type="search" id="teacher-study-search" class="teacher-study-search" placeholder="題名・要約・提出日時・提出者・ファイル名" autocomplete="off">
+    </div>
     <div class="teacher-table-scroll">
     <table border="1">
         <thead>
             <tr>
                 <th>題名</th>
                 <th>要約</th>
+                <th>提出日時</th>
+                <th>提出者</th>
                 <th>ダウンロード</th>
                 <th class="teacher-study-action-column">操作</th>
             </tr>
         </thead>
         <tbody>
         {%for study in studies%}
-        <tr>
+        <tr class="teacher-study-row" data-searchable-row>
             <td>{{study[1]}}</td>
             <td>{{study[2]}}</td>
+            <td>{{study[6]}}</td>
+            <td>{% set collaboration = submission_details.get(study[0]) %}{% if collaboration %}「{{ collaboration.group_name }}」{{ collaboration.submitters | join(',') }}{% else %}{{ study[5] }}{% endif %}</td>
             <td>{% if study[7] == "pdf" %}<a href="/uploads/{{study[0]}}.pdf">{{study[3]}}</a>{% else %}<a href="/uploads/{{ study[0] }}.pdf" target="_blank" rel="noopener">PDFを開く</a>{% endif %}</td>
             <td class="teacher-study-action-column">
                 <form method="post" action="/teacher/studylist/{{ study[0] }}/delete" class="teacher-study-delete-form">
@@ -33,9 +41,10 @@
         </tr>
         {% else %}
         <tr>
-            <td colspan="4" class="teacher-study-empty">確認できる提出物はありません。</td>
+            <td colspan="6" class="teacher-study-empty">確認できる提出物はありません。</td>
         </tr>
         {% endfor %}
+        {% if studies %}<tr class="teacher-study-no-results" hidden><td colspan="6" role="status">該当する提出物はありません。</td></tr>{% endif %}
         </tbody>
     </table>
     </div>

@@ -98,6 +98,13 @@ function renderImageField(field) {
     wrapper.append(legend, help, picker, list); fields.append(wrapper); draw();
 }
 function updateMode() {
+    const selectedSubmissionKind = form.querySelector('input[name="submission_kind"]:checked');
+    const isGroup = selectedSubmissionKind?.value === "group";
+    const groupPanel = document.getElementById("group-submission-panel");
+    const groupSelector = document.getElementById("chat-group-id");
+    groupPanel.hidden = !isGroup;
+    groupSelector.disabled = !isGroup;
+    groupSelector.required = isGroup;
     const isPdf = form.elements.registration_type.value === "pdf";
     document.getElementById("pdf-panel").hidden = !isPdf;
     document.getElementById("pdf_file").disabled = !isPdf;
@@ -114,6 +121,9 @@ function updateMode() {
 }
 selector.addEventListener("change", generateFields);
 form.querySelectorAll('[name="registration_type"]').forEach(input => input.addEventListener("change", updateMode));
+form.addEventListener("change", event => {
+    if (event.target.matches('[name="submission_kind"]')) updateMode();
+});
 generateFields();
 form.addEventListener("submit", async event => {
     event.preventDefault();

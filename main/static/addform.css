@@ -47,6 +47,7 @@
 .study-modes { border: 1px solid #cbd6e2; border-radius: 9px; padding: 14px; }
 .study-modes label { display: inline-block; margin-right: 18px; }
 .study-modes legend { color: #334155; font-weight: 700; }
+.addform-hint { margin: 0; color: #64748b; font-size: 14px; }
 .addform-panel button:disabled { opacity: .6; cursor: default; }
 #submission-status { overflow-wrap: anywhere; }
 .study-image-field { border: 1px solid #cbd6e2; border-radius: 9px; padding: 14px; min-width: 0; }

@@ -22,7 +22,7 @@
                 <nav class="student-nav" aria-label="生徒用メニュー">
                     {% if student_features.dashboard %}<a class="student-nav-link" href="/dashboard"{% if current_path == '/dashboard' %} aria-current="page"{% endif %}>ダッシュボード</a>{% endif %}
                     {% if student_features.studies_add %}<a class="student-nav-link" href="/addform"{% if current_path == '/addform' or current_path.startswith('/addform/') %} aria-current="page"{% endif %}>研究成果追加フォーム</a>{% endif %}
-                    {% if student_features.studies_list %}<a class="student-nav-link" href="/studylist"{% if current_path == '/studylist' or current_path.startswith('/studylist/') %} aria-current="page"{% endif %}>研究成果一覧</a>{% endif %}
+                    {% if student_features.studies_list %}<a class="student-nav-link" href="/studylist"{% if current_path == '/studylist' or current_path.startswith('/studylist/') %} aria-current="page"{% endif %}>提出物一覧</a>{% endif %}
                     {% if student_features.community %}<a class="student-nav-link" href="/community"{% if current_path == '/community' or current_path.startswith('/community/') %} aria-current="page"{% endif %}>TEKNEコミュニティ</a>{% endif %}
                     <a class="student-nav-link" href="/tekne-chat"{% if current_path == '/tekne-chat' or current_path.startswith('/tekne-chat/') %} aria-current="page"{% endif %}>TEKNEチャット</a>
                     {% if student_features.workshop_reservation %}<a class="student-nav-link" href="/reservation"{% if current_path == '/reservation' or current_path.startswith('/reservation/') %} aria-current="page"{% endif %}>TEKNE工作室予約</a>{% endif %}
@@ -34,7 +34,7 @@
                     <span aria-hidden="true">🔔</span> 通知
                     {% if unread_notification_count %}<span class="notification-badge">{{ unread_notification_count }}</span>{% endif %}
                 </a>
-                <a class="student-logout-link" href="/logout">Logout</a>
+                <a class="student-logout-link" href="/logout?role=student">Logout</a>
             </aside>
 
             <div class="student-main">

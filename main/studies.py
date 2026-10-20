@@ -46,11 +46,21 @@ def initialize_studies(db):
             "registration_type": "TEXT NOT NULL DEFAULT 'pdf' CHECK(registration_type IN ('pdf', 'template'))",
             "template_id": "INTEGER REFERENCES study_template(id) ON DELETE RESTRICT",
             "submission_key": "TEXT",
+            "submission_kind": "TEXT NOT NULL DEFAULT 'individual' CHECK(submission_kind IN ('individual', 'group'))",
+            "chat_group_id": "TEXT",
+            "chat_group_name": "TEXT",
         }
         for name, definition in additions.items():
             if name not in columns:
                 db.execute(f"ALTER TABLE study ADD COLUMN {name} {definition}")
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS study_submission_key ON study(submission_key)")
+        db.execute("""CREATE TABLE IF NOT EXISTS study_submission_member (
+            study_id INTEGER NOT NULL REFERENCES study(id) ON DELETE CASCADE,
+            tekne_student_id TEXT NOT NULL,
+            student_id_snapshot TEXT NOT NULL,
+            position INTEGER NOT NULL CHECK(position >= 0),
+            PRIMARY KEY(study_id, tekne_student_id),
+            UNIQUE(study_id, position))""")
         db.execute("""CREATE TABLE IF NOT EXISTS study_field_value (
             study_id INTEGER NOT NULL REFERENCES study(id) ON DELETE CASCADE,
             field_id INTEGER NOT NULL REFERENCES study_template_field(id) ON DELETE RESTRICT,
@@ -90,11 +100,37 @@ def get_templates(db, include_inactive=False):
     ]} for row in db.execute("SELECT id, name, active FROM study_template WHERE active = 1 OR ? ORDER BY id", (include_inactive,))]
 
 
-def study_pdf_path(uploads, filename):
-    """Only a PDF directly inside uploads can belong to a research submission."""
+def get_submission_collaboration(db, study_ids):
+    ids = list(dict.fromkeys(int(study_id) for study_id in study_ids))
+    if not ids:
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    rows = db.execute(f"""SELECT id, submission_kind, chat_group_id, chat_group_name
+        FROM study WHERE id IN ({placeholders}) AND submission_kind='group'""", ids).fetchall()
+    result = {row[0]: {"kind": row[1], "group_id": row[2], "group_name": row[3], "submitters": []}
+              for row in rows}
+    if result:
+        group_ids = list(result)
+        member_placeholders = ",".join("?" for _ in group_ids)
+        for study_id, student_id in db.execute(f"""SELECT study_id, student_id_snapshot
+            FROM study_submission_member WHERE study_id IN ({member_placeholders}) ORDER BY study_id, position""", group_ids):
+            result[study_id]["submitters"].append(student_id)
+    return result
+
+
+def study_file_path(uploads, filename):
+    """Only a file directly inside uploads can belong to a research submission."""
     root = Path(uploads).resolve()
     target = (root / filename).resolve()
-    if target.parent != root or target.suffix.lower() != ".pdf":
+    if target.parent != root:
+        raise ValueError("Invalid research file path")
+    return target
+
+
+def study_pdf_path(uploads, filename):
+    """Only a PDF directly inside uploads can belong to a research submission."""
+    target = study_file_path(uploads, filename)
+    if target.suffix.lower() != ".pdf":
         raise ValueError("Invalid research PDF path")
     return target
 

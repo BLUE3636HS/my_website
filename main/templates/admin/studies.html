@@ -26,7 +26,7 @@
                         <th>ID</th>
                         <th>研究名</th>
                         <th>紹介文</th>
-                        <th>PDFファイル</th>
+                        <th>提出ファイル</th>
                         <th>投稿者ID</th>
                         <th>投稿日時</th>
                         <th class="studies-action-column">操作</th>
@@ -49,6 +49,8 @@
                                 data-student-school="{{ study[8] or '' }}"
                                 data-student-found="{{ 'true' if study[7] else 'false' }}"
                             >{{ study[5] }}</button>
+                            {% set collaboration = submission_details.get(study[0]) %}
+                            {% if collaboration %}<small>「{{ collaboration.group_name }}」{{ collaboration.submitters | join(',') }}</small>{% else %}<small>個人提出</small>{% endif %}
                         </td>
                         <td class="studies-time-cell">{{ study[6] }}</td>
                         <td class="studies-action-column">

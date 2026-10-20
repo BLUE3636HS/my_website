@@ -11,10 +11,10 @@ from contextlib import closing
 from pathlib import Path
 from uuid import uuid4
 
-import sqlite3, shutil, bcrypt, datetime, csv, secrets, io, json
+import sqlite3, shutil, bcrypt, datetime, csv, secrets, io, json, math, mimetypes
 import hashlib, hmac, logging
 from starlette.datastructures import UploadFile as StarletteUploadFile
-from studies import connect_studies, initialize_studies, get_templates, study_pdf_path, validate_pdf
+from studies import connect_studies, initialize_studies, get_templates, get_submission_collaboration, study_file_path, study_pdf_path, validate_pdf
 from study_images import normalize_study_image, study_image_path
 from urllib.parse import urlencode
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -62,6 +62,7 @@ from student_custom_fields import (
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "database" / "database.db"
 UPLOADS_DIR = (BASE_DIR / "uploads").resolve()
+STUDY_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
 PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "profile").resolve()
 STUDY_IMAGE_UPLOADS_DIR = (UPLOADS_DIR / "study-images").resolve()
 MENTOR_PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "mentor-profile").resolve()
@@ -742,23 +743,22 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
             return RedirectResponse("/admin/login", status_code=303)
 
-        # teacher ログイン済みなら teacher 配下のみ許可
-        if request.session.get("teacher_login") == True:
-            if request.url.path.startswith("/teacher"):
+        # Student and teacher identities may coexist in one session. Authorize
+        # teacher routes with teacher credentials and all other student routes
+        # with student credentials.
+        if request.url.path.startswith("/teacher"):
+            if request.session.get("teacher_login") is True:
                 return await call_next(request)
-            else:
-                return RedirectResponse("/teacher", status_code=303)
+            return RedirectResponse("/login", status_code=303)
 
-        # 一般ユーザーログイン済みなら teacher 配下以外を許可
-        if request.session.get("user_login") == True:
-            if not request.url.path.startswith("/teacher"):
-                feature = feature_for_student_path(request.url.path)
-                if feature and not enabled_for_student(DATABASE_PATH, request.session.get("user_id"), feature):
-                    return JSONResponse({"detail": "この機能は現在利用できません。"}, status_code=404)
-                return await call_next(request)
-            else:
-                return RedirectResponse("/login", status_code=303)
+        if request.session.get("user_login") is True:
+            feature = feature_for_student_path(request.url.path)
+            if feature and not enabled_for_student(DATABASE_PATH, request.session.get("user_id"), feature):
+                return JSONResponse({"detail": "この機能は現在利用できません。"}, status_code=404)
+            return await call_next(request)
 
+        if request.session.get("teacher_login") is True:
+            return RedirectResponse("/teacher", status_code=303)
         # 未ログインはログインページへ
         return RedirectResponse("/login", status_code=303)
 
@@ -959,6 +959,10 @@ async def AddForm(request: Request):
     csrf = request.session.setdefault("study_csrf_token", secrets.token_urlsafe(32))
     nonce = secrets.token_hex(32)
     submission_token = nonce + "." + hmac.new(csrf.encode(), nonce.encode(), hashlib.sha256).hexdigest()
+    try:
+        submission_groups = tekne_chat_service.groups(request.session)
+    except HTTPException:
+        submission_groups = []
     with closing(connect_studies(DATABASE_PATH)) as db:
         study_templates = get_templates(db)
     return templates.TemplateResponse(
@@ -966,6 +970,7 @@ async def AddForm(request: Request):
         name = "addform.html",
         context = {
             "study_templates": study_templates,
+            "submission_groups": submission_groups,
             "csrf_token": csrf,
             "submission_token": submission_token,
             "request": request,
@@ -976,8 +981,20 @@ async def AddForm(request: Request):
 
 @app.get("/studylist", response_class = HTMLResponse)
 async def StudyList(request: Request):    
+    user_id = request.session.get("user_id")
     with closing(connect_studies(DATABASE_PATH)) as db:
-        studies = db.execute("SELECT * FROM study ORDER BY id").fetchall()
+        group_ids = []
+        try:
+            group_ids = [group["id"] for group in tekne_chat_service.groups(request.session)]
+        except HTTPException:
+            pass
+        studies = db.execute("""SELECT DISTINCT s.* FROM study s
+            LEFT JOIN study_submission_member sm ON sm.study_id=s.id
+            WHERE (s.submission_kind='individual' AND s.userid=?)
+               OR (s.submission_kind='group' AND s.chat_group_id IN (""" +
+            (",".join("?" for _ in group_ids) if group_ids else "NULL") + ")) ORDER BY s.time DESC, s.id DESC",
+            (user_id, *group_ids)).fetchall()
+        submission_details = get_submission_collaboration(db, [study[0] for study in studies])
 
     return templates.TemplateResponse(
         request = request,
@@ -985,6 +1002,7 @@ async def StudyList(request: Request):
         context = {
             "request": request,
             "studies": studies,
+            "submission_details": submission_details,
             "user_login": request.session.get("user_login"),
             "user_id": request.session.get("user_id")
         }
@@ -1010,7 +1028,16 @@ async def pdf(id: int, request: Request):
     ):
         raise HTTPException(404, "この機能は現在利用できません。")
     with closing(connect_studies(DATABASE_PATH)) as db:
-        study = db.execute("SELECT pdfpath, registration_type, template_id, userid FROM study WHERE id = ?", (id,)).fetchone()
+        study = db.execute("SELECT pdfpath, registration_type, template_id, userid, submission_kind, chat_group_id, filename FROM study WHERE id = ?", (id,)).fetchone()
+        if request.session.get("user_login") is True and study:
+            allowed = study[3] == request.session.get("user_id") if study[4] == "individual" else False
+            if study[4] == "group" and study[5]:
+                try:
+                    allowed = study[5] in {group["id"] for group in tekne_chat_service.groups(request.session)}
+                except HTTPException:
+                    allowed = False
+            if not allowed:
+                raise HTTPException(404, "PDFが見つかりません。")
         sections = []
         if study and study[1] == 'template':
             field_rows = db.execute("""SELECT f.id, f.label, COALESCE(v.value, ''), f.heading_font_size, f.body_font_size, f.hide_heading,
@@ -1036,8 +1063,8 @@ async def pdf(id: int, request: Request):
                 })
     if not study:
         raise HTTPException(404, "PDFが見つかりません。")
-    headers["Content-Disposition"] = f'inline; filename="study-{id}.pdf"'
     if study[1] == 'template':
+        headers["Content-Disposition"] = f'inline; filename="study-{id}.pdf"'
         try:
             content = await run_in_threadpool(render_study_pdf, sections, study[3])
         except Exception:
@@ -1045,12 +1072,18 @@ async def pdf(id: int, request: Request):
             raise HTTPException(500, "PDFの生成に失敗しました。", headers=headers)
         return Response(content, media_type="application/pdf", headers=headers)
     try:
-        target = study_pdf_path(UPLOADS_DIR, study[0])
+        target = study_file_path(UPLOADS_DIR, study[0])
     except ValueError:
-        raise HTTPException(404, "PDFが見つかりません。")
+        raise HTTPException(404, "提出ファイルが見つかりません。")
     if not target.is_file():
-        raise HTTPException(404, "PDFが見つかりません。")
-    return FileResponse(target, media_type="application/pdf", headers=headers)
+        raise HTTPException(404, "提出ファイルが見つかりません。")
+    original_name = Path(study[6] or "").name or f"study-{id}{target.suffix}"
+    headers["X-Content-Type-Options"] = "nosniff"
+    if Path(original_name).suffix.lower() == ".pdf":
+        headers["Content-Disposition"] = f'inline; filename="study-{id}.pdf"'
+        return FileResponse(target, media_type="application/pdf", headers=headers)
+    return FileResponse(target, media_type=mimetypes.guess_type(original_name)[0] or "application/octet-stream",
+                        filename=original_name, content_disposition_type="attachment", headers=headers)
 
 @app.get("/reservation", response_class = HTMLResponse)
 async def ReservationPage(request: Request, day: str = None):
@@ -1791,6 +1824,7 @@ async def AdminStudiesPage(request: Request):
             LEFT JOIN student ON study.userid = student.id
             ORDER BY study.id ASC
         """).fetchall()
+        submission_details = get_submission_collaboration(db, [study[0] for study in studies])
 
     return templates.TemplateResponse(
         request=request,
@@ -1798,7 +1832,8 @@ async def AdminStudiesPage(request: Request):
         context={
             "request": request,
             "admin_id": request.session.get("admin_id"),
-            "studies": studies
+            "studies": studies,
+            "submission_details": submission_details
         }
     )
 
@@ -1830,14 +1865,14 @@ async def AdminDeleteStudy(request: Request, study_id: int):
     pdfpath = study[0]
     if pdfpath:
         try:
-            target_path = study_pdf_path(UPLOADS_DIR, pdfpath)
+            target_path = study_file_path(UPLOADS_DIR, pdfpath)
         except ValueError:
             pass
         else:
             try:
                 target_path.unlink(missing_ok=True)
             except OSError:
-                logging.exception("Failed to delete research PDF %s", target_path)
+                logging.exception("Failed to delete research file %s", target_path)
     for stored_name in image_names:
         try:
             study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name).unlink(missing_ok=True)
@@ -2230,6 +2265,23 @@ async def SchoolRegistration(request: Request):
 
 @app.get("/logout")
 async def Logout(request: Request):
+    role = request.query_params.get("role")
+    if role == "teacher":
+        for key in ("teacher_login", "teacher_id", "teacher_time"):
+            request.session.pop(key, None)
+        target = "/dashboard" if request.session.get("user_login") is True else "/login"
+        return RedirectResponse(target, status_code=303)
+    if role == "student":
+        chat_token = request.session.get("tekne_chat_session")
+        try:
+            revoke_chat_session(DATABASE_PATH, chat_token)
+            await tekne_chat_service.connections.close_session(chat_token)
+        except sqlite3.Error:
+            logging.exception("Failed to revoke TEKNE chat session during logout")
+        for key in ("user_login", "user_id", "user_time", "tekne_chat_session"):
+            request.session.pop(key, None)
+        target = "/teacher" if request.session.get("teacher_login") is True else "/login"
+        return RedirectResponse(target, status_code=303)
     chat_token = request.session.get("tekne_chat_session")
     try:
         revoke_chat_session(DATABASE_PATH, chat_token)
@@ -2743,6 +2795,13 @@ async def Edit(request: Request):
     )
 
 
+def _is_finite_number(value):
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
 @app.get("/teacher/accounts", response_class=HTMLResponse)
 async def TeacherAccountsPage(request: Request):
     teacher_id = request.session.get("teacher_id")
@@ -2760,9 +2819,47 @@ async def TeacherAccountsPage(request: Request):
         values = db.execute("""SELECT v.student_id,v.field_id,v.value_json FROM student_custom_field_value v
             JOIN student s ON s.id=v.student_id JOIN student_custom_field f ON f.id=v.field_id
             WHERE s.school=? AND f.school=? AND f.deleted_at IS NULL""", (teacher[0], teacher[0])).fetchall()
+        student_ids = [student["id"] for student in students]
+        submissions_by_student = {student_id: [] for student_id in student_ids}
+        if student_ids:
+            placeholders = ",".join("?" for _ in student_ids)
+            submissions = db.execute(f"""SELECT study.id, study.name, study.time, study.submission_kind,
+                    study.chat_group_name, study.userid
+                FROM study
+                WHERE (study.submission_kind='individual' AND study.userid IN ({placeholders}))
+                   OR (study.submission_kind='group' AND EXISTS (
+                       SELECT 1 FROM study_submission_member member
+                       WHERE member.study_id=study.id AND member.student_id_snapshot IN ({placeholders})
+                   ))
+                ORDER BY study.time DESC, study.id DESC""", (*student_ids, *student_ids)).fetchall()
+            for submission in submissions:
+                item = {"title": submission["name"], "time": submission["time"],
+                        "kind": submission["submission_kind"],
+                        "group_name": submission["chat_group_name"] if submission["submission_kind"] == "group" else ""}
+                if submission["submission_kind"] == "group":
+                    members = db.execute("SELECT student_id_snapshot FROM study_submission_member WHERE study_id=? ORDER BY position", (submission["id"],)).fetchall()
+                    for member in members:
+                        if member["student_id_snapshot"] in submissions_by_student:
+                            submissions_by_student[member["student_id_snapshot"]].append(item)
+                elif submission["userid"] in submissions_by_student:
+                    submissions_by_student[submission["userid"]].append(item)
     value_map = {(row["student_id"], row["field_id"]): decode_custom_field_value(row["value_json"]) for row in values}
-    field_columns = [{"id": field["id"], "label": field["label"]} for field in fields]
-    student_rows = [{"id": student["id"], "values": [value_map.get((student["id"], field["id"])) for field in fields]} for student in students]
+    field_columns = []
+    for field in fields:
+        numeric_choices = []
+        if field["field_type"] == "select":
+            try:
+                numeric_choices = json.loads(field["options_json"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                numeric_choices = []
+        choices_are_numeric = bool(numeric_choices) and all(
+            str(choice).strip() and _is_finite_number(choice) for choice in numeric_choices
+        )
+        field_columns.append({"id": field["id"], "label": field["label"],
+                              "field_type": field["field_type"],
+                              "sortable_numeric": field["field_type"] == "number" or choices_are_numeric})
+    student_rows = [{"id": student["id"], "values": [value_map.get((student["id"], field["id"])) for field in fields],
+                     "submissions": submissions_by_student.get(student["id"], [])} for student in students]
     csrf_token = request.session.setdefault("teacher_custom_fields_csrf", secrets.token_urlsafe(32))
 
     return templates.TemplateResponse(
@@ -2974,6 +3071,7 @@ async def StudyList(request: Request):
         ).fetchone()
 
         studies = []
+        submission_details = {}
         if teacher is not None:
             studies = db.execute("""
                 SELECT study.*
@@ -2984,8 +3082,9 @@ async def StudyList(request: Request):
                     WHERE student.id = study.userid
                       AND student.school = ?
                 )
-                ORDER BY study.id ASC
+                ORDER BY study.time DESC, study.id DESC
             """, (teacher[0],)).fetchall()
+            submission_details = get_submission_collaboration(db, [study[0] for study in studies])
 
     csrf_token = request.session.get("teacher_studylist_csrf_token")
     if not csrf_token:
@@ -2999,6 +3098,7 @@ async def StudyList(request: Request):
         context = {
             "request": request,
             "studies": studies,
+            "submission_details": submission_details,
             "teacher_login": request.session.get("teacher_login"),
             "teacher_id": teacher_id,
             "csrf_token": csrf_token,
@@ -3072,14 +3172,14 @@ async def TeacherDeleteStudy(
     pdfpath = study[0]
     if pdfpath:
         try:
-            target_path = study_pdf_path(UPLOADS_DIR, pdfpath)
+            target_path = study_file_path(UPLOADS_DIR, pdfpath)
         except ValueError:
             pass
         else:
             try:
                 target_path.unlink(missing_ok=True)
             except OSError:
-                logging.exception("Failed to delete research PDF %s", target_path)
+                logging.exception("Failed to delete research file %s", target_path)
     for stored_name in image_names:
         try:
             study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name).unlink(missing_ok=True)
@@ -3130,9 +3230,6 @@ async def Login(
             chat_token = request.session.get("tekne_chat_session")
             revoke_chat_session(DATABASE_PATH, chat_token)
             await tekne_chat_service.connections.close_session(chat_token)
-            request.session.pop("teacher_login", None)
-            request.session.pop("teacher_id", None)
-            request.session.pop("teacher_time", None)
             request.session["user_login"] = True
             request.session["user_id"] = id
             request.session["user_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -3159,13 +3256,6 @@ async def Login(
             )
 
         if pwdcheck:
-            chat_token = request.session.get("tekne_chat_session")
-            revoke_chat_session(DATABASE_PATH, chat_token)
-            await tekne_chat_service.connections.close_session(chat_token)
-            request.session.pop("tekne_chat_session", None)
-            request.session.pop("user_login", None)
-            request.session.pop("user_id", None)
-            request.session.pop("user_time", None)
             request.session["teacher_login"] = True
             request.session["teacher_id"] = id
             request.session["teacher_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -3269,6 +3359,14 @@ async def Add(request: Request):
         mode = text_value("registration_type")
         if mode not in ("pdf", "template"):
             raise HTTPException(422, "登録方式を選択してください。")
+        submission_kind = text_value("submission_kind", "individual")
+        if submission_kind not in ("individual", "group"):
+            raise HTTPException(422, "提出区分を選択してください。")
+        group_id = text_value("chat_group_id")
+        if submission_kind == "group" and not group_id:
+            raise HTTPException(422, "提出するグループを選択してください。")
+        if submission_kind == "individual" and group_id:
+            raise HTTPException(422, "個人提出ではグループを指定できません。")
         name = text_value("name")
         introduce = text_value("introduce")
         if not name.strip():
@@ -3287,6 +3385,14 @@ async def Add(request: Request):
                         return JSONResponse({"ok": True, "id": previous[0]})
                     if not db.execute("SELECT 1 FROM student WHERE id = ?", (user_id,)).fetchone():
                         raise HTTPException(401, "ログインし直してください。")
+                    group_snapshot = None
+                    if submission_kind == "group":
+                        try:
+                            group_snapshot = tekne_chat_service.submission_group_snapshot(db, request.session, group_id)
+                        except HTTPException as exc:
+                            if exc.status_code in (401, 403, 404):
+                                raise HTTPException(422, "選択したグループに現在参加していません。画面を再読み込みしてください。")
+                            raise
                     template_id, values, image_values, filename, pdfpath = None, [], [], "", ""
                     if mode == "template":
                         try:
@@ -3347,24 +3453,42 @@ async def Add(request: Request):
                     else:
                         upload = form.get("pdf")
                         if not isinstance(upload, StarletteUploadFile) or len(form.getlist("pdf")) != 1:
-                            raise HTTPException(422, "PDFファイルを選択してください。")
-                        try:
-                            validate_pdf(upload)
-                        except ValueError as exc:
-                            raise HTTPException(422, str(exc))
+                            raise HTTPException(422, "研究成果ファイルを1つ選択してください。")
                         filename = upload.filename.replace("\\", "/").rsplit("/", 1)[-1]
-                        pdfpath = uuid4().hex + ".pdf"
-                        final = study_pdf_path(UPLOADS_DIR, pdfpath)
+                        filename = "".join(char for char in filename if ord(char) >= 32 and ord(char) != 127)
+                        if not filename:
+                            raise HTTPException(422, "ファイル名を確認してください。")
+                        upload.file.seek(0, 2)
+                        size = upload.file.tell()
+                        upload.file.seek(0)
+                        if size > STUDY_UPLOAD_MAX_BYTES:
+                            raise HTTPException(413, "ファイルは100MB以内にしてください。")
+                        if Path(filename).suffix.lower() == ".pdf":
+                            try:
+                                validate_pdf(upload)
+                            except ValueError as exc:
+                                raise HTTPException(422, str(exc))
+                        suffix = Path(filename).suffix.lower()
+                        pdfpath = uuid4().hex + suffix
+                        final = study_file_path(UPLOADS_DIR, pdfpath)
                         temporary = final.with_suffix(".tmp")
                         with temporary.open("xb") as output:
                             shutil.copyfileobj(upload.file, output)
                         temporary.replace(final)
                     result = db.execute("""INSERT INTO study
-                        (name, introduce, filename, pdfpath, userid, time, registration_type, template_id, submission_key)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
+                        (name, introduce, filename, pdfpath, userid, time, registration_type, template_id, submission_key,
+                         submission_kind, chat_group_id, chat_group_name)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
                             name, introduce, filename, pdfpath, user_id,
-                            datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"), mode, template_id, submission_key))
+                            datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"), mode, template_id, submission_key,
+                            submission_kind, group_snapshot["id"] if group_snapshot else None,
+                            group_snapshot["name"] if group_snapshot else None))
                     study_id = result.lastrowid
+                    if group_snapshot:
+                        db.executemany("""INSERT INTO study_submission_member
+                            (study_id, tekne_student_id, student_id_snapshot, position) VALUES (?, ?, ?, ?)""",
+                            [(study_id, member[0], member[1], position)
+                             for position, member in enumerate(group_snapshot["members"])])
                     db.executemany("INSERT INTO study_field_value(study_id, field_id, value) VALUES (?, ?, ?)",
                                    [(study_id, field_id, value) for field_id, value in values])
                     db.executemany("""INSERT INTO study_field_image

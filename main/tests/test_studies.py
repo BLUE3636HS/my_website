@@ -18,7 +18,8 @@ from starlette.datastructures import FormData, UploadFile
 from starlette.requests import Request
 
 import main
-from studies import connect_studies, get_templates, initialize_studies, study_pdf_path
+from tekne_chat import TekneChatService, create_chat_session, initialize_tekne_chat
+from studies import connect_studies, get_templates, initialize_studies, study_file_path, study_pdf_path
 
 
 def request(path, session):
@@ -53,25 +54,56 @@ class StudyTests(unittest.TestCase):
         self.uploads.mkdir()
         with closing(connect_studies(self.path)) as db:
             db.executescript("""CREATE TABLE student(id TEXT, pwd TEXT, school TEXT);
+                CREATE TABLE registered_school(name TEXT NOT NULL UNIQUE);
+                INSERT INTO registered_school VALUES ('school1'), ('school2');
                 CREATE TABLE teacher(id TEXT, pwd TEXT, school TEXT);
                 CREATE TABLE admin(id TEXT PRIMARY KEY, pwd TEXT, name TEXT, role TEXT, deleted_at TEXT, session_version INTEGER DEFAULT 0);
                 INSERT INTO admin VALUES ('person', 'x', 'Person', 'admin', NULL, 0);
-                INSERT INTO student VALUES ('a', 'x', 'school1'), ('b', 'x', 'school2');
+                INSERT INTO student VALUES ('a', 'x', 'school1'), ('b', 'x', 'school2'), ('c', 'x', 'school1');
                 INSERT INTO teacher VALUES ('teacher1', 'x', 'school1');
                 CREATE TABLE unrelated(value TEXT);
                 CREATE TABLE notification(recipient_user_id TEXT, is_read INTEGER);
                 INSERT INTO unrelated VALUES ('preserve');""")
             initialize_studies(db)
+            initialize_tekne_chat(db)
             self.template = get_templates(db)[0]
+        self.chat = TekneChatService(self.path, self.root / 'chat-files')
         for name, value in [('DATABASE_PATH', self.path), ('UPLOADS_DIR', self.uploads)]:
             p = patch.object(main, name, value)
             p.start()
             self.addCleanup(p.stop)
         self.session = {'user_login': True, 'user_id': 'a', 'study_csrf_token': 'csrf', 'user_time': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        self.session['tekne_chat_session'] = create_chat_session(self.path, 'a')
 
     def rows(self, sql, args=()):
         with closing(connect_studies(self.path)) as db:
             return db.execute(sql, args).fetchall()
+
+    def render_teacher_studylist(self):
+        endpoint = next(route.endpoint for route in main.app.routes
+                        if getattr(route, 'path', '') == '/teacher/studylist' and 'GET' in route.methods)
+        coroutine = endpoint(request('/teacher/studylist', {'teacher_login': True, 'teacher_id': 'teacher1'}))
+        try:
+            coroutine.send(None)
+        except StopIteration as result:
+            return result.value
+        self.fail('Teacher study list unexpectedly awaited an async operation')
+
+    def render_student_studylist(self):
+        with patch.object(main, 'tekne_chat_service', self.chat):
+            endpoint = next(route.endpoint for route in main.app.routes
+                            if getattr(route, 'path', '') == '/studylist' and 'GET' in route.methods)
+            coroutine = endpoint(request('/studylist', self.session))
+            try:
+                coroutine.send(None)
+            except StopIteration as result:
+                return result.value
+        self.fail('Student study list unexpectedly awaited an async operation')
+
+    def create_study_group(self):
+        group_id = self.chat.create_group(self.session, '共同研究')["id"]
+        self.chat.invite(self.session, group_id, 'c')
+        return group_id
 
     def token(self):
         nonce = secrets.token_hex(32)
@@ -136,6 +168,41 @@ class StudyTests(unittest.TestCase):
             db.commit()
             initialize_studies(db)
             self.assertEqual(db.execute('SELECT id, name, registration_type FROM study').fetchall(), [(3, 'old', 'pdf')])
+            self.assertEqual(db.execute('SELECT submission_kind, chat_group_id FROM study').fetchall(), [('individual', None)])
+
+    def test_group_submissions_snapshot_members_for_pdf_and_template(self):
+        group_id = self.create_study_group()
+        pdf_response = self.submit(mode='pdf', submission_kind='group', chat_group_id=group_id,
+                                   pdf=UploadFile(io.BytesIO(sample_pdf()), filename='group.pdf'))
+        template_response = self.submit(mode='template', submission_kind='group', chat_group_id=group_id)
+        self.assertEqual((pdf_response.status_code, template_response.status_code), (201, 201))
+        self.assertEqual(self.rows('SELECT submission_kind, chat_group_name FROM study ORDER BY id'),
+                         [('group', '共同研究'), ('group', '共同研究')])
+        self.assertEqual(self.rows('SELECT study_id, student_id_snapshot FROM study_submission_member ORDER BY study_id, position'),
+                         [(1, 'a'), (1, 'c'), (2, 'a'), (2, 'c')])
+        other_session = {'user_login': True, 'user_id': 'c',
+                         'user_time': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                         'tekne_chat_session': create_chat_session(self.path, 'c')}
+        self.chat.leave(other_session, group_id)
+        self.assertEqual(self.rows('SELECT student_id_snapshot FROM study_submission_member WHERE study_id=1 ORDER BY position'),
+                         [('a',), ('c',)])
+
+    def test_group_submission_rejects_missing_or_nonmember_group(self):
+        with self.assertRaises(HTTPException) as missing:
+            self.submit(submission_kind='group')
+        self.assertEqual(missing.exception.status_code, 422)
+        with self.assertRaises(HTTPException) as forged:
+            self.submit(submission_kind='group', chat_group_id='not-a-member-group')
+        self.assertEqual(forged.exception.status_code, 422)
+        self.assertEqual(self.rows('SELECT id FROM study'), [])
+
+    def test_group_submission_rejects_member_who_left_before_submit(self):
+        group_id = self.create_study_group()
+        self.chat.leave(self.session, group_id)
+        with self.assertRaises(HTTPException) as error:
+            self.submit(submission_kind='group', chat_group_id=group_id)
+        self.assertEqual(error.exception.status_code, 422)
+        self.assertEqual(self.rows('SELECT id FROM study'), [])
 
     def test_retries_are_idempotent(self):
         token = self.token()
@@ -173,7 +240,7 @@ class StudyTests(unittest.TestCase):
         self.assertEqual(self.rows('SELECT field_id,value FROM study_field_value'), [(20, '入力')])
 
     def test_pdf_save_serve_and_invalid_pdf(self):
-        for filename, content in [('fake.pdf', b'not pdf'), ('wrong.txt', sample_pdf()), ('broken.pdf', b'%PDF-1.4\n')]:
+        for filename, content in [('fake.pdf', b'not pdf'), ('broken.pdf', b'%PDF-1.4\n')]:
             with self.assertRaises(HTTPException):
                 self.submit(mode='pdf', pdf=UploadFile(io.BytesIO(content), filename=filename))
         self.submit(mode='pdf', userid='b', pdf=UploadFile(io.BytesIO(sample_pdf()), filename='../test.pdf'))
@@ -182,8 +249,19 @@ class StudyTests(unittest.TestCase):
         self.assertEqual(user, 'a')
         self.assertEqual((self.uploads / path).read_bytes(), sample_pdf())
         self.assertEqual(Path(asyncio.run(main.pdf(1, request('/uploads/1.pdf', self.session))).path), self.uploads / path)
+        self.assertEqual(asyncio.run(main.pdf(1, request('/uploads/1.pdf', self.session))).headers['content-disposition'], 'inline; filename="study-1.pdf"')
         self.submit()
         self.assertEqual(asyncio.run(main.pdf(2, request('/uploads/2.pdf', self.session))).status_code, 200)
+
+    def test_non_pdf_upload_is_saved_and_downloaded_as_attachment(self):
+        self.submit(mode='pdf', pdf=UploadFile(io.BytesIO(b'plain text'), filename='../research.TXT'))
+        filename, path = self.rows('SELECT filename,pdfpath FROM study')[0]
+        self.assertEqual(filename, 'research.TXT')
+        self.assertTrue(path.endswith('.txt'))
+        self.assertEqual((self.uploads / path).read_bytes(), b'plain text')
+        response = asyncio.run(main.pdf(1, request('/uploads/1.pdf', self.session)))
+        self.assertEqual(response.headers['content-disposition'], 'attachment; filename="research.TXT"')
+        self.assertEqual(response.headers['content-type'], 'text/plain; charset=utf-8')
 
     def test_file_write_failure_rolls_back(self):
         with patch.object(main.shutil, 'copyfileobj', side_effect=OSError('disk full')):
@@ -225,6 +303,9 @@ class StudyTests(unittest.TestCase):
         for path in ('../outside.pdf', 'profile/avatar.pdf', 'keep.txt'):
             with self.assertRaises(ValueError):
                 study_pdf_path(self.uploads, path)
+        self.assertEqual(study_file_path(self.uploads, 'keep.txt'), self.uploads / 'keep.txt')
+        with self.assertRaises(ValueError):
+            study_file_path(self.uploads, '../outside.txt')
 
     def test_teacher_deletes_pdf(self):
         self.submit(mode='pdf', pdf=UploadFile(io.BytesIO(sample_pdf()), filename='test.pdf'))
@@ -232,6 +313,82 @@ class StudyTests(unittest.TestCase):
         asyncio.run(main.TeacherDeleteStudy(request('/teacher/studylist', session), 1, 'token'))
         self.assertEqual(list(self.uploads.iterdir()), [])
         self.assertEqual(self.rows('SELECT id FROM study'), [])
+
+    def test_teacher_deletes_non_pdf_upload(self):
+        self.submit(mode='pdf', pdf=UploadFile(io.BytesIO(b'text'), filename='notes.txt'))
+        session = {'teacher_login': True, 'teacher_id': 'teacher1', 'teacher_studylist_csrf_token': 'token'}
+        asyncio.run(main.TeacherDeleteStudy(request('/teacher/studylist', session), 1, 'token'))
+        self.assertEqual(list(self.uploads.iterdir()), [])
+        self.assertEqual(self.rows('SELECT id FROM study'), [])
+
+    def test_teacher_studylist_shows_submission_time_newest_first_with_id_tiebreak(self):
+        with closing(connect_studies(self.path)) as db:
+            db.executemany("""INSERT INTO study
+                (id, name, introduce, filename, pdfpath, userid, time)
+                VALUES (?, ?, '', '', '', ?, ?)""", [
+                    (1, 'Same time lower id', 'a', '2026-10-03 10:00:00'),
+                    (2, 'Older submission', 'c', '2026-10-02 10:00:00'),
+                    (3, 'Same time higher id', 'a', '2026-10-03 10:00:00'),
+                    (4, 'Other school submission', 'b', '2026-10-04 10:00:00'),
+                ])
+            db.commit()
+
+        html = self.render_teacher_studylist().body.decode()
+        self.assertIn('<th>提出日時</th>', html)
+        self.assertIn('2026-10-03 10:00:00', html)
+        self.assertLess(html.index('Same time higher id'), html.index('Same time lower id'))
+        self.assertLess(html.index('Same time lower id'), html.index('Older submission'))
+        self.assertNotIn('Other school submission', html)
+
+    def test_teacher_studylist_empty_state_remains(self):
+        html = self.render_teacher_studylist().body.decode()
+        self.assertIn('確認できる提出物はありません。', html)
+        self.assertIn('id="teacher-study-search"', html)
+
+    def test_student_studylist_shows_submission_time_newest_first(self):
+        with closing(connect_studies(self.path)) as db:
+            db.executemany("""INSERT INTO study
+                (id, name, introduce, filename, pdfpath, userid, time)
+                VALUES (?, ?, '', '', '', ?, ?)""", [
+                    (1, 'Older student submission', 'a', '2026-10-01 10:00:00'),
+                    (2, 'Newest lower id', 'a', '2026-10-03 10:00:00'),
+                    (3, 'Newest higher id', 'a', '2026-10-03 10:00:00'),
+                    (4, 'Another student submission', 'c', '2026-10-04 10:00:00'),
+                ])
+            db.commit()
+        main.seed_school_feature_settings(self.path)
+
+        html = self.render_student_studylist().body.decode()
+        self.assertIn('<th>提出日時</th>', html)
+        self.assertIn('2026-10-03 10:00:00', html)
+        self.assertLess(html.index('Newest higher id'), html.index('Newest lower id'))
+        self.assertLess(html.index('Newest lower id'), html.index('Older student submission'))
+        self.assertNotIn('Another student submission', html)
+
+    def test_addform_submission_kind_and_group_selector_precede_name(self):
+        main.seed_school_feature_settings(self.path)
+        with patch.object(main, 'tekne_chat_service', self.chat):
+            coroutine = main.AddForm(request('/addform', self.session))
+            try:
+                response = coroutine.send(None)
+            except StopIteration as result:
+                response = result.value
+            else:
+                self.fail('AddForm unexpectedly awaited an async operation')
+        html = response.body.decode()
+        self.assertLess(html.index('name="submission_kind"'), html.index('id="group-submission-panel"'))
+        self.assertLess(html.index('id="group-submission-panel"'), html.index('id="name"'))
+
+    def test_teacher_studylist_renders_searchable_submission_rows_and_no_results_message(self):
+        with closing(connect_studies(self.path)) as db:
+            db.execute("""INSERT INTO study
+                (name, introduce, filename, pdfpath, userid, time)
+                VALUES ('Searchable title', 'Searchable summary', '', '', 'a', '2026-10-03 10:00:00')""")
+            db.commit()
+        html = self.render_teacher_studylist().body.decode()
+        self.assertIn('data-searchable-row', html)
+        self.assertIn('class="teacher-study-no-results" hidden', html)
+        self.assertIn('該当する提出物はありません。', html)
 
     def test_real_multipart_request(self):
         fields = {'registration_type': 'template', 'template_id': str(self.template['id']),
@@ -268,7 +425,8 @@ class StudyTests(unittest.TestCase):
                 self.assertIn('study-templates', html)
                 self.assertIn('id="name" name="name" required', html)
                 self.assertIn('id="introduce" name="introduce" required', html)
-                self.assertLess(html.index('id="introduce"'), html.index('class="study-modes"'))
+                self.assertLess(html.index('name="submission_kind"'), html.index('id="name"'))
+                self.assertLess(html.index('id="group-submission-panel"'), html.index('id="name"'))
                 self.assertEqual(len(response.context['study_templates'][0]['fields']), 9)
             else:
                 self.assertIn('/uploads/1.pdf', html)

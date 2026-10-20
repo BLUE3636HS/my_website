@@ -20,6 +20,9 @@ body { margin: 0; height: 100vh; overflow: hidden; font-family: "Segoe UI", "Not
 .teacher-accounts-page table { min-width: 100%; border-collapse: collapse; }
 .teacher-accounts-page th, .teacher-accounts-page td { padding: 12px 14px; border: 1px solid #ead8cf; text-align: left; vertical-align: top; }
 .teacher-accounts-page th { background: #b85c38; color: white; white-space: nowrap; }
+.teacher-accounts-page th .teacher-number-sort { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; }
+.teacher-accounts-page th .teacher-number-sort span { font-size: 1.1em; line-height: 1; }
+.teacher-accounts-page th .teacher-number-sort:focus-visible { outline: 2px solid #fff; outline-offset: 3px; border-radius: 2px; }
 .teacher-accounts-page td { overflow-wrap: anywhere; }
 .teacher-custom-fields { margin: 28px 0; padding: 22px; border: 1px solid #ead8cf; border-radius: 12px; background: #fdf9f6; }
 .teacher-custom-fields > summary { color: #4a3b32; font-size: 1.2em; font-weight: 700; cursor: pointer; }
@@ -38,6 +41,17 @@ body { margin: 0; height: 100vh; overflow: hidden; font-family: "Segoe UI", "Not
 .teacher-field-notice-success { background: #eaf6ed; color: #25613e; }
 .teacher-field-notice-error { background: #fff0ec; color: #9c3d24; }
 .teacher-field-empty { color: #9c3d24; font-weight: 700; }
+.teacher-submission-open, .teacher-submission-close { padding: 8px 12px; border: 0; border-radius: 7px; background: #b85c38; color: #fff; font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.teacher-submission-dialog { width: min(680px, calc(100% - 32px)); max-height: min(80vh, 720px); padding: 0; border: 1px solid #ead8cf; border-radius: 14px; color: #4a3b32; background: #fffdfa; box-shadow: 0 18px 60px rgba(35, 24, 18, .28); }
+.teacher-submission-dialog::backdrop { background: rgba(35, 24, 18, .48); }
+.teacher-submission-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 22px; border-bottom: 1px solid #ead8cf; }
+.teacher-submission-dialog-header h2 { margin: 0; font-size: 1.2rem; overflow-wrap: anywhere; }
+.teacher-submission-dialog-body { max-height: calc(80vh - 76px); overflow-y: auto; padding: 18px 22px; }
+.teacher-submission-list { display: grid; gap: 10px; margin: 0; padding-left: 24px; }
+.teacher-submission-list li { padding: 12px 14px; border: 1px solid #ead8cf; border-radius: 9px; background: #fff; }
+.teacher-submission-list strong { overflow-wrap: anywhere; }
+.teacher-submission-list p, .teacher-submission-empty { margin: 6px 0 0; color: #78665d; }
+.teacher-submission-open:focus-visible, .teacher-submission-close:focus-visible { outline: 3px solid #4a3b32; outline-offset: 2px; }
 @media (max-width: 700px) { .teacher-custom-field-form { grid-template-columns: 1fr; } .teacher-custom-field-form .teacher-field-options { grid-column: auto; } }
 .teacher-eyebrow { margin: 0 0 7px; color: #b85c38; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .teacher-profile-summary { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; margin: 28px 0 0; }

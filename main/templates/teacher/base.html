@@ -23,7 +23,7 @@
                     <a class="teacher-nav-link" href="/teacher/notifications"{% if current_path == '/teacher/notifications' or current_path.startswith('/teacher/notifications/') %} aria-current="page"{% endif %}>通知送信</a>
                     <a class="teacher-nav-link" href="/teacher/edit"{% if current_path == '/teacher/edit' or current_path.startswith('/teacher/edit/') %} aria-current="page"{% endif %}>マイページ</a>
                 </nav>
-                <a class="teacher-logout-link" href="/logout">Logout</a>
+                <a class="teacher-logout-link" href="/logout?role=teacher">Logout</a>
             </aside>
 
             <div class="teacher-main">
