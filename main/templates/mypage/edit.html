@@ -57,6 +57,32 @@
                 </div>
             </section>
         </div>
+        {% if custom_fields %}
+        <section class="student-custom-fields" aria-labelledby="student-custom-fields-title">
+            <h2 id="student-custom-fields-title">学校からの追加情報</h2>
+            <p>登録後に入力できる情報です。入力後もいつでも変更できます。</p>
+            {% if custom_fields_notice %}<p class="custom-fields-notice custom-fields-notice-{{ custom_fields_notice.type }}" role="status">{{ custom_fields_notice.message }}</p>{% endif %}
+            <form method="post" action="/mypage/edit/custom-fields" class="student-custom-fields-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {% for field in custom_fields %}
+                <div class="student-custom-field">
+                    <label for="field_{{ field.id }}">{{ field.label }}{% if field.required %}<span class="student-custom-required">必須</span>{% else %}<span class="student-custom-optional">任意</span>{% endif %}</label>
+                    {% if field.field_type == 'text' %}<input id="field_{{ field.id }}" name="field_{{ field.id }}" maxlength="4000" value="{{ field.value or '' }}" {% if field.required %}required{% endif %}>
+                    {% elif field.field_type == 'textarea' %}<textarea id="field_{{ field.id }}" name="field_{{ field.id }}" maxlength="4000" rows="4" {% if field.required %}required{% endif %}>{{ field.value or '' }}</textarea>
+                    {% elif field.field_type == 'number' %}<input type="number" step="any" id="field_{{ field.id }}" name="field_{{ field.id }}" value="{{ field.value or '' }}" {% if field.required %}required{% endif %}>
+                    {% elif field.field_type == 'email' %}<input type="email" id="field_{{ field.id }}" name="field_{{ field.id }}" maxlength="254" value="{{ field.value or '' }}" {% if field.required %}required{% endif %}>
+                    {% elif field.field_type == 'date' %}<input type="date" id="field_{{ field.id }}" name="field_{{ field.id }}" value="{{ field.value or '' }}" {% if field.required %}required{% endif %}>
+                    {% elif field.field_type == 'select' %}<select id="field_{{ field.id }}" name="field_{{ field.id }}" {% if field.required %}required{% endif %}><option value="">選択してください</option>{% for option in field.options %}<option value="{{ option }}" {% if field.value == option %}selected{% endif %}>{{ option }}</option>{% endfor %}</select>
+                    {% elif field.field_type == 'multiselect' %}<select id="field_{{ field.id }}" name="field_{{ field.id }}" multiple size="{{ [field.options|length, 5]|min }}" {% if field.required %}required{% endif %}>{% for option in field.options %}<option value="{{ option }}" {% if field.value and option in field.value %}selected{% endif %}>{{ option }}</option>{% endfor %}</select><small>複数選択するには Ctrl キー（Mac は Command キー）を押しながら選択してください。</small>
+                    {% elif field.field_type == 'checkbox' %}<label class="student-custom-checkbox"><input type="checkbox" id="field_{{ field.id }}" name="field_{{ field.id }}" value="1" {% if field.value %}checked{% endif %} {% if field.required %}required{% endif %}> 確認しました</label>
+                    {% endif %}
+                    {% if field.required and (field.value is none or field.value == '' or field.value == []) %}<small class="student-custom-missing">必須項目が未入力です。保存するまでは未入力のままでも他の機能を利用できます。</small>{% endif %}
+                </div>
+                {% endfor %}
+                <button type="submit" class="student-primary-button">追加情報を保存</button>
+            </form>
+        </section>
+        {% endif %}
         <a class="profile-edit-back" href="/mypage">マイページへ戻る</a>
     </div>
 {% endblock %}

@@ -14,6 +14,31 @@ body { margin: 0; height: 100vh; overflow: hidden; font-family: "Segoe UI", "Not
 .teacher-header span { color: #78665d; font-size: 14px; }
 .teacher-content { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; }
 .teacher-page { width: min(100%, 1120px); margin: 0 auto; padding: 42px 30px 72px; }
+.teacher-accounts-page { max-width: 100%; }
+.teacher-accounts-page .teacher-dashboard-card { min-width: 0; }
+.teacher-accounts-page .teacher-table-scroll { overflow-x: auto; }
+.teacher-accounts-page table { min-width: 100%; border-collapse: collapse; }
+.teacher-accounts-page th, .teacher-accounts-page td { padding: 12px 14px; border: 1px solid #ead8cf; text-align: left; vertical-align: top; }
+.teacher-accounts-page th { background: #b85c38; color: white; white-space: nowrap; }
+.teacher-accounts-page td { overflow-wrap: anywhere; }
+.teacher-custom-fields { margin: 28px 0; padding: 22px; border: 1px solid #ead8cf; border-radius: 12px; background: #fdf9f6; }
+.teacher-custom-fields > summary { color: #4a3b32; font-size: 1.2em; font-weight: 700; cursor: pointer; }
+.teacher-custom-fields > summary::marker { color: #b85c38; }
+.teacher-custom-fields-content { padding-top: 14px; }
+.teacher-custom-field-form { display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)); align-items: end; gap: 14px; margin: 18px 0; }
+.teacher-custom-field-form label { display: grid; gap: 6px; color: #4a3b32; font-weight: 700; }
+.teacher-custom-field-form input, .teacher-custom-field-form select, .teacher-custom-field-form textarea { width: 100%; padding: 10px; border: 1px solid #d8c7be; border-radius: 7px; font: inherit; }
+.teacher-custom-field-form .teacher-field-options { grid-column: span 2; }
+.teacher-custom-field-form button, .teacher-custom-field-delete { width: fit-content; padding: 10px 16px; border: 0; border-radius: 7px; background: #b85c38; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+.teacher-custom-field-delete { background: #a43d2c; }
+.teacher-custom-field-list { display: grid; gap: 8px; padding: 0; list-style: none; }
+.teacher-custom-field-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; background: white; border: 1px solid #ead8cf; border-radius: 8px; }
+.teacher-custom-field-list form { margin: 0; }
+.teacher-field-notice { padding: 11px 14px; border-radius: 8px; }
+.teacher-field-notice-success { background: #eaf6ed; color: #25613e; }
+.teacher-field-notice-error { background: #fff0ec; color: #9c3d24; }
+.teacher-field-empty { color: #9c3d24; font-weight: 700; }
+@media (max-width: 700px) { .teacher-custom-field-form { grid-template-columns: 1fr; } .teacher-custom-field-form .teacher-field-options { grid-column: auto; } }
 .teacher-eyebrow { margin: 0 0 7px; color: #b85c38; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .teacher-profile-summary { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; margin: 28px 0 0; }
 .teacher-profile-summary div { padding: 17px 18px; border: 1px solid #ead8cf; border-radius: 10px; background: #fdf9f6; }

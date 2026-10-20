@@ -11,7 +11,7 @@ from contextlib import closing
 from pathlib import Path
 from uuid import uuid4
 
-import sqlite3, shutil, bcrypt, datetime, csv, secrets, io
+import sqlite3, shutil, bcrypt, datetime, csv, secrets, io, json
 import hashlib, hmac, logging
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from studies import connect_studies, initialize_studies, get_templates, study_pdf_path, validate_pdf
@@ -50,6 +50,13 @@ from tekne_chat import (
     rename_student_identity,
     revoke_chat_session,
     revoke_student_identity,
+)
+from student_custom_fields import (
+    FIELD_TYPES as STUDENT_CUSTOM_FIELD_TYPES,
+    decode_value as decode_custom_field_value,
+    initialize_custom_fields,
+    validate_definition as validate_custom_field_definition,
+    validate_value as validate_custom_field_value,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -185,6 +192,7 @@ if cursor.execute(
             (reservation_capacity_migration, datetime.datetime.now(JST).isoformat())
         )
 initialize_school_registration(conn)
+initialize_custom_fields(conn)
 initialize_tekne_chat(conn)
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS reservation_available_slot (
@@ -881,6 +889,18 @@ async def Dashboard(request: Request):
     current_time = now.strftime("%H:%M")
 
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        student = db.execute("SELECT school FROM student WHERE id = ?", (user_id,)).fetchone()
+        missing_required_fields = []
+        if student:
+            required_fields = db.execute("""SELECT f.id, f.label, f.field_type, v.value_json
+                FROM student_custom_field f
+                LEFT JOIN student_custom_field_value v ON v.field_id=f.id AND v.student_id=?
+                WHERE f.school=? AND f.deleted_at IS NULL AND f.required=1 ORDER BY f.id""",
+                (user_id, student[0])).fetchall()
+            for field_id, label, field_type, value_json in required_fields:
+                value = decode_custom_field_value(value_json)
+                if value is None or value == "" or value == [] or (field_type == "checkbox" and value is not True):
+                    missing_required_fields.append(label)
         next_reservation = db.execute(
             """
             SELECT day, start_time, end_time, purpose
@@ -927,7 +947,8 @@ async def Dashboard(request: Request):
             "user_id": user_id,
             "unread_notifications": unread_notifications,
             "next_reservation": next_reservation,
-            "next_equipment_reservation": next_equipment_reservation
+            "next_equipment_reservation": next_equipment_reservation,
+            "missing_required_fields": missing_required_fields
         }
     )
 
@@ -2273,6 +2294,20 @@ async def Edit(request: Request):
     cursor.execute("SELECT profile_image FROM student WHERE id = ?", (user_id,))
     row = cursor.fetchone()
     current_profile_image = row[0] if row else None
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        student = db.execute("SELECT school FROM student WHERE id = ?", (user_id,)).fetchone()
+        fields = []
+        if student:
+            fields = db.execute("""SELECT f.*, v.value_json FROM student_custom_field f
+                LEFT JOIN student_custom_field_value v ON v.field_id=f.id AND v.student_id=?
+                WHERE f.school=? AND f.deleted_at IS NULL ORDER BY f.id""", (user_id, student["school"])).fetchall()
+        custom_fields = []
+        for field in fields:
+            item = dict(field)
+            item["options"] = json.loads(item["options_json"])
+            item["value"] = decode_custom_field_value(item["value_json"])
+            custom_fields.append(item)
     return templates.TemplateResponse(
         request = request,
         name = "mypage/edit.html",
@@ -2283,9 +2318,44 @@ async def Edit(request: Request):
             "profile_image_url": profile_image_url(current_profile_image),
             "has_profile_image": bool(current_profile_image),
             "csrf_token": profile_csrf_token(request),
-            "profile_notice": request.session.pop("profile_notice", None)
+            "profile_notice": request.session.pop("profile_notice", None),
+            "custom_fields": custom_fields,
+            "custom_fields_notice": request.session.pop("custom_fields_notice", None)
         }
     )
+
+
+@app.post("/mypage/edit/custom-fields")
+async def SaveStudentCustomFields(request: Request, csrf_token: str = Form("")):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not valid_profile_csrf(request, csrf_token):
+        request.session["custom_fields_notice"] = {"type": "error", "message": "操作を確認できませんでした。もう一度お試しください。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+    form = await request.form()
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        db.row_factory = sqlite3.Row
+        student = db.execute("SELECT school FROM student WHERE id=?", (user_id,)).fetchone()
+        if not student:
+            return RedirectResponse("/login", status_code=303)
+        fields = db.execute("SELECT * FROM student_custom_field WHERE school=? AND deleted_at IS NULL ORDER BY id", (student["school"],)).fetchall()
+        try:
+            values = []
+            for row in fields:
+                field = dict(row)
+                field["options"] = json.loads(field["options_json"])
+                raw = form.getlist(f"field_{field['id']}") if field["field_type"] == "multiselect" else form.get(f"field_{field['id']}")
+                value = validate_custom_field_value(field, raw)
+                values.append((user_id, field["id"], json.dumps(value, ensure_ascii=False), datetime.datetime.now(JST).isoformat()))
+            db.executemany("""INSERT INTO student_custom_field_value(student_id,field_id,value_json,updated_at)
+                VALUES(?,?,?,?) ON CONFLICT(student_id,field_id) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at""", values)
+            db.commit()
+        except ValueError as error:
+            request.session["custom_fields_notice"] = {"type": "error", "message": str(error)}
+            return RedirectResponse("/mypage/edit", status_code=303)
+    request.session["custom_fields_notice"] = {"type": "success", "message": "追加情報を保存しました。"}
+    return RedirectResponse("/mypage/edit", status_code=303)
 
 
 @app.post("/mypage/edit/profile-image")
@@ -2676,22 +2746,79 @@ async def Edit(request: Request):
 @app.get("/teacher/accounts", response_class=HTMLResponse)
 async def TeacherAccountsPage(request: Request):
     teacher_id = request.session.get("teacher_id")
+    if request.session.get("teacher_login") is not True or not teacher_id:
+        return RedirectResponse("/login", status_code=303)
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
         teacher = db.execute(
             "SELECT school FROM teacher WHERE id = ?", (teacher_id,)
         ).fetchone()
         if teacher is None:
             return RedirectResponse("/login", status_code=303)
-        students = db.execute(
-            "SELECT id FROM student WHERE school = ? ORDER BY id ASC, rowid ASC",
-            (teacher[0],)
-        ).fetchall()
+        fields = db.execute("SELECT * FROM student_custom_field WHERE school=? AND deleted_at IS NULL ORDER BY id", (teacher[0],)).fetchall()
+        students = db.execute("SELECT id FROM student WHERE school = ? ORDER BY id ASC, rowid ASC", (teacher[0],)).fetchall()
+        values = db.execute("""SELECT v.student_id,v.field_id,v.value_json FROM student_custom_field_value v
+            JOIN student s ON s.id=v.student_id JOIN student_custom_field f ON f.id=v.field_id
+            WHERE s.school=? AND f.school=? AND f.deleted_at IS NULL""", (teacher[0], teacher[0])).fetchall()
+    value_map = {(row["student_id"], row["field_id"]): decode_custom_field_value(row["value_json"]) for row in values}
+    field_columns = [{"id": field["id"], "label": field["label"]} for field in fields]
+    student_rows = [{"id": student["id"], "values": [value_map.get((student["id"], field["id"])) for field in fields]} for student in students]
+    csrf_token = request.session.setdefault("teacher_custom_fields_csrf", secrets.token_urlsafe(32))
 
     return templates.TemplateResponse(
         request=request,
         name="teacher/accounts.html",
-        context={"request": request, "teacher_id": teacher_id, "students": students}
+        context={"request": request, "teacher_id": teacher_id, "students": student_rows,
+                 "custom_fields": fields, "field_columns": field_columns,
+                 "field_types": STUDENT_CUSTOM_FIELD_TYPES, "csrf_token": csrf_token,
+                 "field_notice": request.session.pop("teacher_custom_fields_notice", None)}
     )
+
+
+@app.post("/teacher/accounts/custom-fields")
+async def CreateStudentCustomField(request: Request, label: str = Form(""), field_type: str = Form(""),
+                                   required: str = Form("0"), options: str = Form(""), csrf_token: str = Form("")):
+    teacher_id = request.session.get("teacher_id")
+    if request.session.get("teacher_login") is not True or not teacher_id:
+        return RedirectResponse("/login", status_code=303)
+    expected = request.session.get("teacher_custom_fields_csrf", "")
+    if not expected or not secrets.compare_digest(csrf_token, expected):
+        request.session["teacher_custom_fields_notice"] = {"type": "error", "message": "操作を確認できませんでした。再読み込みしてください。"}
+        return RedirectResponse("/teacher/accounts", status_code=303)
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        teacher = db.execute("SELECT school FROM teacher WHERE id=?", (teacher_id,)).fetchone()
+        if not teacher:
+            return RedirectResponse("/login", status_code=303)
+        try:
+            label, field_type, required, options_list = validate_custom_field_definition(label, field_type, required, options)
+        except ValueError as error:
+            request.session["teacher_custom_fields_notice"] = {"type": "error", "message": str(error)}
+            return RedirectResponse("/teacher/accounts", status_code=303)
+        db.execute("INSERT INTO student_custom_field(school,label,field_type,required,options_json,created_at) VALUES(?,?,?,?,?,?)",
+                   (teacher[0], label, field_type, required, json.dumps(options_list, ensure_ascii=False), datetime.datetime.now(JST).isoformat()))
+        db.commit()
+    request.session["teacher_custom_fields_notice"] = {"type": "success", "message": "項目を追加しました。"}
+    return RedirectResponse("/teacher/accounts", status_code=303)
+
+
+@app.post("/teacher/accounts/custom-fields/{field_id}/delete")
+async def DeleteStudentCustomField(request: Request, field_id: int, csrf_token: str = Form("")):
+    teacher_id = request.session.get("teacher_id")
+    if request.session.get("teacher_login") is not True or not teacher_id:
+        return RedirectResponse("/login", status_code=303)
+    expected = request.session.get("teacher_custom_fields_csrf", "")
+    if not expected or not secrets.compare_digest(csrf_token, expected):
+        request.session["teacher_custom_fields_notice"] = {"type": "error", "message": "操作を確認できませんでした。再読み込みしてください。"}
+        return RedirectResponse("/teacher/accounts", status_code=303)
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        teacher = db.execute("SELECT school FROM teacher WHERE id=?", (teacher_id,)).fetchone()
+        if not teacher:
+            return RedirectResponse("/login", status_code=303)
+        db.execute("UPDATE student_custom_field SET deleted_at=? WHERE id=? AND school=? AND deleted_at IS NULL",
+                   (datetime.datetime.now(JST).isoformat(), field_id, teacher[0]))
+        db.commit()
+    request.session["teacher_custom_fields_notice"] = {"type": "success", "message": "項目を削除しました。保存済みの入力値は保持されています。"}
+    return RedirectResponse("/teacher/accounts", status_code=303)
 
 
 @app.get("/teacher/notifications", response_class=HTMLResponse)

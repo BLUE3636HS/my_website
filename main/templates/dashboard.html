@@ -11,6 +11,15 @@
         <p>次の予約を確認できます。</p>
     </section>
 
+    {% if missing_required_fields %}
+    <section class="dashboard-required-fields-alert" role="alert" aria-labelledby="required-fields-title">
+        <h2 id="required-fields-title">生徒情報の入力をお願いします</h2>
+        <p>次の必須項目が未入力です。入力後も、いつでも変更できます。</p>
+        <ul>{% for label in missing_required_fields %}<li>{{ label }}</li>{% endfor %}</ul>
+        <a href="/mypage/edit#student-custom-fields-title">生徒情報を入力する</a>
+    </section>
+    {% endif %}
+
     <section class="student-panel dashboard-notifications" aria-labelledby="dashboard-notifications-title">
         <div class="dashboard-notifications-heading">
             <div>

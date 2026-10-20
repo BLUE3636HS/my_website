@@ -5,6 +5,22 @@
     padding: clamp(24px, 3vw, 48px);
 }
 
+.student-custom-fields { margin-top: 26px; padding: clamp(22px, 2.5vw, 34px); border: 1px solid #d6e0ea; border-radius: 16px; background: #fff; box-shadow: 0 8px 26px rgba(31, 78, 121, .08); }
+.student-custom-fields h2 { margin: 0 0 8px; color: #243447; }
+.student-custom-fields-form { display: grid; gap: 18px; margin-top: 22px; }
+.student-custom-field { display: grid; gap: 8px; }
+.student-custom-field > label { color: #243447; font-weight: 700; }
+.student-custom-field input:not([type=checkbox]), .student-custom-field textarea, .student-custom-field select { width: 100%; padding: 11px; border: 1px solid #c8d4df; border-radius: 8px; font: inherit; }
+.student-custom-field select[multiple] { min-height: 120px; }
+.student-custom-fields-form > button.student-primary-button { min-width: 0; }
+.student-custom-required, .student-custom-optional { margin-left: 9px; font-size: 12px; }
+.student-custom-required, .student-custom-missing { color: #a43d2c; }
+.student-custom-optional, .student-custom-field small { color: #6b7c8c; }
+.student-custom-checkbox { display: flex; align-items: center; gap: 8px; }
+.custom-fields-notice { padding: 11px 14px; border-radius: 8px; }
+.custom-fields-notice-success { background: #eaf6ed; color: #25613e; }
+.custom-fields-notice-error { background: #fff0ec; color: #9c3d24; }
+
 .profile-edit-header {
     margin-bottom: 28px;
 }

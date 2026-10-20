@@ -95,3 +95,8 @@
         min-width: 0;
     }
 }
+.dashboard-required-fields-alert { margin-bottom: 22px; padding: 18px 22px; border: 2px solid #c62828; border-radius: 12px; background: #fff5f5; color: #7f1d1d; }
+.dashboard-required-fields-alert h2 { margin: 0 0 8px; font-size: 19px; }
+.dashboard-required-fields-alert p { margin: 0 0 8px; }
+.dashboard-required-fields-alert ul { margin: 0 0 12px; padding-left: 22px; }
+.dashboard-required-fields-alert a { color: #a31515; font-weight: 700; text-decoration: underline; }
