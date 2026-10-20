@@ -1,0 +1,23 @@
+{% extends "teacher/base.html" %}
+{% block title %}生徒アカウント一覧{% endblock %}
+{% block content %}
+<div class="teacher-page teacher-accounts-page">
+    <section class="teacher-dashboard-card">
+        <p class="teacher-eyebrow">Student Accounts</p>
+        <h1>生徒アカウント一覧</h1>
+        <p>自校に登録中の生徒アカウントを確認できます。</p>
+        <div class="teacher-table-scroll">
+            <table>
+                <thead><tr><th scope="col">生徒ID</th></tr></thead>
+                <tbody>
+                {% for student in students %}
+                    <tr><td>{{ student[0] }}</td></tr>
+                {% else %}
+                    <tr><td>登録中の生徒はいません。</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}

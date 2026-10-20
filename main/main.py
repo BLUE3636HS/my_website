@@ -2673,6 +2673,27 @@ async def Edit(request: Request):
     )
 
 
+@app.get("/teacher/accounts", response_class=HTMLResponse)
+async def TeacherAccountsPage(request: Request):
+    teacher_id = request.session.get("teacher_id")
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        teacher = db.execute(
+            "SELECT school FROM teacher WHERE id = ?", (teacher_id,)
+        ).fetchone()
+        if teacher is None:
+            return RedirectResponse("/login", status_code=303)
+        students = db.execute(
+            "SELECT id FROM student WHERE school = ? ORDER BY id ASC, rowid ASC",
+            (teacher[0],)
+        ).fetchall()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="teacher/accounts.html",
+        context={"request": request, "teacher_id": teacher_id, "students": students}
+    )
+
+
 @app.get("/teacher/notifications", response_class=HTMLResponse)
 async def TeacherNotifications(request: Request, page: int = 1):
     teacher_id = request.session.get("teacher_id")
