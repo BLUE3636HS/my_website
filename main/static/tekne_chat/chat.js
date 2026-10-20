@@ -320,29 +320,34 @@
     function setSelectedEntry(kind, item) {
         state.selectedEntry = kind && item ? { kind, item } : null;
         renderSelectionActions();
-        for (const checkbox of document.querySelectorAll(".tc-entry-select")) {
-            const selected = state.selectedEntry && String(state.selectedEntry.item.id) === checkbox.value && state.selectedEntry.kind === checkbox.dataset.kind;
-            checkbox.checked = Boolean(selected);
-            checkbox.closest(".tc-file-row")?.classList.toggle("tc-selected", Boolean(selected));
+        for (const row of document.querySelectorAll(".tc-file-row")) {
+            const selected = state.selectedEntry && String(state.selectedEntry.item.id) === row.dataset.id && state.selectedEntry.kind === row.dataset.kind;
+            row.classList.toggle("tc-selected", Boolean(selected));
+            row.setAttribute("aria-pressed", String(Boolean(selected)));
         }
     }
     function createEntryRow({ item, kind, icon, uploader = "—", createdAt = "", size = "—", path = "", onOpen }) {
         const row = document.createElement("div"); row.className = "tc-file-row";
-        const select = document.createElement("input"); select.type = "checkbox"; select.className = "tc-entry-select";
-        select.value = String(item.id); select.dataset.kind = kind; select.setAttribute("aria-label", `${item.name || item.display_name}を選択`);
-        select.checked = state.selectedEntry?.kind === kind && String(state.selectedEntry.item.id) === String(item.id);
-        row.classList.toggle("tc-selected", select.checked);
-        select.addEventListener("change", () => setSelectedEntry(select.checked ? kind : null, select.checked ? item : null));
+        row.dataset.id = String(item.id); row.dataset.kind = kind;
+        row.setAttribute("role", "button"); row.tabIndex = 0;
+        row.setAttribute("aria-label", `${item.name || item.display_name}。クリックで選択、ダブルクリックで開く`);
+        const selected = state.selectedEntry?.kind === kind && String(state.selectedEntry.item.id) === String(item.id);
+        row.classList.toggle("tc-selected", selected); row.setAttribute("aria-pressed", String(selected));
+        row.addEventListener("click", () => setSelectedEntry(kind, item));
+        row.addEventListener("dblclick", () => Promise.resolve(onOpen?.()).catch(showError));
+        row.addEventListener("keydown", (event) => {
+            if (event.key === " ") { event.preventDefault(); setSelectedEntry(kind, item); }
+            if (event.key === "Enter") { event.preventDefault(); Promise.resolve(onOpen?.()).catch(showError); }
+        });
         const title = document.createElement("div"); title.className = "tc-file-entry-title";
         const name = item.name || item.display_name;
-        const open = document.createElement("button"); open.type = "button"; open.className = "tc-file-entry-link";
-        open.textContent = `${icon} ${name}`; open.title = path || name;
-        open.addEventListener("click", () => Promise.resolve(onOpen?.()).catch(showError)); title.append(open);
+        const entryName = document.createElement("span"); entryName.className = "tc-file-entry-link";
+        entryName.textContent = `${icon} ${name}`; entryName.title = path || name; title.append(entryName);
         if (path) { const location = document.createElement("small"); location.textContent = path; title.append(location); }
         const uploaderCell = document.createElement("span"); uploaderCell.className = "tc-file-cell"; uploaderCell.dataset.label = "投稿者"; uploaderCell.textContent = uploader || "—";
         const dateCell = document.createElement("span"); dateCell.className = "tc-file-cell"; dateCell.dataset.label = "登録日時"; dateCell.textContent = formatDate(createdAt);
         const sizeCell = document.createElement("span"); sizeCell.className = "tc-file-cell"; sizeCell.dataset.label = "サイズ"; sizeCell.textContent = size;
-        row.append(select, title, uploaderCell, dateCell, sizeCell);
+        row.append(title, uploaderCell, dateCell, sizeCell);
         return row;
     }
     async function loadFiles() {
@@ -535,10 +540,18 @@
         try { await api(`/tekne-chat/api/groups/${state.group.id}/members/me`, { method: "DELETE", body: form() }); state.socket?.close(); state.group = null; setSelectedEntry(null, null); messagesEl.replaceChildren(); setEnabled(false); $("tc-current-name").textContent = "グループを選択"; await refreshGroups(); }
         catch (error) { showError(error); }
     });
-    $("tc-new-folder").addEventListener("click", async () => {
-        const name = prompt("フォルダ名"); if (!name || !state.group) return;
+    $("tc-new-folder").addEventListener("click", () => {
+        if (!state.group) return;
+        $("tc-new-folder-name").value = "";
+        $("tc-folder-create-dialog").showModal();
+        $("tc-new-folder-name").focus();
+    });
+    $("tc-folder-create-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const name = $("tc-new-folder-name").value.trim(); if (!name || !state.group) return;
         try {
             await api(`/tekne-chat/api/groups/${state.group.id}/folders`, { method: "POST", body: form({ name, parent_id: state.folderId || "" }) });
+            $("tc-folder-create-dialog").close();
             if (state.folderId) state.expandedFolders.add(String(state.folderId));
             await loadFolderTree(); await loadFiles();
         }

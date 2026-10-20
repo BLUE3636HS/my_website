@@ -23,9 +23,9 @@
         <header class="tc-conversation-header">
             <div class="tc-conversation-title"><div id="tc-current-icon" class="tc-avatar">T</div><div><h2 id="tc-current-name">グループを選択</h2><span id="tc-current-members"></span></div></div>
             <div class="tc-header-actions">
-                <button id="tc-rename-group" type="button" disabled>グループ設定</button>
-                <button id="tc-toggle-members" type="button" disabled>メンバー</button>
-                <button id="tc-toggle-files" type="button" disabled>共有フォルダ</button>
+                <button id="tc-rename-group" class="tc-icon-action" type="button" aria-label="グループ設定" title="グループ設定" disabled><img src="/static/tekne_chat/icons/settings.png" alt=""></button>
+                <button id="tc-toggle-members" class="tc-icon-action" type="button" aria-label="メンバー" title="メンバー" disabled><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7-1a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM9 13c-3.3 0-6 1.7-6 3.8V20h12v-3.2C15 14.7 12.3 13 9 13Zm7.2.1c-.5 0-1 .1-1.5.2 1.3.8 2.1 2 2.1 3.5V20h4.2v-3c0-2.1-2.2-3.9-4.8-3.9Z"/></svg></button>
+                <button id="tc-toggle-files" class="tc-icon-action" type="button" aria-label="共有フォルダ" title="共有フォルダ" disabled><img src="/static/tekne_chat/icons/folder.png" alt=""></button>
             </div>
         </header>
         <div id="tc-notice" class="tc-notice" role="status"></div>
@@ -69,7 +69,7 @@
                     <label for="tc-file-search">ファイル・フォルダ検索</label>
                     <input id="tc-file-search" type="search" placeholder="グループ内を検索">
                     <p id="tc-folder-path" class="tc-folder-path">ルート</p>
-                    <div class="tc-file-table-header" aria-hidden="true"><span></span><span>名前</span><span>アップロード者</span><span>登録日時</span><span>サイズ</span></div>
+                    <div class="tc-file-table-header" aria-hidden="true"><span>名前</span><span>アップロード者</span><span>登録日時</span><span>サイズ</span></div>
                     <div id="tc-file-list" class="tc-file-list" aria-live="polite"></div>
                 </div>
             </div>
@@ -96,6 +96,14 @@
         <label for="tc-move-target">移動先フォルダ</label>
         <select id="tc-move-target" class="tc-select"><option value="">ルート</option></select>
         <div class="tc-dialog-actions"><button type="button" class="tc-dialog-cancel">キャンセル</button><button type="submit">移動</button></div>
+    </form>
+</dialog>
+<dialog id="tc-folder-create-dialog" class="tc-dialog">
+    <form id="tc-folder-create-form">
+        <h2>フォルダを作成</h2>
+        <label for="tc-new-folder-name">フォルダ名</label>
+        <input id="tc-new-folder-name" maxlength="100" required>
+        <div class="tc-dialog-actions"><button type="button" class="tc-dialog-cancel">キャンセル</button><button type="submit">作成</button></div>
     </form>
 </dialog>
 {% endblock %}
