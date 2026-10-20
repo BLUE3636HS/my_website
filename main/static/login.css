@@ -2,6 +2,13 @@
    ログインページ専用CSS
 ========================= */
 
+/* base.css locks authenticated layouts to the viewport; login needs page scrolling. */
+body {
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+}
+
 /* メイン領域 */
 main {
     max-width: 600px;
@@ -10,6 +17,13 @@ main {
     padding: 45px;
     border-radius: 15px;
     box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+}
+
+@media (max-width: 700px) {
+    main {
+        margin: 24px 16px;
+        padding: 24px 18px;
+    }
 }
 
 /* =========================

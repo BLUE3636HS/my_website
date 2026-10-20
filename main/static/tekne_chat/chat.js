@@ -106,11 +106,6 @@
                 const link = document.createElement("a"); link.href = message.file_url || `/tekne-chat?group_id=${encodeURIComponent(state.group.id)}&file_id=${encodeURIComponent(message.file_id)}`;
                 link.textContent = "ファイルを確認";
                 card.append(title, filename, folder, link);
-                if (message.sender === currentUser) {
-                    const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "通知を削除";
-                    remove.addEventListener("click", () => deleteMessage(message.id));
-                    card.append(remove);
-                }
                 messagesEl.append(card); continue;
             }
             card.className = `tc-message${message.sender === currentUser ? " tc-own" : ""}`;
