@@ -64,12 +64,14 @@ from student_custom_fields import (
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = BASE_DIR / "database" / "database.db"
 UPLOADS_DIR = (BASE_DIR / "uploads").resolve()
+EQUIPMENT_UPLOADS_DIR = (UPLOADS_DIR / "equipment").resolve()
 STUDY_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
 PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "profile").resolve()
 STUDY_IMAGE_UPLOADS_DIR = (UPLOADS_DIR / "study-images").resolve()
 MENTOR_PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "mentor-profile").resolve()
 TEKNE_CHAT_STORAGE_DIR = (UPLOADS_DIR / "tekne-chat").resolve()
 PROFILE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+EQUIPMENT_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 STUDY_IMAGE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 MENTOR_PROFILE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 PROFILE_MAX_BYTES = 5 * 1024 * 1024
@@ -79,6 +81,43 @@ PROFILE_ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}
 PROFILE_ALLOWED_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 PROFILE_ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 JST = datetime.timezone(datetime.timedelta(hours=9))
+
+
+def initialize_equipment_catalog(db, catalog_path=None):
+    db.execute("""CREATE TABLE IF NOT EXISTS equipment_catalog (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL,
+        image TEXT NOT NULL,
+        content TEXT NOT NULL DEFAULT '',
+        count INTEGER NOT NULL CHECK(count > 0),
+        usage_type TEXT NOT NULL CHECK(usage_type IN ('takeout', 'in_room'))
+    )""")
+    path = catalog_path or BASE_DIR / "csv" / "equipment-reservation.csv"
+    with db:
+        if not db.in_transaction:
+            db.execute("BEGIN IMMEDIATE")
+        migration_name = "equipment_catalog_csv_v1"
+        if db.execute("SELECT 1 FROM schema_migration WHERE name=?", (migration_name,)).fetchone():
+            return
+        with open(path, "r", encoding="utf-8-sig", newline="") as equipment_csv:
+            for row in csv.DictReader(equipment_csv):
+                try:
+                    count = int(row.get("count") or "")
+                except (TypeError, ValueError):
+                    continue
+                equipment_id = (row.get("id") or "").strip()
+                name = (row.get("name") or "").strip()
+                usage_type = (row.get("usage_type") or "").strip()
+                if not equipment_id or not name or count <= 0 or usage_type not in {"takeout", "in_room"}:
+                    continue
+                db.execute(
+                    "INSERT OR IGNORE INTO equipment_catalog(id,name,image,content,count,usage_type) VALUES(?,?,?,?,?,?)",
+                    (equipment_id, name, (row.get("image") or "").strip(), (row.get("content") or "").strip(), count, usage_type)
+                )
+        db.execute(
+            "INSERT INTO schema_migration(name, applied_at) VALUES (?, ?)",
+            (migration_name, datetime.datetime.now(JST).isoformat())
+        )
 
 app = FastAPI()
 
@@ -255,6 +294,8 @@ cursor.execute("""
         returned INTEGER NOT NULL DEFAULT 0
     )
 """)
+conn.commit()
+initialize_equipment_catalog(conn)
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS community_post (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -308,6 +349,7 @@ with closing(connect_studies(DATABASE_PATH)) as study_db:
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 app.mount("/uploads/profile", StaticFiles(directory=str(PROFILE_UPLOADS_DIR)), name="profile_uploads")
+app.mount("/uploads/equipment", StaticFiles(directory=str(EQUIPMENT_UPLOADS_DIR)), name="equipment_uploads")
 app.mount("/uploads/mentor-profile", StaticFiles(directory=str(MENTOR_PROFILE_UPLOADS_DIR)), name="mentor_profile_uploads")
 
 def admin_template_context(request):
@@ -527,40 +569,21 @@ def community_post_payloads(db, root_ids, user_id=None):
     roots.sort(key=lambda item: item["id"], reverse=True)
     return roots
 
-def load_equipment_catalog(catalog_path=None):
-    catalog = []
-    seen_ids = set()
-    path = catalog_path or BASE_DIR / "csv" / "equipment-reservation.csv"
-    with open(path, "r", encoding="utf-8-sig", newline="") as f:
-        for row in csv.DictReader(f):
-            try:
-                count = int(row.get("count") or "")
-            except (TypeError, ValueError):
-                continue
-            equipment_id = (row.get("id") or "").strip()
-            name = (row.get("name") or "").strip()
-            usage_type = (row.get("usage_type") or "").strip()
-            if (
-                not equipment_id or not name or count <= 0 or
-                usage_type not in {"takeout", "in_room"} or
-                equipment_id in seen_ids
-            ):
-                continue
-            seen_ids.add(equipment_id)
-            catalog.append({
-                "id": equipment_id,
-                "name": name,
-                "image": (row.get("image") or "").strip(),
-                "content": (row.get("content") or "").strip(),
-                "count": count,
-                "usage_type": usage_type
-            })
-    return catalog
+def load_equipment_catalog():
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        return [dict(row) for row in db.execute(
+            "SELECT id,name,image,content,count,usage_type FROM equipment_catalog ORDER BY id"
+        ).fetchall()]
 
 
 def load_schools():
-    with open(BASE_DIR / "csv" / "school.csv", "r", encoding="utf-8", newline="") as f:
-        return [row[0].strip() for row in csv.reader(f) if row and row[0].strip()]
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        rows = db.execute("""SELECT name FROM registered_school WHERE TRIM(name) <> ''
+            UNION SELECT school FROM student WHERE TRIM(school) <> ''
+            UNION SELECT school FROM teacher WHERE TRIM(school) <> ''
+            ORDER BY name""").fetchall()
+    return [row[0].strip() for row in rows if row[0] and row[0].strip()]
 
 def find_equipment(catalog, equipment_id=None, equipment_name=None):
     if equipment_id:
@@ -1633,6 +1656,245 @@ async def AdminCancelReservation(
     }
     request.session["admin_reservation_csrf_token"] = secrets.token_urlsafe(32)
     return RedirectResponse("/admin/reservation", status_code=303)
+
+
+def equipment_admin_csrf_token(request):
+    token = request.session.get("equipment_catalog_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session["equipment_catalog_csrf_token"] = token
+    return token
+
+
+def delete_equipment_upload(image_url):
+    prefix = "/uploads/equipment/"
+    if not image_url or not image_url.startswith(prefix):
+        return
+    filename = image_url[len(prefix):]
+    if Path(filename).name != filename:
+        return
+    target = (EQUIPMENT_UPLOADS_DIR / filename).resolve()
+    if target.parent == EQUIPMENT_UPLOADS_DIR:
+        try:
+            target.unlink(missing_ok=True)
+        except OSError:
+            logging.exception("Failed to remove unused equipment image")
+
+
+@app.get("/admin/equipment-catalog", response_class=HTMLResponse)
+async def AdminEquipmentCatalogPage(request: Request):
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        items = [dict(row) for row in db.execute(
+            "SELECT id,name,image,content,count,usage_type FROM equipment_catalog ORDER BY name,id"
+        ).fetchall()]
+    notice = request.session.pop("equipment_catalog_notice", None)
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/equipment_catalog.html",
+        context={"request": request, "admin_id": request.session.get("admin_id"),
+                 "items": items, "csrf_token": equipment_admin_csrf_token(request), "notice": notice}
+    )
+
+
+@app.post("/admin/equipment-catalog")
+async def AdminEquipmentCatalogCreate(request: Request):
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    form = await request.form()
+    csrf_token = str(form.get("csrf_token") or "")
+    expected = request.session.get("equipment_catalog_csrf_token", "")
+    if not expected or not csrf_token or not secrets.compare_digest(expected, csrf_token):
+        raise HTTPException(status_code=403, detail="CSRFトークンが不正です。画面を再読み込みしてください。")
+
+    name = str(form.get("name") or "").strip()
+    content = str(form.get("content") or "").strip()
+    usage_type = str(form.get("usage_type") or "").strip()
+    try:
+        count = int(str(form.get("count") or ""))
+    except ValueError:
+        count = 0
+    upload = form.get("image")
+    error = None
+    if not name or len(name) > 100:
+        error = "器具名を1～100文字で入力してください。"
+    elif len(content) > 500:
+        error = "説明は500文字以内で入力してください。"
+    elif count < 1 or count > 100000:
+        error = "数量は1～100000の整数で入力してください。"
+    elif usage_type not in {"takeout", "in_room"}:
+        error = "利用区分を選択してください。"
+    elif not isinstance(upload, StarletteUploadFile) or not upload.filename:
+        error = "器具画像を選択してください。"
+
+    processed = None
+    if error is None:
+        suffix = Path(upload.filename or "").suffix.lower()
+        content_type = (upload.content_type or "").lower()
+        if suffix not in PROFILE_ALLOWED_SUFFIXES or content_type not in PROFILE_ALLOWED_CONTENT_TYPES:
+            error = "JPEG、PNG、WebP形式の画像を選択してください。"
+        else:
+            contents = await upload.read(PROFILE_MAX_BYTES + 1)
+            await upload.close()
+            if len(contents) > PROFILE_MAX_BYTES:
+                error = "画像ファイルは5MB以下にしてください。"
+            else:
+                processed, error = process_profile_image(contents)
+    if error:
+        request.session["equipment_catalog_notice"] = {"type": "error", "message": error}
+        return RedirectResponse("/admin/equipment-catalog", status_code=303)
+
+    equipment_id = "EQ" + uuid4().hex.upper()
+    filename = f"{uuid4().hex}.webp"
+    final_path = EQUIPMENT_UPLOADS_DIR / filename
+    temporary_path = EQUIPMENT_UPLOADS_DIR / f".{filename}.tmp"
+    try:
+        temporary_path.write_bytes(processed)
+        temporary_path.replace(final_path)
+        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db, db:
+            db.execute("""INSERT INTO equipment_catalog(id,name,image,content,count,usage_type)
+                VALUES(?,?,?,?,?,?)""",
+                (equipment_id, name, f"/uploads/equipment/{filename}", content, count, usage_type))
+    except (OSError, sqlite3.Error):
+        temporary_path.unlink(missing_ok=True)
+        final_path.unlink(missing_ok=True)
+        request.session["equipment_catalog_notice"] = {
+            "type": "error", "message": "器具を保存できませんでした。時間をおいて再度お試しください。"
+        }
+        return RedirectResponse("/admin/equipment-catalog", status_code=303)
+    request.session["equipment_catalog_notice"] = {"type": "success", "message": "器具を登録しました。"}
+    request.session["equipment_catalog_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/admin/equipment-catalog", status_code=303)
+
+
+@app.post("/admin/equipment-catalog/{equipment_id}")
+async def AdminEquipmentCatalogUpdate(request: Request, equipment_id: str):
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    form = await request.form()
+    csrf_token = str(form.get("csrf_token") or "")
+    expected = request.session.get("equipment_catalog_csrf_token", "")
+    if not expected or not csrf_token or not secrets.compare_digest(expected, csrf_token):
+        raise HTTPException(status_code=403, detail="CSRFトークンが不正です。画面を再読み込みしてください。")
+
+    name = str(form.get("name") or "").strip()
+    content = str(form.get("content") or "").strip()
+    usage_type = str(form.get("usage_type") or "").strip()
+    try:
+        count = int(str(form.get("count") or ""))
+    except ValueError:
+        count = 0
+    upload = form.get("image")
+    has_upload = isinstance(upload, StarletteUploadFile) and bool(upload.filename)
+    error = None
+    if not name or len(name) > 100:
+        error = "器具名を1～100文字で入力してください。"
+    elif len(content) > 500:
+        error = "説明は500文字以内で入力してください。"
+    elif count < 1 or count > 100000:
+        error = "数量は1～100000の整数で入力してください。"
+    elif usage_type not in {"takeout", "in_room"}:
+        error = "利用区分を選択してください。"
+    elif upload is not None and upload != "" and not isinstance(upload, StarletteUploadFile):
+        error = "画像ファイルを正しく選択してください。"
+
+    processed = None
+    if error is None and has_upload:
+        suffix = Path(upload.filename or "").suffix.lower()
+        content_type = (upload.content_type or "").lower()
+        if suffix not in PROFILE_ALLOWED_SUFFIXES or content_type not in PROFILE_ALLOWED_CONTENT_TYPES:
+            error = "JPEG、PNG、WebP形式の画像を選択してください。"
+        else:
+            contents = await upload.read(PROFILE_MAX_BYTES + 1)
+            await upload.close()
+            if len(contents) > PROFILE_MAX_BYTES:
+                error = "画像ファイルは5MB以下にしてください。"
+            else:
+                processed, error = process_profile_image(contents)
+    if error:
+        request.session["equipment_catalog_notice"] = {"type": "error", "message": error}
+        return RedirectResponse("/admin/equipment-catalog", status_code=303)
+
+    filename = f"{uuid4().hex}.webp" if has_upload else None
+    final_path = EQUIPMENT_UPLOADS_DIR / filename if filename else None
+    temporary_path = EQUIPMENT_UPLOADS_DIR / f".{filename}.tmp" if filename else None
+    try:
+        if filename:
+            temporary_path.write_bytes(processed)
+            temporary_path.replace(final_path)
+        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+            db.execute("BEGIN IMMEDIATE")
+            existing = db.execute("SELECT image FROM equipment_catalog WHERE id=?", (equipment_id,)).fetchone()
+            if existing is None:
+                db.rollback()
+                raise LookupError("equipment not found")
+            image_url = f"/uploads/equipment/{filename}" if filename else existing[0]
+            db.execute("""UPDATE equipment_catalog
+                SET name=?,content=?,count=?,usage_type=?,image=? WHERE id=?""",
+                (name, content, count, usage_type, image_url, equipment_id))
+            db.commit()
+        if filename:
+            delete_equipment_upload(existing[0])
+    except LookupError:
+        if temporary_path:
+            temporary_path.unlink(missing_ok=True)
+        if final_path:
+            final_path.unlink(missing_ok=True)
+        request.session["equipment_catalog_notice"] = {"type": "error", "message": "器具が見つかりません。"}
+        return RedirectResponse("/admin/equipment-catalog", status_code=303)
+    except (OSError, sqlite3.Error):
+        if temporary_path:
+            temporary_path.unlink(missing_ok=True)
+        if final_path:
+            final_path.unlink(missing_ok=True)
+        request.session["equipment_catalog_notice"] = {
+            "type": "error", "message": "器具を更新できませんでした。時間をおいて再度お試しください。"
+        }
+        return RedirectResponse("/admin/equipment-catalog", status_code=303)
+    request.session["equipment_catalog_notice"] = {"type": "success", "message": "器具情報を更新しました。"}
+    request.session["equipment_catalog_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/admin/equipment-catalog", status_code=303)
+
+
+@app.post("/admin/equipment-catalog/{equipment_id}/delete")
+async def AdminEquipmentCatalogDelete(request: Request, equipment_id: str, csrf_token: str = Form(...)):
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    expected = request.session.get("equipment_catalog_csrf_token", "")
+    if not expected or not secrets.compare_digest(expected, csrf_token):
+        raise HTTPException(status_code=403, detail="CSRFトークンが不正です。画面を再読み込みしてください。")
+    message = "器具が見つかりません。"
+    notice_type = "error"
+    try:
+        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+            db.execute("BEGIN IMMEDIATE")
+            item = db.execute("SELECT name,image FROM equipment_catalog WHERE id=?", (equipment_id,)).fetchone()
+            if item:
+                takeout_history = db.execute("""SELECT 1 FROM equipment_reservation
+                    WHERE equipment_id=? OR ((equipment_id IS NULL OR equipment_id='') AND equipment=?) LIMIT 1""",
+                    (equipment_id, item[0])).fetchone()
+                room_history = db.execute(
+                    "SELECT 1 FROM equipment_room_reservation WHERE equipment_id=? LIMIT 1", (equipment_id,)
+                ).fetchone()
+                if takeout_history or room_history:
+                    message = "予約記録がある器具は削除できません。"
+                else:
+                    db.execute("DELETE FROM equipment_catalog WHERE id=?", (equipment_id,))
+                    db.commit()
+                    delete_equipment_upload(item[1])
+                    message = "器具を削除しました。"
+                    notice_type = "success"
+                if db.in_transaction:
+                    db.rollback()
+            else:
+                db.rollback()
+    except sqlite3.Error:
+        message = "器具を削除できませんでした。時間をおいて再度お試しください。"
+    request.session["equipment_catalog_notice"] = {"type": notice_type, "message": message}
+    request.session["equipment_catalog_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/admin/equipment-catalog", status_code=303)
 
 
 @app.get("/admin/equipment-reservation", response_class=HTMLResponse)
