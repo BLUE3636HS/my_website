@@ -1246,13 +1246,13 @@ async def AdminLogin(
             status_code=401
         )
 
-    chat_token = request.session.get("tekne_chat_session")
-    try:
-        revoke_chat_session(DATABASE_PATH, chat_token)
-        await tekne_chat_service.connections.close_session(chat_token)
-    except sqlite3.Error:
-        logging.exception("Failed to revoke TEKNE chat session during administrator login")
-    request.session.clear()
+    # Student and teacher sessions can coexist with the admin session. Replace
+    # only prior admin credentials when switching administrator accounts.
+    for key in (
+        "admin_login", "admin_id", "admin_session_version", "admin_time",
+        "admin_password_notice",
+    ):
+        request.session.pop(key, None)
     request.session["admin_login"] = True
     request.session["admin_id"] = id
     request.session["admin_session_version"] = admin[1]

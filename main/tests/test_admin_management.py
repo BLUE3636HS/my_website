@@ -119,6 +119,40 @@ class AdminManagementTests(unittest.TestCase):
         self.assertNotIn('管理者管理', html)
         self.assertIn('研究成果管理', html)
 
+    def test_admin_login_preserves_student_and_teacher_sessions(self):
+        import base64
+        import json
+        from itsdangerous import TimestampSigner
+
+        session = {
+            'user_login': True,
+            'user_id': 'student-1',
+            'user_time': main.datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'tekne_chat_session': 'active-chat-token',
+            'teacher_login': True,
+            'teacher_id': 'teacher-1',
+            'teacher_time': main.datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        }
+        encoded = base64.b64encode(json.dumps(session).encode())
+        cookie = TimestampSigner(self.key, salt='starlette.sessions').sign(encoded).decode()
+
+        status, _, updated_cookie = self.http(
+            '/admin/login', cookie='session=' + cookie, method='POST',
+            data={'id': 'ordinary', 'pwd': self.password},
+        )
+
+        self.assertEqual(status, 303)
+        payload = updated_cookie.removeprefix('session=')
+        signed_data = TimestampSigner(self.key, salt='starlette.sessions').unsign(payload)
+        restored = json.loads(base64.b64decode(signed_data))
+        self.assertIs(restored['user_login'], True)
+        self.assertEqual(restored['user_id'], 'student-1')
+        self.assertEqual(restored['tekne_chat_session'], 'active-chat-token')
+        self.assertIs(restored['teacher_login'], True)
+        self.assertEqual(restored['teacher_id'], 'teacher-1')
+        self.assertIs(restored['admin_login'], True)
+        self.assertEqual(restored['admin_id'], 'ordinary')
+
     def test_create_issues_one_time_password_and_forces_first_change(self):
         cookie = self.login('26A001')
         token, cookie = self.token(cookie)
