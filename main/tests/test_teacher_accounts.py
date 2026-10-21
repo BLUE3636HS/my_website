@@ -25,14 +25,14 @@ class TeacherAccountsTests(unittest.TestCase):
         self.db_path = Path(self.temp.name) / "test.db"
         with closing(sqlite3.connect(self.db_path)) as db:
             db.executescript("""
-                CREATE TABLE student (id TEXT NOT NULL, pwd TEXT NOT NULL, school TEXT NOT NULL);
+                CREATE TABLE student (id TEXT NOT NULL, pwd TEXT NOT NULL, school TEXT NOT NULL, name TEXT, furigana TEXT);
                 CREATE TABLE teacher (id TEXT NOT NULL, pwd TEXT NOT NULL, school TEXT NOT NULL);
                 CREATE TABLE study (id INTEGER PRIMARY KEY, name TEXT NOT NULL, time TEXT NOT NULL, submission_kind TEXT NOT NULL, chat_group_name TEXT, userid TEXT NOT NULL);
                 CREATE TABLE study_submission_member (study_id INTEGER NOT NULL, student_id_snapshot TEXT NOT NULL, position INTEGER NOT NULL);
                 INSERT INTO teacher VALUES ('teacher-1', 'secret', 'school-1');
-                INSERT INTO student VALUES ('student-a', 'hash-a', 'school-1');
-                INSERT INTO student VALUES ('student-b', 'hash-b', 'school-1');
-                INSERT INTO student VALUES ('student-c', 'hash-c', 'school-2');
+                INSERT INTO student VALUES ('student-a', 'hash-a', 'school-1', '山田太郎', 'ヤマダタロウ');
+                INSERT INTO student VALUES ('student-b', 'hash-b', 'school-1', NULL, NULL);
+                INSERT INTO student VALUES ('student-c', 'hash-c', 'school-2', '佐藤花子', 'サトウハナコ');
             """)
             main.initialize_custom_fields(db)
             db.execute("INSERT INTO student_custom_field(school,label,field_type,created_at) VALUES ('school-1','Grade','number','2026-10-20')")
@@ -57,13 +57,16 @@ class TeacherAccountsTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("student-a", html)
         self.assertIn("student-b", html)
+        self.assertIn("山田太郎", html)
+        self.assertIn("ヤマダタロウ", html)
+        self.assertIn("未登録", html)
         self.assertNotIn("student-c", html)
         self.assertNotIn("hash-a", html)
         self.assertNotIn("secret", html)
-        self.assertIn('class="teacher-number-sort" data-column-index="1"', html)
-        self.assertIn(">Name</th>", html)
-        self.assertNotIn('class="teacher-number-sort" data-column-index="2"', html)
         self.assertIn('class="teacher-number-sort" data-column-index="3"', html)
+        self.assertIn(">Name</th>", html)
+        self.assertNotIn('class="teacher-number-sort" data-column-index="4"', html)
+        self.assertIn('class="teacher-number-sort" data-column-index="5"', html)
 
     def test_missing_teacher_account_redirects_to_login(self):
         response = self.render({"teacher_login": True, "teacher_id": "deleted-teacher"})

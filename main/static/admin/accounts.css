@@ -228,6 +228,50 @@
     border-color: #a33434;
 }
 
+.account-role-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.account-role-form select {
+    min-height: 34px;
+    padding: 0 8px;
+    color: #354f3e;
+    background: #fff;
+    border: 1px solid #cadbcf;
+    border-radius: 6px;
+    font: inherit;
+}
+
+.account-role-button {
+    min-height: 34px;
+    padding: 4px 10px;
+    color: #25613e;
+    background: #eff8f1;
+    border: 1px solid #c9dfcf;
+    border-radius: 6px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.account-role-button:hover {
+    color: #fff;
+    background: #25613e;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 .accounts-no-data {
     min-height: 160px;
     display: flex;

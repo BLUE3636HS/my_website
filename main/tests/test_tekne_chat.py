@@ -12,6 +12,7 @@ from tekne_chat import (
     TekneChatMigrationError,
     TekneChatService,
     _clean_name,
+    _clean_group_name,
     _connect,
     _storage_file,
     _same_origin,
@@ -135,6 +136,26 @@ class TekneChatTests(unittest.TestCase):
         _, deleted = self.service.delete_message(self.sessions["student_0001"], message["id"])
         self.assertTrue(deleted["deleted"])
         self.assertEqual(deleted["body"], "メッセージが削除されました")
+
+    def test_group_names_allow_safe_text_and_reject_path_separators(self):
+        safe_name = "勉強会 1班_2（春）"
+        created = self.service.create_group(self.sessions["student_0001"], safe_name)
+        self.assertEqual(created["name"], safe_name)
+        self.assertEqual(_clean_group_name(" 研究会・A-1 "), "研究会・A-1")
+
+        for invalid_name in ("前/後", "前\\後", "改行\nあり", "emoji😀"):
+            with self.subTest(name=invalid_name):
+                with self.assertRaises(HTTPException):
+                    self.service.create_group(self.sessions["student_0001"], invalid_name)
+
+        with self.assertRaises(HTTPException):
+            self.service.rename_group(self.sessions["student_0001"], created["id"], "変更/後")
+        with self.assertRaises(HTTPException):
+            self.service.admin_rename_group("admin", created["id"], "管理/者変更")
+        with closing(_connect(self.database_path)) as db:
+            self.assertEqual(db.execute(
+                "SELECT name FROM tekne_chat_group WHERE id=?", (created["id"],)
+            ).fetchone()[0], safe_name)
 
     def test_repeated_message_submission_with_same_client_id_is_idempotent(self):
         group_id = self._create_group()

@@ -25,7 +25,7 @@
             <td>{{study[1]}}</td>
             <td>{{study[2]}}</td>
             <td>{{study[6]}}</td>
-            <td>{% set collaboration = submission_details.get(study[0]) %}{% if collaboration %}「{{ collaboration.group_name }}」{{ collaboration.submitters | join(',') }}{% else %}{{ study[5] }}{% endif %}</td>
+            <td>{% set collaboration = submission_details.get(study[0]) %}{% if collaboration %}「{{ collaboration.group_name }}」{{ collaboration.submitters | join(',') }}{% else %}{{ study[8] }}{% endif %}</td>
             <td>{% if study[7] == "pdf" %}<a href="/uploads/{{study[0]}}.pdf">{{study[3]}}</a>{% else %}<a href="/uploads/{{ study[0] }}.pdf" target="_blank" rel="noopener">PDFを開く</a>{% endif %}</td>
         </tr>
         {% endfor %}

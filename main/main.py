@@ -31,7 +31,9 @@ from mentor_reservations import (
 )
 from admin_management import migrate_admin_database, build_admin_router, active_admin, session_secret, build_password_router
 from school_registration import (
+    initialize_student_account_fields,
     initialize_school_registration,
+    initialize_teacher_roles,
     register_school_student,
     register_school_teacher,
 )
@@ -101,6 +103,7 @@ cursor.execute("""
         school TEXT NOT NULL
     )
 """)
+initialize_student_account_fields(conn)
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS teacher (
         id TEXT NOT NULL,
@@ -108,6 +111,7 @@ cursor.execute("""
         school TEXT NOT NULL
     )
 """)
+initialize_teacher_roles(conn)
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS admin (
         id TEXT PRIMARY KEY NOT NULL,
@@ -988,7 +992,11 @@ async def StudyList(request: Request):
             group_ids = [group["id"] for group in tekne_chat_service.groups(request.session)]
         except HTTPException:
             pass
-        studies = db.execute("""SELECT DISTINCT s.* FROM study s
+        studies = db.execute("""SELECT DISTINCT s.id, s.name, s.introduce, s.filename, s.pdfpath,
+                s.userid, s.time, s.registration_type,
+                COALESCE(NULLIF(student.name, ''), s.userid) AS submitter_name
+            FROM study s
+            LEFT JOIN student ON student.id = s.userid
             LEFT JOIN study_submission_member sm ON sm.study_id=s.id
             WHERE (s.submission_kind='individual' AND s.userid=?)
                OR (s.submission_kind='group' AND s.chat_group_id IN (""" +
@@ -1892,7 +1900,9 @@ async def AdminAccountsPage(request: Request, type: str = "student", school: str
     selected_school = school if school in schools else None
     table_name = "student" if account_type == "student" else "teacher"
 
-    query = f"SELECT rowid, id, school FROM {table_name}"
+    query = f"SELECT rowid, id, school, name, furigana FROM {table_name}"
+    if account_type == "teacher":
+        query = "SELECT rowid, id, school, role FROM teacher"
     params = ()
     if selected_school:
         query += " WHERE school = ?"
@@ -2023,6 +2033,70 @@ async def AdminDeleteAccount(
     request.session["account_notice"] = {
         "type": "success",
         "message": f"{account_label}アカウント「{account_id}」を削除しました。"
+    }
+    request.session["account_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse(redirect_url, status_code=303)
+
+
+@app.post("/admin/accounts/teacher-role")
+async def AdminUpdateTeacherRole(
+    request: Request,
+    account_rowid: int = Form(...),
+    account_id: str = Form(...),
+    role: str = Form(...),
+    csrf_token: str = Form(...),
+    return_school: str = Form(""),
+):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    schools = load_schools()
+    safe_school = return_school if return_school in schools else None
+    redirect_params = {"type": "teacher"}
+    if safe_school:
+        redirect_params["school"] = safe_school
+    redirect_url = "/admin/accounts?" + urlencode(redirect_params)
+    session_token = request.session.get("account_csrf_token", "")
+    if not session_token or not secrets.compare_digest(csrf_token, session_token):
+        request.session["account_notice"] = {
+            "type": "error",
+            "message": "セッションを確認できませんでした。もう一度お試しください。",
+        }
+        return RedirectResponse(redirect_url, status_code=303)
+    if role not in ("teacher", "super_teacher"):
+        request.session["account_notice"] = {
+            "type": "error",
+            "message": "指定された階級が正しくありません。",
+        }
+        return RedirectResponse(redirect_url, status_code=303)
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        try:
+            initialize_teacher_roles(db)
+            db.execute("BEGIN IMMEDIATE")
+            updated = db.execute(
+                "UPDATE teacher SET role = ? WHERE rowid = ? AND id = ?",
+                (role, account_rowid, account_id),
+            )
+            if updated.rowcount != 1:
+                db.rollback()
+                request.session["account_notice"] = {
+                    "type": "error",
+                    "message": "変更対象の先生アカウントが見つかりませんでした。",
+                }
+                return RedirectResponse(redirect_url, status_code=303)
+            db.commit()
+        except sqlite3.Error:
+            db.rollback()
+            request.session["account_notice"] = {
+                "type": "error",
+                "message": "階級を更新できませんでした。",
+            }
+            return RedirectResponse(redirect_url, status_code=303)
+
+    request.session["account_notice"] = {
+        "type": "success",
+        "message": f"先生アカウント「{account_id}」の階級を更新しました。",
     }
     request.session["account_csrf_token"] = secrets.token_urlsafe(32)
     return RedirectResponse(redirect_url, status_code=303)
@@ -2815,7 +2889,7 @@ async def TeacherAccountsPage(request: Request):
         if teacher is None:
             return RedirectResponse("/login", status_code=303)
         fields = db.execute("SELECT * FROM student_custom_field WHERE school=? AND deleted_at IS NULL ORDER BY id", (teacher[0],)).fetchall()
-        students = db.execute("SELECT id FROM student WHERE school = ? ORDER BY id ASC, rowid ASC", (teacher[0],)).fetchall()
+        students = db.execute("SELECT id, name, furigana FROM student WHERE school = ? ORDER BY id ASC, rowid ASC", (teacher[0],)).fetchall()
         values = db.execute("""SELECT v.student_id,v.field_id,v.value_json FROM student_custom_field_value v
             JOIN student s ON s.id=v.student_id JOIN student_custom_field f ON f.id=v.field_id
             WHERE s.school=? AND f.school=? AND f.deleted_at IS NULL""", (teacher[0], teacher[0])).fetchall()
@@ -2858,7 +2932,8 @@ async def TeacherAccountsPage(request: Request):
         field_columns.append({"id": field["id"], "label": field["label"],
                               "field_type": field["field_type"],
                               "sortable_numeric": field["field_type"] == "number" or choices_are_numeric})
-    student_rows = [{"id": student["id"], "values": [value_map.get((student["id"], field["id"])) for field in fields],
+    student_rows = [{"id": student["id"], "name": student["name"], "furigana": student["furigana"],
+                     "values": [value_map.get((student["id"], field["id"])) for field in fields],
                      "submissions": submissions_by_student.get(student["id"], [])} for student in students]
     csrf_token = request.session.setdefault("teacher_custom_fields_csrf", secrets.token_urlsafe(32))
 
@@ -2911,10 +2986,19 @@ async def DeleteStudentCustomField(request: Request, field_id: int, csrf_token: 
         teacher = db.execute("SELECT school FROM teacher WHERE id=?", (teacher_id,)).fetchone()
         if not teacher:
             return RedirectResponse("/login", status_code=303)
-        db.execute("UPDATE student_custom_field SET deleted_at=? WHERE id=? AND school=? AND deleted_at IS NULL",
-                   (datetime.datetime.now(JST).isoformat(), field_id, teacher[0]))
-        db.commit()
-    request.session["teacher_custom_fields_notice"] = {"type": "success", "message": "項目を削除しました。保存済みの入力値は保持されています。"}
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            deleted = db.execute(
+                "UPDATE student_custom_field SET deleted_at=? WHERE id=? AND school=? AND deleted_at IS NULL",
+                (datetime.datetime.now(JST).isoformat(), field_id, teacher[0]),
+            )
+            if deleted.rowcount:
+                db.execute("DELETE FROM student_custom_field_value WHERE field_id=?", (field_id,))
+            db.commit()
+        except sqlite3.Error:
+            db.rollback()
+            raise
+    request.session["teacher_custom_fields_notice"] = {"type": "success", "message": "項目と保存済みの入力値を削除しました。"}
     return RedirectResponse("/teacher/accounts", status_code=303)
 
 
@@ -3303,6 +3387,8 @@ async def SchoolRegistrationPost(
     id: str = Form(...),
     pwd: str = Form(...),
     school_id: str = Form(...),
+    name: str = Form(...),
+    furigana: str = Form(...),
 ):
     source_ip = request.client.host if request.client else "unknown"
     result = await run_in_threadpool(
@@ -3312,6 +3398,8 @@ async def SchoolRegistrationPost(
         pwd,
         school_id,
         source_ip,
+        name,
+        furigana,
     )
     if result == "created":
         return {"result": 0, "message": "登録しました"}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}研究成果追加フォーム{% endblock %}
+{% block title %}研究成果アップロード{% endblock %}
 {% block css %}
     <link rel="stylesheet" href="/static/addform.css">
 {% endblock %}
@@ -7,7 +7,7 @@
 <div class="student-page addform-page">
     <section class="student-page-hero">
         <p class="student-page-eyebrow">RESEARCH SUBMISSION</p>
-        <h1>研究成果追加フォーム</h1>
+        <h1>研究成果アップロード</h1>
         <p>研究成果ファイルのアップロード、またはテンプレートへの文字入力で研究成果を登録できます。</p>
     </section>
     <form class="addform-panel" id="study-form" method="post" action="/addform" enctype="multipart/form-data">
@@ -29,7 +29,7 @@
             {% if not submission_groups %}<p class="addform-hint">現在参加中のTEKNEチャットグループがありません。</p>{% endif %}
             <p class="addform-hint">提出時点で参加中のメンバー全員が共同提出者として記録されます。</p>
         </div>
-        <label for="name">名前（必須）</label>
+        <label for="name">ファイル名 (必須)</label>
         <input type="text" id="name" name="name" required>
         <label for="introduce">紹介文（必須）</label>
         <textarea id="introduce" name="introduce" required></textarea>

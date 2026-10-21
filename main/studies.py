@@ -112,9 +112,12 @@ def get_submission_collaboration(db, study_ids):
     if result:
         group_ids = list(result)
         member_placeholders = ",".join("?" for _ in group_ids)
-        for study_id, student_id in db.execute(f"""SELECT study_id, student_id_snapshot
-            FROM study_submission_member WHERE study_id IN ({member_placeholders}) ORDER BY study_id, position""", group_ids):
-            result[study_id]["submitters"].append(student_id)
+        for study_id, student_id, student_name in db.execute(f"""SELECT member.study_id, member.student_id_snapshot, student.name
+            FROM study_submission_member member
+            LEFT JOIN student ON student.id = member.student_id_snapshot
+            WHERE member.study_id IN ({member_placeholders})
+            ORDER BY member.study_id, member.position""", group_ids):
+            result[study_id]["submitters"].append(student_name or student_id)
     return result
 
 

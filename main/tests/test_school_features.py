@@ -20,7 +20,11 @@ class SchoolFeatureSettingsTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.database = self.root / "test.db"
         with closing(sqlite3.connect(self.database)) as db:
+            db.execute("CREATE TABLE registered_school(name TEXT NOT NULL UNIQUE)")
             db.execute("CREATE TABLE student(id TEXT NOT NULL, school TEXT NOT NULL)")
+            db.execute("INSERT INTO registered_school VALUES('学校A')")
+            db.execute("INSERT INTO registered_school VALUES('学校B')")
+            db.execute("INSERT INTO registered_school VALUES('生徒なしの学校')")
             db.execute("INSERT INTO student VALUES('student-a', '学校A')")
             db.execute("INSERT INTO student VALUES('student-b', '学校B')")
             db.execute("INSERT INTO student VALUES('student-c', '学校A')")
@@ -29,9 +33,14 @@ class SchoolFeatureSettingsTests(unittest.TestCase):
     def test_distinct_database_schools_are_seeded_enabled_by_default(self):
         seed_school_feature_settings(self.database)
         with closing(sqlite3.connect(self.database)) as db:
-            for school in ("学校A", "学校B"):
+            for school in ("学校A", "学校B", "生徒なしの学校"):
                 self.assertEqual(school_feature_flags(db, school),
                                  {key: True for key, _ in FEATURES})
+            rows = db.execute(
+                "SELECT COUNT(*) FROM school_feature_setting WHERE school=?",
+                ("生徒なしの学校",),
+            ).fetchone()[0]
+            self.assertEqual(rows, len(FEATURES))
 
     def test_off_setting_survives_reseeding(self):
         seed_school_feature_settings(self.database)

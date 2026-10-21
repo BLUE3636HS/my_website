@@ -53,7 +53,7 @@ class StudyTests(unittest.TestCase):
         self.uploads = self.root / 'uploads'
         self.uploads.mkdir()
         with closing(connect_studies(self.path)) as db:
-            db.executescript("""CREATE TABLE student(id TEXT, pwd TEXT, school TEXT);
+            db.executescript("""CREATE TABLE student(id TEXT, pwd TEXT, school TEXT, name TEXT, furigana TEXT);
                 CREATE TABLE registered_school(name TEXT NOT NULL UNIQUE);
                 INSERT INTO registered_school VALUES ('school1'), ('school2');
                 CREATE TABLE teacher(id TEXT, pwd TEXT, school TEXT);
@@ -186,6 +186,28 @@ class StudyTests(unittest.TestCase):
         self.chat.leave(other_session, group_id)
         self.assertEqual(self.rows('SELECT student_id_snapshot FROM study_submission_member WHERE study_id=1 ORDER BY position'),
                          [('a',), ('c',)])
+
+    def test_student_studylist_shows_names_for_individual_and_group_submitters(self):
+        with closing(connect_studies(self.path)) as db:
+            db.execute("UPDATE student SET name='山田太郎' WHERE id='a'")
+            db.execute("UPDATE student SET name='鈴木花子' WHERE id='c'")
+            db.commit()
+        self.submit(name='個人提出')
+        group_id = self.create_study_group()
+        self.submit(name='グループ提出', submission_kind='group', chat_group_id=group_id)
+
+        html = self.render_student_studylist().body.decode()
+
+        self.assertIn('山田太郎', html)
+        self.assertIn('鈴木花子', html)
+        self.assertNotIn('「共同研究」a,c', html)
+
+    def test_student_studylist_falls_back_to_id_when_name_is_unregistered(self):
+        self.submit(name='未登録の名前')
+
+        html = self.render_student_studylist().body.decode()
+
+        self.assertIn('<td>a</td>', html)
 
     def test_group_submission_rejects_missing_or_nonmember_group(self):
         with self.assertRaises(HTTPException) as missing:

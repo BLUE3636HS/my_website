@@ -41,6 +41,12 @@ def initialize_custom_fields(db):
         CREATE INDEX IF NOT EXISTS idx_student_custom_field_value_field
             ON student_custom_field_value(field_id);
     """)
+    # Discard responses for removed fields and any values whose field definition
+    # no longer exists. This also cleans up data left by older soft deletes.
+    db.execute("""DELETE FROM student_custom_field_value
+        WHERE field_id NOT IN (
+            SELECT id FROM student_custom_field WHERE deleted_at IS NULL
+        )""")
     db.commit()
 
 

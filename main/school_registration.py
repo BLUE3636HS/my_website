@@ -5,6 +5,7 @@ import hmac
 import re
 import secrets
 import sqlite3
+import unicodedata
 from contextlib import closing
 from pathlib import Path
 
@@ -56,6 +57,16 @@ def initialize_school_registration(db):
         db.execute(
             "ALTER TABLE school_registration_attempt "
             "ADD COLUMN credential_valid INTEGER NOT NULL DEFAULT 0"
+        )
+
+
+def initialize_teacher_roles(db):
+    """Add the teacher rank column; legacy accounts receive the standard rank."""
+    columns = {row[1] for row in db.execute("PRAGMA table_info(teacher)")}
+    if "role" not in columns:
+        db.execute(
+            "ALTER TABLE teacher ADD COLUMN role TEXT NOT NULL DEFAULT 'teacher' "
+            "CHECK(role IN ('teacher', 'super_teacher'))"
         )
 
 
@@ -181,11 +192,55 @@ def validate_student_credentials(user_id, password):
     )
 
 
-def register_school_account(database_path, user_id, password, school_id, source_ip, account_type, *, now=None):
+def validate_student_name(name, furigana):
+    """Accept compact Japanese names and katakana readings, up to 80 chars."""
+    if not isinstance(name, str) or not name or len(name) > 80:
+        return False
+    if not isinstance(furigana, str) or not furigana or len(furigana) > 80:
+        return False
+    if any(char.isspace() for char in name + furigana):
+        return False
+
+    name_marks = set("々〆〇ヶヵーゝゞヽヾ・")
+    furigana_marks = set("ー・ヽヾ")
+    for char in name:
+        codepoint = ord(char)
+        category = unicodedata.category(char)
+        character_name = unicodedata.name(char, "")
+        is_han = category == "Lo" and character_name.startswith((
+            "CJK UNIFIED IDEOGRAPH", "CJK COMPATIBILITY IDEOGRAPH"
+        ))
+        is_hiragana = 0x3041 <= codepoint <= 0x3096 or 0x309D <= codepoint <= 0x309F
+        is_katakana = 0x30A1 <= codepoint <= 0x30FA or 0x30FD <= codepoint <= 0x30FF
+        if not (is_han or is_hiragana or is_katakana or char in name_marks):
+            return False
+
+    for char in furigana:
+        codepoint = ord(char)
+        is_katakana = 0x30A1 <= codepoint <= 0x30FA or 0x30FD <= codepoint <= 0x30FF
+        is_katakana_extension = 0x31F0 <= codepoint <= 0x31FF
+        if not (is_katakana or is_katakana_extension or char in furigana_marks):
+            return False
+    return True
+
+
+def initialize_student_account_fields(db):
+    """Add nullable name fields so existing student accounts remain valid."""
+    columns = {row[1] for row in db.execute("PRAGMA table_info(student)")}
+    if "name" not in columns:
+        db.execute("ALTER TABLE student ADD COLUMN name TEXT")
+    if "furigana" not in columns:
+        db.execute("ALTER TABLE student ADD COLUMN furigana TEXT")
+
+
+def register_school_account(database_path, user_id, password, school_id, source_ip, account_type,
+                            *, name=None, furigana=None, now=None):
     """Rate-limit and create a school-linked student or teacher account."""
     if account_type not in ("student", "teacher"):
         return "invalid"
     if not validate_student_credentials(user_id, password):
+        return "invalid"
+    if account_type == "student" and not validate_student_name(name, furigana):
         return "invalid"
     attempt_time = int((now or datetime.datetime.now(datetime.timezone.utc)).timestamp())
     try:
@@ -217,11 +272,24 @@ def register_school_account(database_path, user_id, password, school_id, source_
                 )
                 if school_name is None:
                     return "invalid"
+                if account_type == "teacher":
+                    initialize_teacher_roles(db)
+                else:
+                    initialize_student_account_fields(db)
                 if db.execute("SELECT 1 FROM student WHERE id = ? UNION ALL SELECT 1 FROM teacher WHERE id = ? LIMIT 1", (user_id, user_id)).fetchone():
                     return "duplicate"
                 password_hash = bcrypt.hashpw(password.encode("ascii"), bcrypt.gensalt()).decode("ascii")
                 table = "student" if account_type == "student" else "teacher"
-                db.execute(f"INSERT INTO {table} (id, pwd, school) VALUES (?, ?, ?)", (user_id, password_hash, school_name))
+                if account_type == "teacher":
+                    db.execute(
+                        "INSERT INTO teacher (id, pwd, school, role) VALUES (?, ?, ?, 'teacher')",
+                        (user_id, password_hash, school_name),
+                    )
+                else:
+                    db.execute(
+                        "INSERT INTO student (id, pwd, school, name, furigana) VALUES (?, ?, ?, ?, ?)",
+                        (user_id, password_hash, school_name, name, furigana),
+                    )
                 if account_type == "student":
                     from tekne_chat import link_student_identity
                     link_student_identity(db, user_id, school_name)
@@ -232,8 +300,9 @@ def register_school_account(database_path, user_id, password, school_id, source_
         return "unavailable"
 
 
-def register_school_student(database_path, user_id, password, school_id, source_ip, *, now=None):
-    return register_school_account(database_path, user_id, password, school_id, source_ip, "student", now=now)
+def register_school_student(database_path, user_id, password, school_id, source_ip, name, furigana, *, now=None):
+    return register_school_account(database_path, user_id, password, school_id, source_ip, "student",
+                                  name=name, furigana=furigana, now=now)
 
 
 def register_school_teacher(database_path, user_id, password, school_id, source_ip, *, now=None):

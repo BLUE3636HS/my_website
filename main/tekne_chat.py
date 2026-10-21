@@ -299,6 +299,23 @@ def _clean_name(value, *, max_length=255):
     return value
 
 
+def _clean_group_name(value):
+    """Validate a group label without applying filesystem path cleanup."""
+    if not isinstance(value, str):
+        return None
+    value = unicodedata.normalize("NFC", value)
+    allowed_punctuation = set("_-()（）・ー")
+    for char in value:
+        category = unicodedata.category(char)
+        if (category[0] in "LMN" or char in " 　" or char in allowed_punctuation):
+            continue
+        return None
+    value = value.strip(" 　")
+    if not value or len(value) > 100:
+        return None
+    return value
+
+
 def _normalized(value):
     return unicodedata.normalize("NFC", value).casefold()
 
@@ -581,9 +598,9 @@ class TekneChatService:
         return {"id": group[0], "name": group[2], "members": members}
 
     def create_group(self, session, name):
-        clean = _clean_name(name, max_length=100)
+        clean = _clean_group_name(name)
         if not clean:
-            raise HTTPException(422, "グループ名を1〜100文字で入力してください。")
+            raise HTTPException(422, "グループ名は日本語・英数字・空白・一部の記号で1〜100文字にしてください。")
         with closing(_connect(self.database_path)) as db, db:
             db.execute("BEGIN IMMEDIATE")
             identity = self._identity(db, session)
@@ -595,9 +612,9 @@ class TekneChatService:
             return {"id": group_id, "name": clean, "icon_key": None, "member_count": 1}
 
     def rename_group(self, session, group_id, name):
-        clean = _clean_name(name, max_length=100)
+        clean = _clean_group_name(name)
         if not clean:
-            raise HTTPException(422, "グループ名を1〜100文字で入力してください。")
+            raise HTTPException(422, "グループ名は日本語・英数字・空白・一部の記号で1〜100文字にしてください。")
         with closing(_connect(self.database_path)) as db, db:
             db.execute("BEGIN IMMEDIATE")
             identity, _ = self._member(db, session, group_id)
@@ -989,9 +1006,9 @@ class TekneChatService:
                     "next_message_before_id": next_message_before, "next_file_before_id": next_file_before}
 
     def admin_rename_group(self, admin_id, group_id, name):
-        clean = _clean_name(name, max_length=100)
+        clean = _clean_group_name(name)
         if not clean:
-            raise HTTPException(422, "グループ名を確認してください。")
+            raise HTTPException(422, "グループ名は日本語・英数字・空白・一部の記号で1〜100文字にしてください。")
         with closing(_connect(self.database_path)) as db, db:
             db.execute("BEGIN IMMEDIATE")
             if not db.execute("SELECT 1 FROM tekne_chat_group WHERE id=?", (group_id,)).fetchone():

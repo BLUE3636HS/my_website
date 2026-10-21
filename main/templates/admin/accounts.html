@@ -48,7 +48,9 @@
                 <thead>
                     <tr>
                         <th>ID</th>
+                        {% if account_type == 'student' %}<th>名前</th><th>フリガナ</th>{% endif %}
                         <th>学校名</th>
+                        {% if account_type == 'teacher' %}<th>階級</th>{% endif %}
                         <th class="account-action-column">操作</th>
                     </tr>
                 </thead>
@@ -56,7 +58,27 @@
                     {% for account in accounts %}
                     <tr>
                         <td>{{ account[1] }}</td>
+                        {% if account_type == 'student' %}
+                        <td>{{ account[3] or '未登録' }}</td>
+                        <td>{{ account[4] or '未登録' }}</td>
+                        {% endif %}
                         <td>{{ account[2] }}</td>
+                        {% if account_type == 'teacher' %}
+                        <td>
+                            <form method="post" action="/admin/accounts/teacher-role" class="account-role-form">
+                                <input type="hidden" name="account_rowid" value="{{ account[0] }}">
+                                <input type="hidden" name="account_id" value="{{ account[1] }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <input type="hidden" name="return_school" value="{{ selected_school or '' }}">
+                                <label class="visually-hidden" for="teacher-role-{{ account[0] }}">{{ account[1] }}の階級</label>
+                                <select id="teacher-role-{{ account[0] }}" name="role">
+                                    <option value="teacher"{% if account[3] == 'teacher' %} selected{% endif %}>teacher</option>
+                                    <option value="super_teacher"{% if account[3] == 'super_teacher' %} selected{% endif %}>super_teacher</option>
+                                </select>
+                                <button type="submit" class="account-role-button">変更</button>
+                            </form>
+                        </td>
+                        {% endif %}
                         <td class="account-action-column">
                             <button
                                 type="button"

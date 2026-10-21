@@ -23,7 +23,7 @@
             </form>
             {% if custom_fields %}<ul class="teacher-custom-field-list">
                 {% for field in custom_fields %}<li><span><strong>{{ field.label }}</strong> — {{ field_types.get(field.field_type, field.field_type) }}（{{ '必須' if field.required else '任意' }}）</span>
-                    <form method="post" action="/teacher/accounts/custom-fields/{{ field.id }}/delete" onsubmit="return confirm('この項目を削除しますか？保存済みの値は保持されます。');">
+                    <form method="post" action="/teacher/accounts/custom-fields/{{ field.id }}/delete" onsubmit="return confirm('この項目と、保存済みの入力値を削除しますか？');">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="teacher-custom-field-delete">削除</button>
                     </form>
                 </li>{% endfor %}
@@ -32,12 +32,12 @@
         </details>
         <div class="teacher-table-scroll">
             <table>
-                <thead><tr><th scope="col">生徒ID</th>{% for field in field_columns %}<th scope="col">{% if field.sortable_numeric %}<button type="button" class="teacher-number-sort" data-column-index="{{ loop.index }}" data-direction="none" aria-label="{{ field.label }}を昇順で並べ替え" title="昇順・降順に並べ替え"><span aria-hidden="true">↕</span>{{ field.label }}</button>{% else %}{{ field.label }}{% endif %}</th>{% endfor %}<th scope="col">提出物</th></tr></thead>
+                <thead><tr><th scope="col">生徒ID</th><th scope="col">名前</th><th scope="col">フリガナ</th>{% for field in field_columns %}<th scope="col">{% if field.sortable_numeric %}<button type="button" class="teacher-number-sort" data-column-index="{{ loop.index + 2 }}" data-direction="none" aria-label="{{ field.label }}を昇順で並べ替え" title="昇順・降順に並べ替え"><span aria-hidden="true">↕</span>{{ field.label }}</button>{% else %}{{ field.label }}{% endif %}</th>{% endfor %}<th scope="col">提出物</th></tr></thead>
                 <tbody>
                 {% for student in students %}
-                    <tr><td>{{ student["id"] }}</td>{% for value in student["values"] %}<td>{% if value is sameas true %}はい{% elif value is sameas false %}いいえ{% elif value is sequence and value is not string %}{{ value|join('、') }}{% elif value is none or value == '' %}<span class="teacher-field-empty">未入力</span>{% else %}{{ value }}{% endif %}</td>{% endfor %}<td><button type="button" class="teacher-submission-open" data-student-id="{{ student['id'] }}" data-submissions="{{ student['submissions'] | tojson | forceescape }}">提出物({{ student['submissions']|length }})</button></td></tr>
+                    <tr><td>{{ student["id"] }}</td><td>{{ student["name"] or '未登録' }}</td><td>{{ student["furigana"] or '未登録' }}</td>{% for value in student["values"] %}<td>{% if value is sameas true %}はい{% elif value is sameas false %}いいえ{% elif value is sequence and value is not string %}{{ value|join('、') }}{% elif value is none or value == '' %}<span class="teacher-field-empty">未入力</span>{% else %}{{ value }}{% endif %}</td>{% endfor %}<td><button type="button" class="teacher-submission-open" data-student-id="{{ student['id'] }}" data-submissions="{{ student['submissions'] | tojson | forceescape }}">提出物({{ student['submissions']|length }})</button></td></tr>
                 {% else %}
-                    <tr><td colspan="{{ field_columns|length + 2 }}">登録中の生徒はいません。</td></tr>
+                    <tr><td colspan="{{ field_columns|length + 4 }}">登録中の生徒はいません。</td></tr>
                 {% endfor %}
                 </tbody>
             </table>

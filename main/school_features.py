@@ -42,8 +42,11 @@ def feature_for_student_path(path):
 
 def school_names_from_database(db):
     return [row[0] for row in db.execute(
-        "SELECT DISTINCT school FROM student "
-        "WHERE school IS NOT NULL AND TRIM(school)<>'' ORDER BY school"
+        "SELECT name AS school FROM registered_school "
+        "WHERE name IS NOT NULL AND TRIM(name)<>'' "
+        "UNION SELECT school FROM student "
+        "WHERE school IS NOT NULL AND TRIM(school)<>'' "
+        "ORDER BY school"
     ).fetchall()]
 
 

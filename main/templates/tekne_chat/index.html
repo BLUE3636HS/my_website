@@ -79,13 +79,13 @@
 <dialog id="tc-create-dialog" class="tc-dialog">
     <form method="dialog" id="tc-create-form">
         <h2>グループを作成</h2><label for="tc-new-group-name">グループ名</label>
-        <input id="tc-new-group-name" maxlength="100" required>
+        <input id="tc-new-group-name" maxlength="100" pattern="[\p{L}\p{M}\p{N} 　_\(\)（）・ー\-]{1,100}" title="日本語・英数字・空白・一部の記号（_ - ( ) ・ ー）が使用できます。スラッシュや制御文字は使用できません。" required>
         <div class="tc-dialog-actions"><button value="cancel" type="button" class="tc-dialog-cancel">キャンセル</button><button id="tc-confirm-create" type="submit">作成</button></div>
     </form>
 </dialog>
 <dialog id="tc-icon-dialog" class="tc-dialog">
     <form id="tc-icon-form">
-        <h2>グループ設定</h2><label for="tc-edit-group-name">グループ名</label><input id="tc-edit-group-name" maxlength="100" required>
+        <h2>グループ設定</h2><label for="tc-edit-group-name">グループ名</label><input id="tc-edit-group-name" maxlength="100" pattern="[\p{L}\p{M}\p{N} 　_\(\)（）・ー\-]{1,100}" title="日本語・英数字・空白・一部の記号（_ - ( ) ・ ー）が使用できます。スラッシュや制御文字は使用できません。" required>
         <label for="tc-group-icon-file">グループアイコン（任意）</label><input id="tc-group-icon-file" type="file" accept="image/*">
         <div class="tc-dialog-actions"><button type="button" class="tc-dialog-cancel">キャンセル</button><button type="submit">保存</button></div>
     </form>
