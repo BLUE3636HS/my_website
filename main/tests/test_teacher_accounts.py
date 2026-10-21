@@ -115,6 +115,7 @@ class TeacherAccountsTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("school-1", response.body.decode())
         self.assertNotIn("school-2", response.body.decode())
+        self.assertIn('href="/teacher/school-features"', response.body.decode())
 
         token = session["teacher_school_features_csrf"]
         body = f"csrf_token={token}&enabled%3Adashboard=1&enabled%3Acommunity=1&enabled%3Astudies_add=1&enabled%3Astudies_list=1&enabled%3Aworkshop_reservation=1&enabled%3Amentor_reservation=1&enabled%3Aequipment_reservation=1"

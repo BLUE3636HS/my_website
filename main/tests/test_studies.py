@@ -59,7 +59,7 @@ class StudyTests(unittest.TestCase):
                 CREATE TABLE teacher(id TEXT, pwd TEXT, school TEXT);
                 CREATE TABLE admin(id TEXT PRIMARY KEY, pwd TEXT, name TEXT, role TEXT, deleted_at TEXT, session_version INTEGER DEFAULT 0);
                 INSERT INTO admin VALUES ('person', 'x', 'Person', 'admin', NULL, 0);
-                INSERT INTO student VALUES ('a', 'x', 'school1'), ('b', 'x', 'school2'), ('c', 'x', 'school1');
+                INSERT INTO student VALUES ('a', 'x', 'school1', 'A', ''), ('b', 'x', 'school2', 'B', ''), ('c', 'x', 'school1', 'C', '');
                 INSERT INTO teacher VALUES ('teacher1', 'x', 'school1');
                 CREATE TABLE unrelated(value TEXT);
                 CREATE TABLE notification(recipient_user_id TEXT, is_read INTEGER);
@@ -366,6 +366,15 @@ class StudyTests(unittest.TestCase):
         html = self.render_teacher_studylist().body.decode()
         self.assertIn('確認できる提出物はありません。', html)
         self.assertIn('id="teacher-study-search"', html)
+
+    def test_super_teacher_sees_school_feature_link_on_studylist(self):
+        with closing(connect_studies(self.path)) as db:
+            main.initialize_teacher_roles(db)
+            db.execute("UPDATE teacher SET role = 'super_teacher' WHERE id = 'teacher1'")
+            db.commit()
+
+        html = self.render_teacher_studylist().body.decode()
+        self.assertIn('href="/teacher/school-features"', html)
 
     def test_student_studylist_shows_submission_time_newest_first(self):
         with closing(connect_studies(self.path)) as db:

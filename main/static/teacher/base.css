@@ -46,6 +46,7 @@ body { margin: 0; height: 100vh; overflow: hidden; font-family: "Segoe UI", "Not
 .teacher-school-features-list { display: grid; gap: 10px; margin: 0 0 22px; padding: 0; list-style: none; }
 .teacher-school-features-list li { border: 1px solid #ead8cf; border-radius: 9px; background: #fdf9f6; }
 .teacher-school-features-list label { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; font-weight: 700; cursor: pointer; }
+.teacher-school-feature-description { margin: -4px 16px 14px; color: #75675f; font-size: .92rem; line-height: 1.6; }
 .teacher-school-features-list input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .teacher-feature-switch { position: relative; flex: 0 0 46px; height: 26px; border-radius: 20px; background: #b8aaa2; transition: background .15s ease; }
 .teacher-feature-switch::after { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: white; content: ""; transition: transform .15s ease; }

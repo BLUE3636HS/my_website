@@ -3240,6 +3240,7 @@ async def TeacherSchoolFeaturesPage(request: Request):
         context={
             "request": request,
             "teacher_id": teacher_id,
+            "teacher_role": teacher[1],
             "school": school,
             "features": STUDENT_FEATURES,
             "settings": settings,
@@ -3505,8 +3506,9 @@ async def StudyList(request: Request):
 
     teacher_id = request.session.get("teacher_id")
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        initialize_teacher_roles(db)
         teacher = db.execute(
-            "SELECT school FROM teacher WHERE id = ?",
+            "SELECT school, role FROM teacher WHERE id = ?",
             (teacher_id,)
         ).fetchone()
 
@@ -3541,6 +3543,7 @@ async def StudyList(request: Request):
             "submission_details": submission_details,
             "teacher_login": request.session.get("teacher_login"),
             "teacher_id": teacher_id,
+            "teacher_role": teacher[1] if teacher else "teacher",
             "csrf_token": csrf_token,
             "delete_succeeded": delete_succeeded
         }
