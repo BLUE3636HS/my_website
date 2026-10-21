@@ -39,6 +39,7 @@ from school_registration import (
 )
 from school_features import (
     FEATURES as STUDENT_FEATURES,
+    FEATURE_KEYS as STUDENT_FEATURE_KEYS,
     build_school_feature_router,
     enabled_for_student,
     feature_for_student_path,
@@ -3095,7 +3096,8 @@ async def teacher(request: Request):
     WHERE id = ?
     """, (teacher_id,))
 
-    teacher_school = cursor.fetchone()[2]
+    teacher_row = cursor.fetchone()
+    teacher_school = teacher_row[2]
 
     return templates.TemplateResponse(
         request = request,
@@ -3104,7 +3106,8 @@ async def teacher(request: Request):
             "request": request,
             "teacher_login": request.session.get("teacher_login"),
             "teacher_id": teacher_id,
-            "teacher_school": teacher_school
+            "teacher_school": teacher_school,
+            "teacher_role": teacher_row[3]
         }
     )
 
@@ -3113,7 +3116,7 @@ async def Edit(request: Request):
     teacher_id = request.session.get("teacher_id")
 
     cursor.execute("""
-    SELECT school
+    SELECT school, role
     FROM teacher
     WHERE id = ?
     """, (teacher_id,))
@@ -3126,7 +3129,8 @@ async def Edit(request: Request):
             "request": request,
             "teacher_login": request.session.get("teacher_login"),
             "teacher_id": teacher_id,
-            "teacher_school": teacher[0] if teacher else ""
+            "teacher_school": teacher[0] if teacher else "",
+            "teacher_role": teacher[1] if teacher else "teacher"
         }
     )
 
@@ -3146,7 +3150,7 @@ async def TeacherAccountsPage(request: Request):
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
         db.row_factory = sqlite3.Row
         teacher = db.execute(
-            "SELECT school FROM teacher WHERE id = ?", (teacher_id,)
+            "SELECT school, role FROM teacher WHERE id = ?", (teacher_id,)
         ).fetchone()
         if teacher is None:
             return RedirectResponse("/login", status_code=303)
@@ -3202,11 +3206,99 @@ async def TeacherAccountsPage(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="teacher/accounts.html",
-        context={"request": request, "teacher_id": teacher_id, "students": student_rows,
+        context={"request": request, "teacher_id": teacher_id, "teacher_role": teacher[1], "students": student_rows,
                  "custom_fields": fields, "field_columns": field_columns,
                  "field_types": STUDENT_CUSTOM_FIELD_TYPES, "csrf_token": csrf_token,
                  "field_notice": request.session.pop("teacher_custom_fields_notice", None)}
     )
+
+
+@app.get("/teacher/school-features", response_class=HTMLResponse)
+async def TeacherSchoolFeaturesPage(request: Request):
+    teacher_id = request.session.get("teacher_id")
+    if request.session.get("teacher_login") is not True or not teacher_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        initialize_teacher_roles(db)
+        teacher = db.execute(
+            "SELECT school, role FROM teacher WHERE id = ?", (teacher_id,)
+        ).fetchone()
+        if teacher is None:
+            return RedirectResponse("/login", status_code=303)
+        if teacher[1] != "super_teacher":
+            raise HTTPException(status_code=403, detail="このページを利用する権限がありません。")
+        school = teacher[0]
+        settings = school_feature_flags(db, school)
+
+    csrf_token = request.session.setdefault(
+        "teacher_school_features_csrf", secrets.token_urlsafe(32)
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="teacher/school_features.html",
+        context={
+            "request": request,
+            "teacher_id": teacher_id,
+            "school": school,
+            "features": STUDENT_FEATURES,
+            "settings": settings,
+            "csrf_token": csrf_token,
+            "notice": request.session.pop("teacher_school_features_notice", None),
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.post("/teacher/school-features")
+async def TeacherUpdateSchoolFeatures(request: Request, csrf_token: str = Form(...)):
+    teacher_id = request.session.get("teacher_id")
+    redirect = RedirectResponse("/teacher/school-features", status_code=303)
+    if request.session.get("teacher_login") is not True or not teacher_id:
+        return RedirectResponse("/login", status_code=303)
+
+    expected = request.session.get("teacher_school_features_csrf", "")
+    if not expected or not secrets.compare_digest(csrf_token, expected):
+        raise HTTPException(status_code=403, detail="CSRFトークンが不正です。")
+
+    form = await request.form()
+    allowed_fields = {f"enabled:{key}" for key in STUDENT_FEATURE_KEYS}
+    if any(key != "csrf_token" and key not in allowed_fields for key in form.keys()):
+        raise HTTPException(status_code=400, detail="設定値が不正です。")
+    for key in STUDENT_FEATURE_KEYS:
+        values = form.getlist(f"enabled:{key}")
+        if values not in ([], ["1"]):
+            raise HTTPException(status_code=400, detail="設定値が不正です。")
+    if form.getlist("csrf_token") != [csrf_token]:
+        raise HTTPException(status_code=400, detail="設定値が不正です。")
+
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        initialize_teacher_roles(db)
+        teacher = db.execute(
+            "SELECT school, role FROM teacher WHERE id = ?", (teacher_id,)
+        ).fetchone()
+        if teacher is None:
+            db.rollback()
+            return RedirectResponse("/login", status_code=303)
+        if teacher[1] != "super_teacher":
+            db.rollback()
+            raise HTTPException(status_code=403, detail="この操作を行う権限がありません。")
+
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        for feature in STUDENT_FEATURE_KEYS:
+            value = "1" if f"enabled:{feature}" in form else None
+            db.execute(
+                "INSERT INTO school_feature_setting(school,feature_key,enabled,updated_at) "
+                "VALUES(?,?,?,?) ON CONFLICT(school,feature_key) DO UPDATE "
+                "SET enabled=excluded.enabled,updated_at=excluded.updated_at",
+                (teacher[0], feature, int(value == "1"), now),
+            )
+        db.commit()
+
+    request.session["teacher_school_features_csrf"] = secrets.token_urlsafe(32)
+    request.session["teacher_school_features_notice"] = "自校の機能設定を保存しました。"
+    return redirect
 
 
 @app.post("/teacher/accounts/custom-fields")
@@ -3271,7 +3363,7 @@ async def TeacherNotifications(request: Request, page: int = 1):
     page_size = 20
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
         teacher = db.execute(
-            "SELECT school FROM teacher WHERE id = ?", (teacher_id,)
+            "SELECT school, role FROM teacher WHERE id = ?", (teacher_id,)
         ).fetchone()
         if teacher is None:
             return RedirectResponse("/login", status_code=303)
@@ -3290,6 +3382,7 @@ async def TeacherNotifications(request: Request, page: int = 1):
             WHERE sender_type = 'teacher' AND sender_school = ?
             ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
         """, (teacher_school, page_size, (page - 1) * page_size)).fetchall()
+        teacher_role = teacher[1]
     return templates.TemplateResponse(
         request=request,
         name="teacher/notifications.html",
@@ -3297,6 +3390,7 @@ async def TeacherNotifications(request: Request, page: int = 1):
             "request": request,
             "teacher_login": request.session.get("teacher_login"),
             "teacher_id": teacher_id,
+            "teacher_role": teacher_role,
             "students": students,
             "batches": batches,
             "page": page,

@@ -41,6 +41,18 @@ body { margin: 0; height: 100vh; overflow: hidden; font-family: "Segoe UI", "Not
 .teacher-field-notice-success { background: #eaf6ed; color: #25613e; }
 .teacher-field-notice-error { background: #fff0ec; color: #9c3d24; }
 .teacher-field-empty { color: #9c3d24; font-weight: 700; }
+.teacher-school-features-page .teacher-dashboard-card { padding: 28px; border: 1px solid #ead8cf; border-radius: 14px; background: #fff; box-shadow: 0 8px 24px rgba(74,59,50,.06); }
+.teacher-school-features-form { margin-top: 24px; }
+.teacher-school-features-list { display: grid; gap: 10px; margin: 0 0 22px; padding: 0; list-style: none; }
+.teacher-school-features-list li { border: 1px solid #ead8cf; border-radius: 9px; background: #fdf9f6; }
+.teacher-school-features-list label { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; font-weight: 700; cursor: pointer; }
+.teacher-school-features-list input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.teacher-feature-switch { position: relative; flex: 0 0 46px; height: 26px; border-radius: 20px; background: #b8aaa2; transition: background .15s ease; }
+.teacher-feature-switch::after { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: white; content: ""; transition: transform .15s ease; }
+.teacher-school-features-list input:checked + .teacher-feature-switch { background: #35815b; }
+.teacher-school-features-list input:checked + .teacher-feature-switch::after { transform: translateX(20px); }
+.teacher-school-features-list input:focus-visible + .teacher-feature-switch { outline: 3px solid #4a3b32; outline-offset: 3px; }
+.teacher-school-features-form > button { padding: 11px 20px; border: 0; border-radius: 7px; background: #b85c38; color: white; font: inherit; font-weight: 700; cursor: pointer; }
 .teacher-submission-open, .teacher-submission-close { padding: 8px 12px; border: 0; border-radius: 7px; background: #b85c38; color: #fff; font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .teacher-submission-dialog { width: min(680px, calc(100% - 32px)); max-height: min(80vh, 720px); padding: 0; border: 1px solid #ead8cf; border-radius: 14px; color: #4a3b32; background: #fffdfa; box-shadow: 0 18px 60px rgba(35, 24, 18, .28); }
 .teacher-submission-dialog::backdrop { background: rgba(35, 24, 18, .48); }
