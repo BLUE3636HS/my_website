@@ -6,7 +6,7 @@
     <header class="schedule-header">
         <p class="schedule-eyebrow">Schedule</p>
         <h1>予約可能時間の設定</h1>
-        <p>日付を選択し、30分単位で受付時間を設定します。</p>
+        <p>日付を選択し、30分単位で工作室の予約可能時間を設定します。</p>
     </header>
 
     {% if notice %}<div class="schedule-notice is-{{ notice.type }}" role="status">{{ notice.message }}</div>{% endif %}
@@ -35,7 +35,7 @@
                 <h3>設定済みの時間帯</h3>
                 <p class="schedule-drag-help">時間帯を開始枠から終了枠までドラッグして選択してください。1枠だけの場合はクリックしてください。</p>
                 <div class="schedule-legend" aria-label="時間枠の凡例">
-                    <span class="is-available">空きあり</span><span class="is-full">満席</span><span class="is-unset">未設定</span><span class="is-closed">受付終了</span><span class="is-own">自分が設定</span>
+                    <span class="is-available">設定済み</span><span class="is-unset">未設定</span><span class="is-closed">受付終了</span>
                 </div>
 
                 <div class="schedule-timeline-scroll" tabindex="0" aria-label="9時から22時までの予約可能時間">
@@ -49,12 +49,11 @@
                 <article class="schedule-slot-detail" id="schedule-slot-detail" aria-live="polite">
                     <div class="schedule-detail-heading">
                         <strong id="schedule-detail-time">時間帯をドラッグして選択してください</strong>
-                        <span id="schedule-detail-own" hidden>自分が設定</span>
+                        <span id="schedule-detail-own" hidden>設定済み</span>
                     </div>
                     <dl>
-                        <div><dt>最小登録枠</dt><dd id="schedule-detail-capacity">-</dd></div>
-                        <div><dt>最大予約数</dt><dd id="schedule-detail-reserved">-</dd></div>
-                        <div><dt>最小残り枠</dt><dd id="schedule-detail-remaining">-</dd></div>
+                        <div><dt>予約可能時間</dt><dd id="schedule-detail-capacity">-</dd></div>
+                        <div><dt>予約数</dt><dd id="schedule-detail-reserved">-</dd></div>
                     </dl>
                 </article>
 

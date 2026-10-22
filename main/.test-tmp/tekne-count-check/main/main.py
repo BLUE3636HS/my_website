@@ -1,0 +1,4338 @@
+from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse, Response
+from starlette.concurrency import run_in_threadpool
+from study_pdf import render_study_pdf
+from template_management import create_template_router
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from contextlib import closing
+from pathlib import Path
+from uuid import uuid4
+
+import asyncio, sqlite3, shutil, bcrypt, datetime, csv, secrets, io, json, math, mimetypes
+import hashlib, hmac, logging
+from starlette.datastructures import UploadFile as StarletteUploadFile
+from studies import connect_studies, initialize_studies, get_templates, get_submission_collaboration, study_file_path, study_pdf_path, validate_pdf
+from study_images import normalize_study_image, study_image_path
+from urllib.parse import urlencode
+from PIL import Image, ImageOps, UnidentifiedImageError
+from notifications import (
+    create_notification, initialize_notification_tables, notification_now,
+    reservation_body
+)
+from mypage_calendar import calendar_reservations, admin_calendar_reservations
+from mentor_reservations import (
+    build_router as build_mentor_router,
+    csrf_token as mentor_csrf_token,
+    initialize_mentor_tables,
+    mentor_image_url,
+)
+from admin_management import migrate_admin_database, build_admin_router, active_admin, require_super_admin, session_secret, build_password_router
+from school_registration import (
+    initialize_student_account_fields,
+    initialize_school_registration,
+    initialize_teacher_roles,
+    register_school_student,
+    register_school_teacher,
+)
+from school_features import (
+    FEATURES as STUDENT_FEATURES,
+    FEATURE_KEYS as STUDENT_FEATURE_KEYS,
+    build_school_feature_router,
+    enabled_for_student,
+    feature_for_student_path,
+    school_feature_flags,
+    seed_school_feature_settings,
+)
+from tekne_chat import (
+    build_tekne_chat_router,
+    cleanup_expired_groups,
+    create_chat_session,
+    initialize_tekne_chat,
+    rename_student_identity,
+    revoke_chat_session,
+    revoke_student_identity,
+)
+from student_custom_fields import (
+    FIELD_TYPES as STUDENT_CUSTOM_FIELD_TYPES,
+    decode_value as decode_custom_field_value,
+    initialize_custom_fields,
+    validate_definition as validate_custom_field_definition,
+    validate_value as validate_custom_field_value,
+)
+
+BASE_DIR = Path(__file__).resolve().parent
+DATABASE_PATH = BASE_DIR / "database" / "database.db"
+UPLOADS_DIR = (BASE_DIR / "uploads").resolve()
+EQUIPMENT_UPLOADS_DIR = (UPLOADS_DIR / "equipment").resolve()
+STUDY_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
+PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "profile").resolve()
+STUDY_IMAGE_UPLOADS_DIR = (UPLOADS_DIR / "study-images").resolve()
+MENTOR_PROFILE_UPLOADS_DIR = (UPLOADS_DIR / "mentor-profile").resolve()
+TEKNE_CHAT_STORAGE_DIR = (UPLOADS_DIR / "tekne-chat").resolve()
+PROFILE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+EQUIPMENT_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+STUDY_IMAGE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+MENTOR_PROFILE_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+PROFILE_MAX_BYTES = 5 * 1024 * 1024
+PROFILE_MAX_PIXELS = 25_000_000
+PROFILE_IMAGE_SIZE = (512, 512)
+PROFILE_ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}
+PROFILE_ALLOWED_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
+PROFILE_ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+JST = datetime.timezone(datetime.timedelta(hours=9))
+
+
+def initialize_equipment_catalog(db, catalog_path=None):
+    db.execute("""CREATE TABLE IF NOT EXISTS equipment_catalog (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL,
+        image TEXT NOT NULL,
+        content TEXT NOT NULL DEFAULT '',
+        count INTEGER NOT NULL CHECK(count > 0),
+        usage_type TEXT NOT NULL CHECK(usage_type IN ('takeout', 'in_room'))
+    )""")
+    path = catalog_path or BASE_DIR / "csv" / "equipment-reservation.csv"
+    with db:
+        if not db.in_transaction:
+            db.execute("BEGIN IMMEDIATE")
+        migration_name = "equipment_catalog_csv_v1"
+        if db.execute("SELECT 1 FROM schema_migration WHERE name=?", (migration_name,)).fetchone():
+            return
+        with open(path, "r", encoding="utf-8-sig", newline="") as equipment_csv:
+            for row in csv.DictReader(equipment_csv):
+                try:
+                    count = int(row.get("count") or "")
+                except (TypeError, ValueError):
+                    continue
+                equipment_id = (row.get("id") or "").strip()
+                name = (row.get("name") or "").strip()
+                usage_type = (row.get("usage_type") or "").strip()
+                if not equipment_id or not name or count <= 0 or usage_type not in {"takeout", "in_room"}:
+                    continue
+                db.execute(
+                    "INSERT OR IGNORE INTO equipment_catalog(id,name,image,content,count,usage_type) VALUES(?,?,?,?,?,?)",
+                    (equipment_id, name, (row.get("image") or "").strip(), (row.get("content") or "").strip(), count, usage_type)
+                )
+        db.execute(
+            "INSERT INTO schema_migration(name, applied_at) VALUES (?, ?)",
+            (migration_name, datetime.datetime.now(JST).isoformat())
+        )
+
+app = FastAPI()
+
+conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+cursor = conn.cursor()
+
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS study (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        introduce TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        pdfpath TEXT NOT NULL,
+        userid TEXT NOT NULL,
+        time TEXT NOT NULL
+    )
+""")
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS student (
+        id TEXT NOT NULL,
+        pwd TEXT NOT NULL,
+        school TEXT NOT NULL
+    )
+""")
+initialize_student_account_fields(conn)
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS teacher (
+        id TEXT NOT NULL,
+        pwd TEXT NOT NULL,
+        school TEXT NOT NULL
+    )
+""")
+initialize_teacher_roles(conn)
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS admin (
+        id TEXT PRIMARY KEY NOT NULL,
+        pwd TEXT NOT NULL
+    )
+""")
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS reservation (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userid TEXT NOT NULL,
+        day TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        purpose TEXT NOT NULL
+    )
+""")
+student_columns = {
+    row[1] for row in cursor.execute("PRAGMA table_info(student)").fetchall()
+}
+if "profile_image" not in student_columns:
+    cursor.execute("ALTER TABLE student ADD COLUMN profile_image TEXT")
+reservation_columns = {
+    row[1] for row in cursor.execute("PRAGMA table_info(reservation)").fetchall()
+}
+if "equipment" in reservation_columns:
+    conn.commit()
+    with conn:
+        original_count = conn.execute("SELECT COUNT(*) FROM reservation").fetchone()[0]
+        conn.execute("DROP TABLE IF EXISTS reservation_without_equipment")
+        conn.execute("""
+            CREATE TABLE reservation_without_equipment (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                userid TEXT NOT NULL,
+                day TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                purpose TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            INSERT INTO reservation_without_equipment
+                (id, userid, day, start_time, end_time, purpose)
+            SELECT id, userid, day, start_time, end_time, purpose
+            FROM reservation
+        """)
+        migrated_count = conn.execute(
+            "SELECT COUNT(*) FROM reservation_without_equipment"
+        ).fetchone()[0]
+        if migrated_count != original_count:
+            raise RuntimeError("工作室予約データの移行件数が一致しません。")
+        conn.execute("DROP TABLE reservation")
+        conn.execute("ALTER TABLE reservation_without_equipment RENAME TO reservation")
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS schema_migration (
+        name TEXT PRIMARY KEY NOT NULL,
+        applied_at TEXT NOT NULL
+    )
+""")
+reservation_capacity_migration = "reservation_capacity_v1"
+if cursor.execute(
+    "SELECT 1 FROM schema_migration WHERE name = ?",
+    (reservation_capacity_migration,)
+).fetchone() is None:
+    with conn:
+        current_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(reservation)").fetchall()
+        }
+        reservation_additions = {
+            "status": "TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'cancelled'))",
+            "created_at": "TEXT NOT NULL DEFAULT ''",
+            "cancelled_at": "TEXT",
+            "cancelled_by_type": "TEXT",
+            "cancelled_by_id": "TEXT"
+        }
+        for column_name, definition in reservation_additions.items():
+            if column_name not in current_columns:
+                conn.execute(
+                    f"ALTER TABLE reservation ADD COLUMN {column_name} {definition}"
+                )
+        conn.execute("DELETE FROM reservation")
+        conn.execute(
+            "INSERT INTO schema_migration (name, applied_at) VALUES (?, ?)",
+            (reservation_capacity_migration, datetime.datetime.now(JST).isoformat())
+        )
+reservation_people_migration = "reservation_people_count_v1"
+if cursor.execute(
+    "SELECT 1 FROM schema_migration WHERE name = ?",
+    (reservation_people_migration,)
+).fetchone() is None:
+    with conn:
+        current_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(reservation)").fetchall()
+        }
+        if "people_count" not in current_columns:
+            conn.execute(
+                "ALTER TABLE reservation ADD COLUMN people_count INTEGER NOT NULL DEFAULT 1"
+            )
+        conn.execute(
+            "UPDATE reservation SET people_count = 1 WHERE people_count IS NULL OR people_count < 1"
+        )
+        conn.execute(
+            "INSERT INTO schema_migration (name, applied_at) VALUES (?, ?)",
+            (reservation_people_migration, datetime.datetime.now(JST).isoformat())
+        )
+initialize_school_registration(conn)
+initialize_custom_fields(conn)
+initialize_tekne_chat(conn)
+def initialize_reservation_schedule(db):
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS reservation_available_slot (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        admin_id TEXT NOT NULL,
+        day TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (admin_id, day, start_time)
+        )
+    """)
+    db.execute("CREATE INDEX IF NOT EXISTS idx_reservation_available_slot_day_time ON reservation_available_slot(day, start_time)")
+    migration_name = "reservation_schedule_single_owner_v1"
+    if db.execute("SELECT 1 FROM schema_migration WHERE name = ?", (migration_name,)).fetchone() is None:
+        with db:
+            # Keep every existing date/time slot, but collapse per-admin duplicates
+            # into one workshop-wide schedule owned by the first active super admin.
+            schedule_owner = db.execute(
+                "SELECT id FROM admin WHERE role='super_admin' AND deleted_at IS NULL ORDER BY id LIMIT 1"
+            ).fetchone()
+            owner_id = schedule_owner[0] if schedule_owner else "system"
+            db.execute("""
+            DELETE FROM reservation_available_slot
+            WHERE id NOT IN (
+                SELECT MIN(id) FROM reservation_available_slot GROUP BY day, start_time
+            )
+            """)
+            db.execute("UPDATE reservation_available_slot SET admin_id=?", (owner_id,))
+            db.execute("INSERT INTO schema_migration(name, applied_at) VALUES (?, ?)",
+                       (migration_name, datetime.datetime.now(JST).isoformat()))
+cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_reservation_day_status_time
+    ON reservation(day, status, start_time, end_time)
+""")
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS equipment_reservation (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userid TEXT NOT NULL, equipment TEXT NOT NULL,
+        start_day TEXT NOT NULL, end_day TEXT NOT NULL,
+        quantity INTEGER NOT NULL, purpose TEXT NOT NULL,
+        note TEXT NOT NULL DEFAULT '',
+        equipment_id TEXT,
+        returned INTEGER NOT NULL DEFAULT 0
+    )
+""")
+equipment_reservation_columns = {
+    row[1] for row in cursor.execute("PRAGMA table_info(equipment_reservation)").fetchall()
+}
+if "equipment_id" not in equipment_reservation_columns:
+    cursor.execute("ALTER TABLE equipment_reservation ADD COLUMN equipment_id TEXT")
+if "returned" not in equipment_reservation_columns:
+    cursor.execute(
+        "ALTER TABLE equipment_reservation "
+        "ADD COLUMN returned INTEGER NOT NULL DEFAULT 0"
+    )
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS equipment_room_reservation (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userid TEXT NOT NULL,
+        equipment_id TEXT NOT NULL,
+        equipment TEXT NOT NULL,
+        use_day TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        quantity INTEGER NOT NULL,
+        purpose TEXT NOT NULL,
+        note TEXT NOT NULL DEFAULT '',
+        returned INTEGER NOT NULL DEFAULT 0
+    )
+""")
+conn.commit()
+initialize_equipment_catalog(conn)
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS community_post (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        parent_id INTEGER,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        deleted_at TEXT,
+        FOREIGN KEY (parent_id) REFERENCES community_post(id)
+    )
+""")
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS community_like (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        post_id INTEGER NOT NULL,
+        user_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (post_id, user_id),
+        FOREIGN KEY (post_id) REFERENCES community_post(id)
+    )
+""")
+cursor.execute(
+    "CREATE INDEX IF NOT EXISTS idx_community_post_parent_id ON community_post(parent_id)"
+)
+cursor.execute(
+    "CREATE INDEX IF NOT EXISTS idx_community_post_created_id ON community_post(created_at, id)"
+)
+cursor.execute(
+    "CREATE INDEX IF NOT EXISTS idx_community_like_post_id ON community_like(post_id)"
+)
+cursor.execute(
+    "CREATE INDEX IF NOT EXISTS idx_community_like_user_id ON community_like(user_id)"
+)
+equipment_room_reservation_columns = {
+    row[1] for row in cursor.execute(
+        "PRAGMA table_info(equipment_room_reservation)"
+    ).fetchall()
+}
+if "returned" not in equipment_room_reservation_columns:
+    cursor.execute(
+        "ALTER TABLE equipment_room_reservation "
+        "ADD COLUMN returned INTEGER NOT NULL DEFAULT 0"
+    )
+initialize_notification_tables(conn)
+initialize_mentor_tables(conn)
+conn.commit()
+migrate_admin_database(DATABASE_PATH)
+initialize_reservation_schedule(conn)
+seed_school_feature_settings(DATABASE_PATH)
+with closing(connect_studies(DATABASE_PATH)) as study_db:
+    initialize_studies(study_db)
+
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+app.mount("/uploads/profile", StaticFiles(directory=str(PROFILE_UPLOADS_DIR)), name="profile_uploads")
+app.mount("/uploads/equipment", StaticFiles(directory=str(EQUIPMENT_UPLOADS_DIR)), name="equipment_uploads")
+app.mount("/uploads/mentor-profile", StaticFiles(directory=str(MENTOR_PROFILE_UPLOADS_DIR)), name="mentor_profile_uploads")
+
+def admin_template_context(request):
+    return {"is_super_admin": getattr(request.state, "admin_role", None) == "super_admin"}
+
+
+def student_template_context(request):
+    user_id = request.session.get("user_id")
+    unread_count = 0
+    if request.session.get("user_login") is True and user_id:
+        with closing(sqlite3.connect(DATABASE_PATH)) as db:
+            unread_count = db.execute(
+                "SELECT COUNT(*) FROM notification WHERE recipient_user_id = ? AND is_read = 0",
+                (user_id,)
+            ).fetchone()[0]
+    features = {key: True for key, _ in STUDENT_FEATURES}
+    if request.session.get("user_login") is True and user_id:
+        with closing(sqlite3.connect(DATABASE_PATH)) as db:
+            student = db.execute("SELECT school FROM student WHERE id=?", (user_id,)).fetchone()
+            if student:
+                features = school_feature_flags(db, student[0])
+    return {"unread_notification_count": unread_count, "student_features": features}
+
+
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"), context_processors=[student_template_context, admin_template_context])
+app.include_router(build_admin_router(DATABASE_PATH, templates, MENTOR_PROFILE_UPLOADS_DIR))
+app.include_router(build_school_feature_router(DATABASE_PATH, templates))
+app.include_router(build_password_router(DATABASE_PATH))
+app.include_router(create_template_router(lambda: DATABASE_PATH, templates))
+app.include_router(build_mentor_router(DATABASE_PATH, templates, MENTOR_PROFILE_UPLOADS_DIR))
+tekne_chat_router, tekne_chat_service = build_tekne_chat_router(DATABASE_PATH, templates, TEKNE_CHAT_STORAGE_DIR)
+app.include_router(tekne_chat_router)
+
+
+async def _tekne_chat_cleanup_loop():
+    while True:
+        try:
+            await asyncio.to_thread(cleanup_expired_groups, DATABASE_PATH, TEKNE_CHAT_STORAGE_DIR)
+        except Exception:
+            logging.exception("Daily TEKNE chat cleanup failed")
+        await asyncio.sleep(datetime.timedelta(days=1).total_seconds())
+
+
+@app.on_event("startup")
+async def start_tekne_chat_cleanup():
+    app.state.tekne_chat_cleanup_task = asyncio.create_task(_tekne_chat_cleanup_loop())
+
+
+@app.on_event("shutdown")
+async def stop_tekne_chat_cleanup():
+    task = getattr(app.state, "tekne_chat_cleanup_task", None)
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+COMMUNITY_PAGE_SIZE = 20
+
+
+def community_now():
+    return datetime.datetime.now(JST).isoformat(timespec="seconds")
+
+
+def delete_community_subtrees(db, root_ids):
+    root_ids = list(dict.fromkeys(root_ids))
+    if not root_ids:
+        return 0
+    placeholders = ",".join("?" for _ in root_ids)
+    rows = db.execute(
+        f"""
+        WITH RECURSIVE tree(id, depth) AS (
+            SELECT id, 0 FROM community_post WHERE id IN ({placeholders})
+            UNION ALL
+            SELECT p.id, tree.depth + 1
+            FROM community_post p JOIN tree ON p.parent_id = tree.id
+        )
+        SELECT id, MAX(depth) FROM tree GROUP BY id ORDER BY MAX(depth) DESC
+        """,
+        root_ids
+    ).fetchall()
+    post_ids = [row[0] for row in rows]
+    if not post_ids:
+        return 0
+    delete_placeholders = ",".join("?" for _ in post_ids)
+    db.execute(
+        f"DELETE FROM community_like WHERE post_id IN ({delete_placeholders})",
+        post_ids
+    )
+    for post_id in post_ids:
+        db.execute("DELETE FROM community_post WHERE id = ?", (post_id,))
+    return len(post_ids)
+
+
+def cleanup_deleted_community_posts(db):
+    deleted_ids = [
+        row[0] for row in db.execute(
+            "SELECT id FROM community_post WHERE deleted_at IS NOT NULL"
+        ).fetchall()
+    ]
+    return delete_community_subtrees(db, deleted_ids)
+
+
+with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as community_cleanup_db:
+    community_cleanup_db.execute("BEGIN IMMEDIATE")
+    cleanup_deleted_community_posts(community_cleanup_db)
+    community_cleanup_db.commit()
+
+
+def profile_image_url(filename):
+    if not filename:
+        return "/static/images/default_profile.svg"
+    safe_name = Path(filename).name
+    if safe_name != filename or not safe_name.endswith(".webp"):
+        return "/static/images/default_profile.svg"
+    return f"/uploads/profile/{safe_name}"
+
+
+def profile_csrf_token(request):
+    token = request.session.get("profile_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session["profile_csrf_token"] = token
+    return token
+
+
+def valid_profile_csrf(request, token):
+    expected = request.session.get("profile_csrf_token", "")
+    return bool(expected and token and secrets.compare_digest(expected, token))
+
+
+def delete_profile_file(filename):
+    if not filename or Path(filename).name != filename or not filename.endswith(".webp"):
+        return
+    target = (PROFILE_UPLOADS_DIR / filename).resolve()
+    if target.parent != PROFILE_UPLOADS_DIR:
+        return
+    try:
+        target.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def process_profile_image(contents):
+    try:
+        with Image.open(io.BytesIO(contents)) as candidate:
+            detected_format = candidate.format
+            if candidate.width * candidate.height > PROFILE_MAX_PIXELS:
+                return None, "画像の縦横サイズが大きすぎます。"
+            candidate.verify()
+        if detected_format not in PROFILE_ALLOWED_FORMATS:
+            return None, "対応していない画像形式です。"
+        with Image.open(io.BytesIO(contents)) as source:
+            image = ImageOps.exif_transpose(source)
+            image.load()
+            if image.width < 1 or image.height < 1:
+                return None, "画像ファイルを読み込めませんでした。"
+            side = min(image.width, image.height)
+            left = (image.width - side) // 2
+            top = (image.height - side) // 2
+            image = image.crop((left, top, left + side, top + side)).convert("RGBA")
+            image = image.resize(PROFILE_IMAGE_SIZE, Image.Resampling.LANCZOS)
+            output = io.BytesIO()
+            image.save(output, format="WEBP", quality=88, method=6)
+            return output.getvalue(), None
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
+        return None, "画像ファイルを読み込めませんでした。"
+
+
+def validate_community_content(content):
+    if not isinstance(content, str) or not content.strip():
+        return "本文を入力してください。"
+    if len(content) > 200:
+        return "本文は200文字以内で入力してください。"
+    return None
+
+
+def community_csrf_token(request):
+    token = request.session.get("community_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session["community_csrf_token"] = token
+    return token
+
+
+def valid_community_csrf(request, token):
+    expected = request.session.get("community_csrf_token", "")
+    return bool(expected and token and secrets.compare_digest(expected, token))
+
+
+def community_post_payloads(db, root_ids, user_id=None):
+    if not root_ids:
+        return []
+    placeholders = ",".join("?" for _ in root_ids)
+    rows = db.execute(
+        f"""
+        WITH RECURSIVE tree(id, user_id, parent_id, content, created_at) AS (
+            SELECT id, user_id, parent_id, content, created_at
+            FROM community_post WHERE id IN ({placeholders}) AND deleted_at IS NULL
+            UNION ALL
+            SELECT p.id, p.user_id, p.parent_id, p.content, p.created_at
+            FROM community_post p JOIN tree t ON p.parent_id = t.id
+            WHERE p.deleted_at IS NULL
+        )
+        SELECT tree.id, tree.user_id, tree.parent_id, tree.content,
+               tree.created_at,
+               COUNT(community_like.id) AS like_count,
+               MAX(CASE WHEN community_like.user_id = ? THEN 1 ELSE 0 END) AS liked,
+               (SELECT student.profile_image FROM student
+                WHERE student.id = tree.user_id LIMIT 1) AS profile_image
+        FROM tree LEFT JOIN community_like ON community_like.post_id = tree.id
+        GROUP BY tree.id
+        ORDER BY tree.created_at ASC, tree.id ASC
+        """,
+        [*root_ids, user_id or ""]
+    ).fetchall()
+    by_id = {}
+    for row in rows:
+        try:
+            displayed_at = datetime.datetime.fromisoformat(row[4]).astimezone(JST).strftime("%Y/%m/%d %H:%M")
+        except ValueError:
+            displayed_at = row[4]
+        by_id[row[0]] = {
+            "id": row[0],
+            "user_id": row[1],
+            "parent_id": row[2],
+            "content": row[3],
+            "created_at": displayed_at,
+            "like_count": row[5],
+            "liked": bool(row[6]),
+            "profile_image_url": profile_image_url(row[7]),
+            "can_delete": bool(user_id and row[1] == user_id),
+            "replies": []
+        }
+    roots = []
+    for item in by_id.values():
+        if item["parent_id"] in by_id:
+            by_id[item["parent_id"]]["replies"].append(item)
+        else:
+            roots.append(item)
+    roots.sort(key=lambda item: item["id"], reverse=True)
+    return roots
+
+def load_equipment_catalog():
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        return [dict(row) for row in db.execute(
+            "SELECT id,name,image,content,count,usage_type FROM equipment_catalog ORDER BY id"
+        ).fetchall()]
+
+
+def load_schools():
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        rows = db.execute("""SELECT name FROM registered_school WHERE TRIM(name) <> ''
+            UNION SELECT school FROM student WHERE TRIM(school) <> ''
+            UNION SELECT school FROM teacher WHERE TRIM(school) <> ''
+            ORDER BY name""").fetchall()
+    return [row[0].strip() for row in rows if row[0] and row[0].strip()]
+
+def find_equipment(catalog, equipment_id=None, equipment_name=None):
+    if equipment_id:
+        return next((item for item in catalog if item["id"] == equipment_id), None)
+    if equipment_name:
+        return next((item for item in catalog if item["name"] == equipment_name), None)
+    return None
+
+
+def date_range(start_day, end_day):
+    current = start_day
+    while current <= end_day:
+        yield current
+        current += datetime.timedelta(days=1)
+
+
+def takeout_availability(item, start_day, end_day, db=None):
+    database = db or conn
+    rows = database.execute(
+        """
+        SELECT start_day, end_day, quantity
+        FROM equipment_reservation
+        WHERE (equipment_id = ? OR ((equipment_id IS NULL OR equipment_id = '') AND equipment = ?))
+          AND start_day <= ? AND end_day >= ?
+        """,
+        (item["id"], item["name"], end_day.isoformat(), start_day.isoformat())
+    ).fetchall()
+    reserved_by_day = {day.isoformat(): 0 for day in date_range(start_day, end_day)}
+    for reserved_start, reserved_end, quantity in rows:
+        overlap_start = max(start_day, datetime.date.fromisoformat(reserved_start))
+        overlap_end = min(end_day, datetime.date.fromisoformat(reserved_end))
+        for day in date_range(overlap_start, overlap_end):
+            reserved_by_day[day.isoformat()] += quantity
+    peak_reserved = max(reserved_by_day.values(), default=0)
+    return {
+        **item,
+        "reserved": peak_reserved,
+        "available": max(item["count"] - peak_reserved, 0),
+        "reserved_by_day": reserved_by_day
+    }
+
+
+def room_slot_availability(item, use_day, db=None):
+    database = db or conn
+    rows = database.execute(
+        """
+        SELECT start_time, end_time, quantity
+        FROM equipment_room_reservation
+        WHERE equipment_id = ? AND use_day = ?
+        """,
+        (item["id"], use_day.isoformat())
+    ).fetchall()
+    now = datetime.datetime.now(JST)
+    slots = []
+    for total_minutes in range(9 * 60, 20 * 60 + 1, 30):
+        start_time = f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
+        end_minutes = total_minutes + 30
+        end_time = f"{end_minutes // 60:02d}:{end_minutes % 60:02d}"
+        reserved = sum(
+            quantity for reserved_start, reserved_end, quantity in rows
+            if reserved_start < end_time and reserved_end > start_time
+        )
+        slot_start = datetime.datetime.combine(
+            use_day,
+            datetime.time(total_minutes // 60, total_minutes % 60),
+            tzinfo=JST
+        )
+        closed = use_day == now.date() and slot_start < now
+        slots.append({
+            "start_time": start_time,
+            "end_time": end_time,
+            "reserved_quantity": reserved,
+            "available_quantity": max(item["count"] - reserved, 0),
+            "closed": closed
+        })
+    return slots
+
+
+def equipment_availability(equipment, start_day, end_day, catalog):
+    """Compatibility wrapper for the original name-based takeout lookup."""
+    item = find_equipment(catalog, equipment_name=equipment)
+    if item is None:
+        return None
+    return takeout_availability(
+        item,
+        datetime.date.fromisoformat(start_day),
+        datetime.date.fromisoformat(end_day)
+    )
+
+
+#classの定義
+#httpが呼び出されたとき最初に実行
+class LoginCheckMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        #loginしてから一日以上たったらログアウト
+        if request.session.get("teacher_login") == True:
+            login_time = datetime.datetime.strptime(
+                request.session.get("teacher_time"),
+                "%Y-%m-%d %H:%M:%S"
+            )
+            if (datetime.datetime.now() - login_time).days >= 1:
+                request.session.pop("teacher_login", None)
+                request.session.pop("teacher_id", None)
+                request.session.pop("teacher_time", None)
+                print("teacherログアウト")
+        
+        if request.session.get("user_login") == True:
+            login_time = datetime.datetime.strptime(
+                request.session.get("user_time"),
+                "%Y-%m-%d %H:%M:%S"
+            )
+            if (datetime.datetime.now() - login_time).days >= 1:
+                try:
+                    chat_token = request.session.get("tekne_chat_session")
+                    revoke_chat_session(DATABASE_PATH, chat_token)
+                    await tekne_chat_service.connections.close_session(chat_token)
+                except sqlite3.Error:
+                    logging.exception("Failed to revoke expired TEKNE chat session")
+                request.session.pop("user_login", None)
+                request.session.pop("user_id", None)
+                request.session.pop("user_time", None)
+                request.session.pop("tekne_chat_session", None)
+                print("userログアウト")
+
+        if request.session.get("admin_login") == True:
+            login_time = datetime.datetime.strptime(
+                request.session.get("admin_time"),
+                "%Y-%m-%d %H:%M:%S"
+            )
+            if (datetime.datetime.now() - login_time).days >= 1:
+                request.session.pop("admin_login", None)
+                request.session.pop("admin_id", None)
+                request.session.pop("admin_time", None)
+                print("adminログアウト")
+
+        # Reload authority from SQLite on every request, including the login page.
+        request.state.admin_role = None
+        if request.session.get("admin_login") is True:
+            with closing(sqlite3.connect(DATABASE_PATH)) as db:
+                admin = active_admin(db, request)
+                must_change_password = False
+                if admin is not None:
+                    must_change_password = bool(db.execute(
+                        "SELECT must_change_password FROM admin WHERE id=?", (admin[0],)
+                    ).fetchone()[0])
+            if admin is None:
+                for key in ("admin_login", "admin_id", "admin_time"):
+                    request.session.pop(key, None)
+            else:
+                request.state.admin_role = admin[2]
+                request.state.admin_must_change_password = must_change_password
+
+        #ログインが必要なページにアクセスした場合、ログインページにリダイレクト
+        #ログインなしでもアクセスできるページを定義
+        public_paths = [
+            "/login",
+            "/registration",
+            "/school-registration",
+            "/session",
+            "/logout",
+            "/admin/login"
+        ]
+
+        # 静的ファイルなどはそのまま通す
+        if (
+            request.url.path.startswith("/static") or
+            request.url.path.startswith("/uploads")
+        ):
+            return await call_next(request)
+
+        # public_paths は誰でもアクセス可能
+        if request.url.path in public_paths:
+            return await call_next(request)
+
+        # admin 配下は admin 用セッションだけを許可する
+        if request.url.path.startswith("/admin"):
+            if request.session.get("admin_login") == True:
+                if getattr(request.state, "admin_must_change_password", False) and request.url.path not in {
+                    "/admin/first-password", "/admin/logout"
+                }:
+                    return RedirectResponse("/admin/first-password", status_code=303)
+                if not getattr(request.state, "admin_must_change_password", False) and request.url.path == "/admin/first-password":
+                    return RedirectResponse("/admin/mypage", status_code=303)
+                return await call_next(request)
+            return RedirectResponse("/admin/login", status_code=303)
+
+        # Student and teacher identities may coexist in one session. Authorize
+        # teacher routes with teacher credentials and all other student routes
+        # with student credentials.
+        if request.url.path.startswith("/teacher"):
+            if request.session.get("teacher_login") is True:
+                return await call_next(request)
+            return RedirectResponse("/login", status_code=303)
+
+        if request.session.get("user_login") is True:
+            feature = feature_for_student_path(request.url.path)
+            if feature and not enabled_for_student(DATABASE_PATH, request.session.get("user_id"), feature):
+                return JSONResponse({"detail": "この機能は現在利用できません。"}, status_code=404)
+            return await call_next(request)
+
+        if request.session.get("teacher_login") is True:
+            return RedirectResponse("/teacher", status_code=303)
+        # 未ログインはログインページへ
+        return RedirectResponse("/login", status_code=303)
+
+app.add_middleware(LoginCheckMiddleware)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=session_secret(DATABASE_PATH)
+)
+
+RESERVATION_OPEN_MINUTES = 9 * 60
+RESERVATION_CLOSE_MINUTES = 22 * 60
+RESERVATION_MAX_MINUTES = 180
+
+
+def reservation_csrf_token(request, key="reservation_csrf_token"):
+    token = request.session.get(key)
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session[key] = token
+    return token
+
+
+def valid_reservation_csrf(request, token, key="reservation_csrf_token"):
+    expected = request.session.get(key, "")
+    return bool(expected and token and secrets.compare_digest(expected, token))
+
+
+def reservation_time_to_minutes(value):
+    parsed = datetime.datetime.strptime(value, "%H:%M").time()
+    return parsed.hour * 60 + parsed.minute
+
+
+def reservation_minutes_to_time(value):
+    return f"{value // 60:02d}:{value % 60:02d}"
+
+
+def reservation_slot_range(start_time, end_time):
+    start_minutes = reservation_time_to_minutes(start_time)
+    end_minutes = reservation_time_to_minutes(end_time)
+    return [
+        reservation_minutes_to_time(value)
+        for value in range(start_minutes, end_minutes, 30)
+    ]
+
+
+def reservation_slot_summary(db, day, admin_id=None):
+    configured_slots = {
+        row[0] for row in db.execute(
+        """
+        SELECT start_time
+        FROM reservation_available_slot
+        WHERE day = ?
+        """,
+        (day,)
+        ).fetchall()
+    }
+    active_reservations = db.execute(
+        """
+        SELECT start_time, end_time, people_count
+        FROM reservation
+        WHERE day = ? AND status = 'active'
+        """,
+        (day,)
+    ).fetchall()
+    reservation_counts = {
+        reservation_minutes_to_time(value): 0
+        for value in range(RESERVATION_OPEN_MINUTES, RESERVATION_CLOSE_MINUTES, 30)
+    }
+    reservation_people_counts = dict.fromkeys(reservation_counts, 0)
+    for start_time, end_time, people_count in active_reservations:
+        for slot_time in reservation_slot_range(start_time, end_time):
+            if slot_time in reservation_counts:
+                reservation_counts[slot_time] += 1
+                reservation_people_counts[slot_time] += people_count
+    now = datetime.datetime.now(JST)
+    target_date = datetime.date.fromisoformat(day)
+    result = []
+    for value in range(RESERVATION_OPEN_MINUTES, RESERVATION_CLOSE_MINUTES, 30):
+        start_time = reservation_minutes_to_time(value)
+        end_time = reservation_minutes_to_time(value + 30)
+        capacity = 1 if start_time in configured_slots else 0
+        reserved = reservation_counts[start_time]
+        remaining = capacity
+        slot_start = datetime.datetime.combine(
+            target_date, datetime.time(value // 60, value % 60), tzinfo=JST
+        )
+        closed = slot_start < now
+        if closed:
+            state = "closed"
+        elif capacity == 0:
+            state = "unset"
+        else:
+            state = "available"
+        result.append({
+            "start_time": start_time,
+            "end_time": end_time,
+            "capacity": capacity,
+            "reserved": reserved,
+            "reserved_people": reservation_people_counts[start_time],
+            "remaining": remaining,
+            "own": start_time in configured_slots,
+            "state": state
+        })
+    return result
+
+
+#get関数
+@app.get("/", response_class = HTMLResponse)
+async def Home(request: Request):
+    return RedirectResponse("/dashboard", status_code=303)
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def Dashboard(request: Request):
+    user_id = request.session.get("user_id")
+    now = datetime.datetime.now(JST)
+    today = now.date().isoformat()
+    current_time = now.strftime("%H:%M")
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        student = db.execute("SELECT school FROM student WHERE id = ?", (user_id,)).fetchone()
+        missing_required_fields = []
+        if student:
+            required_fields = db.execute("""SELECT f.id, f.label, f.field_type, v.value_json
+                FROM student_custom_field f
+                LEFT JOIN student_custom_field_value v ON v.field_id=f.id AND v.student_id=?
+                WHERE f.school=? AND f.deleted_at IS NULL AND f.required=1 ORDER BY f.id""",
+                (user_id, student[0])).fetchall()
+            for field_id, label, field_type, value_json in required_fields:
+                value = decode_custom_field_value(value_json)
+                if value is None or value == "" or value == [] or (field_type == "checkbox" and value is not True):
+                    missing_required_fields.append(label)
+        next_reservation = db.execute(
+            """
+            SELECT day, start_time, end_time, purpose
+            FROM reservation
+            WHERE userid = ?
+              AND status = 'active'
+              AND (day > ? OR (day = ? AND end_time > ?))
+            ORDER BY day ASC, start_time ASC, end_time ASC, id ASC
+            LIMIT 1
+            """,
+            (user_id, today, today, current_time)
+        ).fetchone()
+        next_equipment_reservation = db.execute(
+            """
+            SELECT equipment, start_day, end_day, quantity
+            FROM equipment_reservation
+            WHERE userid = ? AND end_day >= ?
+            ORDER BY
+                CASE WHEN start_day <= ? THEN 0 ELSE 1 END ASC,
+                start_day ASC,
+                end_day ASC,
+                id ASC
+            LIMIT 1
+            """,
+            (user_id, today, today)
+        ).fetchone()
+        unread_notifications = db.execute(
+            """
+            SELECT id, title, created_at
+            FROM notification
+            WHERE recipient_user_id = ? AND is_read = 0
+            ORDER BY created_at DESC, id DESC
+            LIMIT 5
+            """,
+            (user_id,)
+        ).fetchall()
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "dashboard.html",
+        context = {
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": user_id,
+            "unread_notifications": unread_notifications,
+            "next_reservation": next_reservation,
+            "next_equipment_reservation": next_equipment_reservation,
+            "missing_required_fields": missing_required_fields
+        }
+    )
+
+@app.get("/addform", response_class = HTMLResponse)
+async def AddForm(request: Request):
+    if request.session.get("user_login") is not True or not request.session.get("user_id"):
+        return RedirectResponse("/login", status_code=303)
+    csrf = request.session.setdefault("study_csrf_token", secrets.token_urlsafe(32))
+    nonce = secrets.token_hex(32)
+    submission_token = nonce + "." + hmac.new(csrf.encode(), nonce.encode(), hashlib.sha256).hexdigest()
+    try:
+        submission_groups = tekne_chat_service.groups(request.session)
+    except HTTPException:
+        submission_groups = []
+    with closing(connect_studies(DATABASE_PATH)) as db:
+        study_templates = get_templates(db)
+    return templates.TemplateResponse(
+        request = request,
+        name = "addform.html",
+        context = {
+            "study_templates": study_templates,
+            "submission_groups": submission_groups,
+            "csrf_token": csrf,
+            "submission_token": submission_token,
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
+    )
+
+@app.get("/studylist", response_class = HTMLResponse)
+async def StudyList(request: Request):    
+    user_id = request.session.get("user_id")
+    with closing(connect_studies(DATABASE_PATH)) as db:
+        group_ids = []
+        try:
+            group_ids = [group["id"] for group in tekne_chat_service.groups(request.session)]
+        except HTTPException:
+            pass
+        studies = db.execute("""SELECT DISTINCT s.id, s.name, s.introduce, s.filename, s.pdfpath,
+                s.userid, s.time, s.registration_type,
+                COALESCE(NULLIF(student.name, ''), s.userid) AS submitter_name
+            FROM study s
+            LEFT JOIN student ON student.id = s.userid
+            LEFT JOIN study_submission_member sm ON sm.study_id=s.id
+            WHERE (s.submission_kind='individual' AND s.userid=?)
+               OR (s.submission_kind='group' AND s.chat_group_id IN (""" +
+            (",".join("?" for _ in group_ids) if group_ids else "NULL") + """))
+               OR EXISTS (
+                    SELECT 1 FROM study_group_access access
+                    JOIN tekne_student_identity identity ON identity.id=access.tekne_student_id
+                    WHERE access.study_id=s.id AND identity.login_id=? AND identity.deleted_at IS NULL
+               ) ORDER BY s.time DESC, s.id DESC""",
+            (user_id, *group_ids, user_id)).fetchall()
+        submission_details = get_submission_collaboration(db, [study[0] for study in studies])
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "studylist.html",
+        context = {
+            "request": request,
+            "studies": studies,
+            "submission_details": submission_details,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
+    )
+
+@app.get("/uploads/{id}.pdf")
+async def pdf(id: int, request: Request):
+    authenticated = False
+    for role in ("user", "teacher", "admin"):
+        try:
+            age = datetime.datetime.now() - datetime.datetime.strptime(
+                request.session.get(f"{role}_time", ""), "%Y-%m-%d %H:%M:%S")
+            authenticated |= (request.session.get(f"{role}_login") is True
+                              and bool(request.session.get(f"{role}_id"))
+                              and datetime.timedelta(0) <= age < datetime.timedelta(days=1))
+        except (ValueError, TypeError):
+            pass
+    headers = {"Cache-Control": "private, no-store"}
+    if not authenticated:
+        return RedirectResponse("/login", status_code=303, headers=headers)
+    if request.session.get("user_login") is True and not enabled_for_student(
+        DATABASE_PATH, request.session.get("user_id"), "studies_list"
+    ):
+        raise HTTPException(404, "この機能は現在利用できません。")
+    with closing(connect_studies(DATABASE_PATH)) as db:
+        study = db.execute("SELECT pdfpath, registration_type, template_id, userid, submission_kind, chat_group_id, filename FROM study WHERE id = ?", (id,)).fetchone()
+        if request.session.get("user_login") is True and study:
+            allowed = study[3] == request.session.get("user_id") if study[4] == "individual" else False
+            if study[4] == "group" and study[5]:
+                try:
+                    allowed = study[5] in {group["id"] for group in tekne_chat_service.groups(request.session)}
+                except HTTPException:
+                    allowed = False
+                if not allowed:
+                    allowed = bool(db.execute("""SELECT 1 FROM study_group_access access
+                        JOIN tekne_student_identity identity ON identity.id=access.tekne_student_id
+                        WHERE access.study_id=? AND identity.login_id=? AND identity.deleted_at IS NULL""",
+                        (id, request.session.get("user_id"))).fetchone())
+            if not allowed:
+                raise HTTPException(404, "PDFが見つかりません。")
+        sections = []
+        if study and study[1] == 'template':
+            field_rows = db.execute("""SELECT f.id, f.label, COALESCE(v.value, ''), f.heading_font_size, f.body_font_size, f.hide_heading,
+                    f.heading_alignment, f.body_alignment, f.heading_bold, f.body_bold,
+                    f.field_type, f.image_size, f.image_alignment
+                FROM study_template_field f
+                LEFT JOIN study_field_value v ON v.field_id = f.id AND v.study_id = ?
+                WHERE f.template_id = ? ORDER BY f.position, f.id""", (id, study[2])).fetchall()
+            for field in field_rows:
+                if field[10] == 'text':
+                    sections.append((field[1], field[2], *field[3:10]))
+                    continue
+                images = db.execute("""SELECT stored_name, caption FROM study_field_image
+                    WHERE study_id=? AND field_id=? ORDER BY position,id""", (id, field[0])).fetchall()
+                sections.append({
+                    'type': 'image', 'label': field[1], 'heading_font_size': field[3],
+                    'body_font_size': field[4], 'hide_heading': bool(field[5]),
+                    'heading_alignment': field[6], 'body_alignment': field[7],
+                    'heading_bold': bool(field[8]), 'body_bold': bool(field[9]),
+                    'image_size': field[11], 'image_alignment': field[12],
+                    'images': [(str(study_image_path(STUDY_IMAGE_UPLOADS_DIR, name)), caption)
+                               for name, caption in images]
+                })
+    if not study:
+        raise HTTPException(404, "PDFが見つかりません。")
+    if study[1] == 'template':
+        headers["Content-Disposition"] = f'inline; filename="study-{id}.pdf"'
+        try:
+            content = await run_in_threadpool(render_study_pdf, sections, study[3])
+        except Exception:
+            logging.exception("Failed to render research PDF %s", id)
+            raise HTTPException(500, "PDFの生成に失敗しました。", headers=headers)
+        return Response(content, media_type="application/pdf", headers=headers)
+    try:
+        target = study_file_path(UPLOADS_DIR, study[0])
+    except ValueError:
+        raise HTTPException(404, "提出ファイルが見つかりません。")
+    if not target.is_file():
+        raise HTTPException(404, "提出ファイルが見つかりません。")
+    original_name = Path(study[6] or "").name or f"study-{id}{target.suffix}"
+    headers["X-Content-Type-Options"] = "nosniff"
+    if Path(original_name).suffix.lower() == ".pdf":
+        headers["Content-Disposition"] = f'inline; filename="study-{id}.pdf"'
+        return FileResponse(target, media_type="application/pdf", headers=headers)
+    return FileResponse(target, media_type=mimetypes.guess_type(original_name)[0] or "application/octet-stream",
+                        filename=original_name, content_disposition_type="attachment", headers=headers)
+
+@app.get("/reservation", response_class = HTMLResponse)
+async def ReservationPage(request: Request, day: str = None):
+    today = datetime.datetime.now(JST).date()
+    initial_day = ""
+    if day:
+        try:
+            selected_day = datetime.date.fromisoformat(day)
+        except ValueError:
+            selected_day = None
+        if selected_day is not None and selected_day >= today:
+            initial_day = selected_day.isoformat()
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "reservation.html",
+        context = {
+            "request": request,
+            "today": today.isoformat(),
+            "initial_day": initial_day,
+            "csrf_token": reservation_csrf_token(request),
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
+    )
+
+
+@app.get("/reservation/available-days")
+async def ReservationAvailableDays(month: str):
+    try:
+        month_start = datetime.date.fromisoformat(f"{month}-01")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="年月が正しくありません。")
+    if month_start.month == 12:
+        month_end = datetime.date(month_start.year + 1, 1, 1)
+    else:
+        month_end = datetime.date(month_start.year, month_start.month + 1, 1)
+    today = datetime.datetime.now(JST).date()
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        candidate_days = [
+            row[0] for row in db.execute(
+                """
+                SELECT DISTINCT day FROM reservation_available_slot
+                WHERE day >= ? AND day < ? AND day >= ?
+                AND admin_id NOT IN (SELECT id FROM admin WHERE deleted_at IS NOT NULL)
+                ORDER BY day
+                """,
+                (month_start.isoformat(), month_end.isoformat(), today.isoformat())
+            ).fetchall()
+        ]
+        available_days = []
+        for day in candidate_days:
+            if any(slot["state"] == "available" for slot in reservation_slot_summary(db, day)):
+                available_days.append(day)
+    return {"month": month, "available_days": available_days}
+
+
+@app.get("/reservation/availability")
+async def ReservationAvailability(day: str):
+    try:
+        target_date = datetime.date.fromisoformat(day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付が正しくありません。")
+
+    now = datetime.datetime.now(JST)
+    if target_date < now.date():
+        raise HTTPException(status_code=400, detail="過去の日付は選択できません。")
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        slots = reservation_slot_summary(db, target_date.isoformat())
+    return {"day": target_date.isoformat(), "slots": slots}
+
+
+@app.get("/reservation/{year}/{month}/{day}", response_class = HTMLResponse)
+async def ReservationLegacyDate(request: Request, year: int, month: int, day: int):
+    try:
+        target_date = datetime.date(year, month, day)
+    except ValueError:
+        raise HTTPException(status_code = 404, detail = "Not Found")
+
+    if target_date < datetime.datetime.now(JST).date():
+        raise HTTPException(status_code = 404, detail = "Not Found")
+    return RedirectResponse(
+        f"/reservation?{urlencode({'day': target_date.isoformat()})}",
+        status_code=303
+    )
+
+@app.get("/login")
+async def Login(request: Request):
+    return templates.TemplateResponse(
+        request = request,
+        name = "login.html",
+        context = {
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
+    )
+
+@app.get("/admin/login", response_class=HTMLResponse)
+async def AdminLoginPage(request: Request):
+    if request.session.get("admin_login") == True:
+        return RedirectResponse("/admin/mypage", status_code=303)
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/login.html",
+        context={"request": request, "notice": request.session.pop("admin_password_notice", None)}
+    )
+
+@app.post("/admin/login")
+async def AdminLogin(
+    request: Request,
+    id: str = Form(...),
+    pwd: str = Form(...)
+):
+    cursor.execute("SELECT pwd, session_version, must_change_password FROM admin WHERE id = ? AND deleted_at IS NULL", (id,))
+    admin = cursor.fetchone()
+
+    try:
+        authenticated = admin is not None and bcrypt.checkpw(pwd.encode(), admin[0].encode())
+    except ValueError:
+        authenticated = False
+    if not authenticated:
+        return templates.TemplateResponse(
+            request=request,
+            name="admin/login.html",
+            context={"request": request, "error": "ID またはパスワードが正しくありません。"},
+            status_code=401
+        )
+
+    # Student and teacher sessions can coexist with the admin session. Replace
+    # only prior admin credentials when switching administrator accounts.
+    for key in (
+        "admin_login", "admin_id", "admin_session_version", "admin_time",
+        "admin_password_notice",
+    ):
+        request.session.pop(key, None)
+    request.session["admin_login"] = True
+    request.session["admin_id"] = id
+    request.session["admin_session_version"] = admin[1]
+    request.session["admin_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if admin[2]:
+        return RedirectResponse("/admin/first-password", status_code=303)
+    return RedirectResponse("/admin/mypage", status_code=303)
+
+@app.get("/admin/logout")
+async def AdminLogout(request: Request):
+    request.session.pop("admin_login", None)
+    request.session.pop("admin_id", None)
+    request.session.pop("admin_time", None)
+    return RedirectResponse("/admin/login", status_code=303)
+
+
+def notification_csrf_token(request, key="notification_csrf_token"):
+    token = request.session.get(key)
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session[key] = token
+    return token
+
+
+def valid_notification_csrf(request, token, key="notification_csrf_token"):
+    expected = request.session.get(key, "")
+    return bool(expected and token and secrets.compare_digest(expected, token))
+
+
+@app.get("/notifications", response_class=HTMLResponse)
+async def NotificationList(request: Request, page: int = 1):
+    user_id = request.session.get("user_id")
+    page = max(1, page)
+    page_size = 20
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        total = db.execute(
+            "SELECT COUNT(*) FROM notification WHERE recipient_user_id = ?", (user_id,)
+        ).fetchone()[0]
+        notifications = db.execute("""
+            SELECT id, title, body, sender_name, is_read, created_at
+            FROM notification WHERE recipient_user_id = ?
+            ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
+        """, (user_id, page_size, (page - 1) * page_size)).fetchall()
+    return templates.TemplateResponse(request=request, name="notifications.html", context={
+        "request": request, "user_id": user_id, "notifications": notifications,
+        "page": page, "has_previous": page > 1,
+        "has_next": page * page_size < total,
+        "csrf_token": notification_csrf_token(request)
+    })
+
+
+@app.get("/notifications/{notification_id}", response_class=HTMLResponse)
+async def NotificationDetail(request: Request, notification_id: int):
+    user_id = request.session.get("user_id")
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        notification = db.execute("""
+            SELECT * FROM notification WHERE id = ? AND recipient_user_id = ?
+        """, (notification_id, user_id)).fetchone()
+        if notification is None:
+            raise HTTPException(status_code=404, detail="通知が見つかりません。")
+        if not notification["is_read"]:
+            read_at = notification_now()
+            db.execute("""
+                UPDATE notification SET is_read = 1, read_at = ?
+                WHERE id = ? AND recipient_user_id = ? AND is_read = 0
+            """, (read_at, notification_id, user_id))
+            db.commit()
+            notification = dict(notification)
+            notification["is_read"] = 1
+            notification["read_at"] = read_at
+    return templates.TemplateResponse(request=request, name="notification_detail.html", context={
+        "request": request, "user_id": user_id, "notification": notification
+    })
+
+
+@app.post("/notifications/read-all")
+async def ReadAllNotifications(request: Request, csrf_token: str = Form(...)):
+    if not valid_notification_csrf(request, csrf_token):
+        raise HTTPException(status_code=403, detail="操作を確認できませんでした。")
+    user_id = request.session.get("user_id")
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.execute("""
+            UPDATE notification SET is_read = 1, read_at = ?
+            WHERE recipient_user_id = ? AND is_read = 0
+        """, (notification_now(), user_id))
+        db.commit()
+    return RedirectResponse("/notifications", status_code=303)
+
+
+@app.get("/admin/notifications", response_class=HTMLResponse)
+async def AdminNotifications(request: Request, page: int = 1):
+    page = max(1, page)
+    page_size = 20
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        students = db.execute("SELECT id, school FROM student ORDER BY school, id").fetchall()
+        schools = [row[0] for row in db.execute("SELECT DISTINCT school FROM student ORDER BY school")]
+        total = db.execute("SELECT COUNT(*) FROM notification_batch").fetchone()[0]
+        batches = db.execute("""
+            SELECT id, created_at, sender_type, sender_id, title, body,
+                   target_type, target_label, notification_count
+            FROM notification_batch ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
+        """, (page_size, (page - 1) * page_size)).fetchall()
+        received_notifications = db.execute("""
+            SELECT * FROM admin_notification
+            WHERE recipient_admin_id = ? ORDER BY created_at DESC, id DESC LIMIT 20
+        """, (request.session.get("admin_id"),)).fetchall()
+        db.execute("UPDATE admin_notification SET is_read=1 WHERE recipient_admin_id=? AND is_read=0",
+                   (request.session.get("admin_id"),))
+        db.commit()
+    return templates.TemplateResponse(request=request, name="admin/notifications.html", context={
+        "request": request, "admin_id": request.session.get("admin_id"),
+        "students": students, "schools": schools, "batches": batches,
+        "received_notifications": received_notifications,
+        "page": page, "has_previous": page > 1, "has_next": page * page_size < total,
+        "csrf_token": notification_csrf_token(request, "admin_notification_csrf_token"),
+        "notice": request.session.pop("admin_notification_notice", None)
+    })
+
+
+@app.post("/admin/notifications/send")
+async def AdminSendNotification(
+    request: Request, target_type: str = Form(...), student_id: str = Form(""),
+    school: str = Form(""), title: str = Form(...), body: str = Form(...),
+    csrf_token: str = Form(...)
+):
+    if not valid_notification_csrf(request, csrf_token, "admin_notification_csrf_token"):
+        raise HTTPException(status_code=403, detail="操作を確認できませんでした。")
+    clean_title, clean_body = title.strip(), body.strip()
+    if not clean_title or not clean_body or len(clean_title) > 200 or len(clean_body) > 5000:
+        request.session["admin_notification_notice"] = {"type": "error", "message": "タイトルは200文字、本文は5000文字以内で入力してください。"}
+        return RedirectResponse("/admin/notifications", status_code=303)
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        if target_type == "student":
+            clean_student_id = student_id.strip()
+            recipients = [row[0] for row in db.execute("SELECT id FROM student WHERE id = ?", (clean_student_id,))]
+            target_value, target_label = clean_student_id, f"個人: {clean_student_id}"
+        elif target_type == "school":
+            recipients = [row[0] for row in db.execute("SELECT id FROM student WHERE school = ?", (school,))]
+            school_exists = db.execute("SELECT 1 FROM student WHERE school = ?", (school,)).fetchone()
+            if school_exists is None:
+                recipients = []
+            target_value, target_label = school, f"学校: {school}"
+        elif target_type == "all":
+            recipients = [row[0] for row in db.execute("SELECT id FROM student")]
+            target_value, target_label = None, "全生徒"
+        else:
+            recipients, target_value, target_label = [], None, ""
+        if not recipients:
+            request.session["admin_notification_notice"] = {"type": "error", "message": "送信対象が見つかりませんでした。"}
+            return RedirectResponse("/admin/notifications", status_code=303)
+        now = notification_now()
+        admin_id = request.session.get("admin_id")
+        batch_id = db.execute("""
+            INSERT INTO notification_batch
+                (target_type, target_value, target_label, title, body, sender_type,
+                 sender_name, sender_id, notification_count, created_at)
+            VALUES (?, ?, ?, ?, ?, 'admin', '管理者', ?, ?, ?)
+        """, (
+            target_type, target_value, target_label, clean_title, clean_body,
+            admin_id, len(recipients), now
+        )).lastrowid
+        for recipient in recipients:
+            create_notification(db, recipient, clean_title, clean_body, batch_id=batch_id)
+        db.commit()
+    request.session["admin_notification_notice"] = {"type": "success", "message": f"{len(recipients)}人へ通知を送信しました。"}
+    request.session["admin_notification_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/admin/notifications", status_code=303)
+
+
+@app.get("/admin/reservation-schedule", response_class=HTMLResponse)
+async def AdminReservationSchedule(request: Request, day: str = None):
+    today = datetime.datetime.now(JST).date()
+    try:
+        selected_day = datetime.date.fromisoformat(day) if day else today
+    except ValueError:
+        selected_day = today
+    if selected_day < today:
+        selected_day = today
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        require_super_admin(db, request)
+        slots = reservation_slot_summary(db, selected_day.isoformat())
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/reservation_schedule.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "today": today.isoformat(),
+            "selected_day": selected_day.isoformat(),
+            "slots": slots,
+            "csrf_token": reservation_csrf_token(request, "admin_reservation_schedule_csrf_token"),
+            "notice": request.session.pop("admin_reservation_schedule_notice", None)
+        }
+    )
+
+
+@app.get("/admin/reservation-schedule/availability")
+async def AdminReservationScheduleAvailability(request: Request, day: str):
+    try:
+        target_date = datetime.date.fromisoformat(day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付が正しくありません。")
+    if target_date < datetime.datetime.now(JST).date():
+        raise HTTPException(status_code=400, detail="過去の日付は選択できません。")
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        require_super_admin(db, request)
+        slots = reservation_slot_summary(db, target_date.isoformat())
+    return {"day": target_date.isoformat(), "slots": slots}
+
+
+@app.post("/admin/reservation-schedule")
+async def UpdateAdminReservationSchedule(
+    request: Request,
+    day: str = Form(...),
+    action: str = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(...),
+    csrf_token: str = Form(...)
+):
+    redirect_url = f"/admin/reservation-schedule?{urlencode({'day': day})}"
+    notice_key = "admin_reservation_schedule_notice"
+    with closing(sqlite3.connect(DATABASE_PATH)) as auth_db:
+        require_super_admin(auth_db, request)
+    if not valid_reservation_csrf(request, csrf_token, "admin_reservation_schedule_csrf_token"):
+        request.session[notice_key] = {"type": "error", "message": "操作を確認できませんでした。ページを再読み込みしてください。"}
+        return RedirectResponse(redirect_url, status_code=303)
+    start_minutes = -1
+    end_minutes = -1
+    try:
+        target_date = datetime.date.fromisoformat(day)
+        start_minutes = reservation_time_to_minutes(start_time)
+        end_minutes = reservation_time_to_minutes(end_time)
+    except ValueError:
+        target_date = None
+    valid_range = (
+        target_date is not None and target_date >= datetime.datetime.now(JST).date()
+        and action in {"add", "delete"}
+        and RESERVATION_OPEN_MINUTES <= start_minutes < end_minutes <= RESERVATION_CLOSE_MINUTES
+        and start_minutes % 30 == 0 and end_minutes % 30 == 0
+    )
+    if valid_range and target_date == datetime.datetime.now(JST).date():
+        selected_start = datetime.datetime.combine(
+            target_date,
+            datetime.time(start_minutes // 60, start_minutes % 60),
+            tzinfo=JST
+        )
+        valid_range = selected_start >= datetime.datetime.now(JST)
+    if not valid_range:
+        request.session[notice_key] = {"type": "error", "message": "日付または時間帯が正しくありません。"}
+        return RedirectResponse(redirect_url, status_code=303)
+
+    slot_times = reservation_slot_range(start_time, end_time)
+    now_text = datetime.datetime.now(JST).isoformat()
+    try:
+        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+            db.execute("BEGIN IMMEDIATE")
+            existing = {
+                row[0] for row in db.execute(
+                    f"""
+                    SELECT start_time FROM reservation_available_slot
+                    WHERE day = ?
+                      AND start_time IN ({','.join('?' for _ in slot_times)})
+                    """,
+                    (day, *slot_times)
+                ).fetchall()
+            }
+            if action == "add":
+                if existing:
+                    raise ValueError("選択範囲には、すでに予約可能時間が含まれています。")
+                db.executemany(
+                    """
+                    INSERT INTO reservation_available_slot
+                        (admin_id, day, start_time, end_time, created_at, updated_at)
+                    VALUES ('system', ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (day, slot_time,
+                         reservation_minutes_to_time(reservation_time_to_minutes(slot_time) + 30),
+                         now_text, now_text)
+                        for slot_time in slot_times
+                    ]
+                )
+                success_message = "予約可能時間を追加しました。"
+            else:
+                if not existing:
+                    raise ValueError("選択範囲に予約可能時間がありません。")
+                db.execute(
+                    f"""
+                    DELETE FROM reservation_available_slot
+                    WHERE day = ?
+                      AND start_time IN ({','.join('?' for _ in slot_times)})
+                    """,
+                    (day, *slot_times)
+                )
+                success_message = "予約可能時間を削除しました。"
+            db.commit()
+        request.session[notice_key] = {"type": "success", "message": success_message}
+        request.session["admin_reservation_schedule_csrf_token"] = secrets.token_urlsafe(32)
+    except (sqlite3.Error, ValueError) as error:
+        request.session[notice_key] = {"type": "error", "message": str(error) or "時間帯を更新できませんでした。"}
+    return RedirectResponse(redirect_url, status_code=303)
+
+
+@app.get("/admin/mypage", response_class=HTMLResponse)
+async def AdminMypage(request: Request):
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    admin_id = request.session.get("admin_id")
+    now = datetime.datetime.now(JST)
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        events = admin_calendar_reservations(db, now)
+        db.row_factory = sqlite3.Row
+        profile = db.execute(
+            "SELECT display_name, description, is_published, profile_image FROM mentor_profile WHERE admin_id = ?",
+            (admin_id,),
+        ).fetchone()
+        profile = dict(profile) if profile is not None else None
+    return templates.TemplateResponse(request=request, name="admin/mypage.html", context={
+        "request": request, "admin_id": admin_id, "mentor_profile": profile,
+        "mentor_image_url": mentor_image_url(profile["profile_image"] if profile else None),
+        "calendar_events": events, "calendar_today": now.date().isoformat(),
+    })
+
+
+@app.get("/admin/reservation", response_class=HTMLResponse)
+async def AdminReservationPage(request: Request, start_day: str = None, end_day: str = None):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    if start_day and end_day:
+        cursor.execute("""
+            SELECT id, userid, day, start_time, end_time, purpose, status,
+                   cancelled_at, cancelled_by_type, cancelled_by_id
+            FROM reservation
+            WHERE day >= ? AND day <= ?
+            ORDER BY day ASC, start_time ASC, id ASC
+        """, (start_day, end_day))
+    else:
+        cursor.execute("""
+            SELECT id, userid, day, start_time, end_time, purpose, status,
+                   cancelled_at, cancelled_by_type, cancelled_by_id
+            FROM reservation
+            ORDER BY day DESC, start_time ASC, id ASC
+        """)
+    reservations = cursor.fetchall()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/reservation.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "reservations": reservations,
+            "start_day": start_day,
+            "end_day": end_day,
+            "csrf_token": reservation_csrf_token(request, "admin_reservation_csrf_token"),
+            "notice": request.session.pop("admin_reservation_notice", None)
+        }
+    )
+
+
+@app.post("/admin/reservation/{reservation_id}/cancel")
+async def AdminCancelReservation(
+    request: Request,
+    reservation_id: int,
+    csrf_token: str = Form(...)
+):
+    if not valid_reservation_csrf(request, csrf_token, "admin_reservation_csrf_token"):
+        request.session["admin_reservation_notice"] = {"type": "error", "message": "操作を確認できませんでした。"}
+        return RedirectResponse("/admin/reservation", status_code=303)
+    now_text = datetime.datetime.now(JST).isoformat()
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        reservation = db.execute(
+            "SELECT * FROM reservation WHERE id = ? AND status = 'active'",
+            (reservation_id,)
+        ).fetchone()
+        changed = db.execute(
+            """
+            UPDATE reservation
+            SET status = 'cancelled', cancelled_at = ?,
+                cancelled_by_type = 'admin', cancelled_by_id = ?
+            WHERE id = ? AND status = 'active'
+            """,
+            (now_text, request.session.get("admin_id"), reservation_id)
+        ).rowcount
+        if changed and reservation is not None:
+            create_notification(
+                db, reservation["userid"], "TEKNE工作室の予約がキャンセルされました",
+                reservation_body("tekne", reservation), "reservation_cancelled", "tekne", reservation_id
+            )
+        db.commit()
+    request.session["admin_reservation_notice"] = {
+        "type": "success" if changed else "error",
+        "message": "予約をキャンセルしました。" if changed else "有効な予約が見つかりませんでした。"
+    }
+    request.session["admin_reservation_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/admin/reservation", status_code=303)
+
+
+def equipment_admin_csrf_token(request):
+    token = request.session.get("equipment_catalog_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session["equipment_catalog_csrf_token"] = token
+    return token
+
+
+def delete_equipment_upload(image_url):
+    prefix = "/uploads/equipment/"
+    if not image_url or not image_url.startswith(prefix):
+        return
+    filename = image_url[len(prefix):]
+    if Path(filename).name != filename:
+        return
+    target = (EQUIPMENT_UPLOADS_DIR / filename).resolve()
+    if target.parent == EQUIPMENT_UPLOADS_DIR:
+        try:
+            target.unlink(missing_ok=True)
+        except OSError:
+            logging.exception("Failed to remove unused equipment image")
+
+
+@app.get("/admin/equipment-catalog", response_class=HTMLResponse)
+async def AdminEquipmentCatalogPage(request: Request):
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        items = [dict(row) for row in db.execute(
+            "SELECT id,name,image,content,count,usage_type FROM equipment_catalog ORDER BY name,id"
+        ).fetchall()]
+    notice = request.session.pop("equipment_catalog_notice", None)
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/equipment_catalog.html",
+        context={"request": request, "admin_id": request.session.get("admin_id"),
+                 "items": items, "csrf_token": equipment_admin_csrf_token(request), "notice": notice}
+    )
+
+
+@app.post("/admin/equipment-catalog")
+async def AdminEquipmentCatalogCreate(request: Request):
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    form = await request.form()
+    csrf_token = str(form.get("csrf_token") or "")
+    expected = request.session.get("equipment_catalog_csrf_token", "")
+    if not expected or not csrf_token or not secrets.compare_digest(expected, csrf_token):
+        raise HTTPException(status_code=403, detail="CSRFトークンが不正です。画面を再読み込みしてください。")
+
+    name = str(form.get("name") or "").strip()
+    content = str(form.get("content") or "").strip()
+    usage_type = str(form.get("usage_type") or "").strip()
+    try:
+        count = int(str(form.get("count") or ""))
+    except ValueError:
+        count = 0
+    upload = form.get("image")
+    error = None
+    if not name or len(name) > 100:
+        error = "器具名を1～100文字で入力してください。"
+    elif len(content) > 500:
+        error = "説明は500文字以内で入力してください。"
+    elif count < 1 or count > 100000:
+        error = "数量は1～100000の整数で入力してください。"
+    elif usage_type not in {"takeout", "in_room"}:
+        error = "利用区分を選択してください。"
+    elif not isinstance(upload, StarletteUploadFile) or not upload.filename:
+        error = "器具画像を選択してください。"
+
+    processed = None
+    if error is None:
+        suffix = Path(upload.filename or "").suffix.lower()
+        content_type = (upload.content_type or "").lower()
+        if suffix not in PROFILE_ALLOWED_SUFFIXES or content_type not in PROFILE_ALLOWED_CONTENT_TYPES:
+            error = "JPEG、PNG、WebP形式の画像を選択してください。"
+        else:
+            contents = await upload.read(PROFILE_MAX_BYTES + 1)
+            await upload.close()
+            if len(contents) > PROFILE_MAX_BYTES:
+                error = "画像ファイルは5MB以下にしてください。"
+            else:
+                processed, error = process_profile_image(contents)
+    if error:
+        request.session["equipment_catalog_notice"] = {"type": "error", "message": error}
+        return RedirectResponse("/admin/equipment-catalog", status_code=303)
+
+    equipment_id = "EQ" + uuid4().hex.upper()
+    filename = f"{uuid4().hex}.webp"
+    final_path = EQUIPMENT_UPLOADS_DIR / filename
+    temporary_path = EQUIPMENT_UPLOADS_DIR / f".{filename}.tmp"
+    try:
+        temporary_path.write_bytes(processed)
+        temporary_path.replace(final_path)
+        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db, db:
+            db.execute("""INSERT INTO equipment_catalog(id,name,image,content,count,usage_type)
+                VALUES(?,?,?,?,?,?)""",
+                (equipment_id, name, f"/uploads/equipment/{filename}", content, count, usage_type))
+    except (OSError, sqlite3.Error):
+        temporary_path.unlink(missing_ok=True)
+        final_path.unlink(missing_ok=True)
+        request.session["equipment_catalog_notice"] = {
+            "type": "error", "message": "器具を保存できませんでした。時間をおいて再度お試しください。"
+        }
+        return RedirectResponse("/admin/equipment-catalog", status_code=303)
+    request.session["equipment_catalog_notice"] = {"type": "success", "message": "器具を登録しました。"}
+    request.session["equipment_catalog_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/admin/equipment-catalog", status_code=303)
+
+
+@app.post("/admin/equipment-catalog/{equipment_id}")
+async def AdminEquipmentCatalogUpdate(request: Request, equipment_id: str):
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    form = await request.form()
+    csrf_token = str(form.get("csrf_token") or "")
+    expected = request.session.get("equipment_catalog_csrf_token", "")
+    if not expected or not csrf_token or not secrets.compare_digest(expected, csrf_token):
+        raise HTTPException(status_code=403, detail="CSRFトークンが不正です。画面を再読み込みしてください。")
+
+    name = str(form.get("name") or "").strip()
+    content = str(form.get("content") or "").strip()
+    usage_type = str(form.get("usage_type") or "").strip()
+    try:
+        count = int(str(form.get("count") or ""))
+    except ValueError:
+        count = 0
+    upload = form.get("image")
+    has_upload = isinstance(upload, StarletteUploadFile) and bool(upload.filename)
+    error = None
+    if not name or len(name) > 100:
+        error = "器具名を1～100文字で入力してください。"
+    elif len(content) > 500:
+        error = "説明は500文字以内で入力してください。"
+    elif count < 1 or count > 100000:
+        error = "数量は1～100000の整数で入力してください。"
+    elif usage_type not in {"takeout", "in_room"}:
+        error = "利用区分を選択してください。"
+    elif upload is not None and upload != "" and not isinstance(upload, StarletteUploadFile):
+        error = "画像ファイルを正しく選択してください。"
+
+    processed = None
+    if error is None and has_upload:
+        suffix = Path(upload.filename or "").suffix.lower()
+        content_type = (upload.content_type or "").lower()
+        if suffix not in PROFILE_ALLOWED_SUFFIXES or content_type not in PROFILE_ALLOWED_CONTENT_TYPES:
+            error = "JPEG、PNG、WebP形式の画像を選択してください。"
+        else:
+            contents = await upload.read(PROFILE_MAX_BYTES + 1)
+            await upload.close()
+            if len(contents) > PROFILE_MAX_BYTES:
+                error = "画像ファイルは5MB以下にしてください。"
+            else:
+                processed, error = process_profile_image(contents)
+    if error:
+        request.session["equipment_catalog_notice"] = {"type": "error", "message": error}
+        return RedirectResponse("/admin/equipment-catalog", status_code=303)
+
+    filename = f"{uuid4().hex}.webp" if has_upload else None
+    final_path = EQUIPMENT_UPLOADS_DIR / filename if filename else None
+    temporary_path = EQUIPMENT_UPLOADS_DIR / f".{filename}.tmp" if filename else None
+    try:
+        if filename:
+            temporary_path.write_bytes(processed)
+            temporary_path.replace(final_path)
+        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+            db.execute("BEGIN IMMEDIATE")
+            existing = db.execute("SELECT image FROM equipment_catalog WHERE id=?", (equipment_id,)).fetchone()
+            if existing is None:
+                db.rollback()
+                raise LookupError("equipment not found")
+            image_url = f"/uploads/equipment/{filename}" if filename else existing[0]
+            db.execute("""UPDATE equipment_catalog
+                SET name=?,content=?,count=?,usage_type=?,image=? WHERE id=?""",
+                (name, content, count, usage_type, image_url, equipment_id))
+            db.commit()
+        if filename:
+            delete_equipment_upload(existing[0])
+    except LookupError:
+        if temporary_path:
+            temporary_path.unlink(missing_ok=True)
+        if final_path:
+            final_path.unlink(missing_ok=True)
+        request.session["equipment_catalog_notice"] = {"type": "error", "message": "器具が見つかりません。"}
+        return RedirectResponse("/admin/equipment-catalog", status_code=303)
+    except (OSError, sqlite3.Error):
+        if temporary_path:
+            temporary_path.unlink(missing_ok=True)
+        if final_path:
+            final_path.unlink(missing_ok=True)
+        request.session["equipment_catalog_notice"] = {
+            "type": "error", "message": "器具を更新できませんでした。時間をおいて再度お試しください。"
+        }
+        return RedirectResponse("/admin/equipment-catalog", status_code=303)
+    request.session["equipment_catalog_notice"] = {"type": "success", "message": "器具情報を更新しました。"}
+    request.session["equipment_catalog_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/admin/equipment-catalog", status_code=303)
+
+
+@app.post("/admin/equipment-catalog/{equipment_id}/delete")
+async def AdminEquipmentCatalogDelete(request: Request, equipment_id: str, csrf_token: str = Form(...)):
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    expected = request.session.get("equipment_catalog_csrf_token", "")
+    if not expected or not secrets.compare_digest(expected, csrf_token):
+        raise HTTPException(status_code=403, detail="CSRFトークンが不正です。画面を再読み込みしてください。")
+    message = "器具が見つかりません。"
+    notice_type = "error"
+    try:
+        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+            db.execute("BEGIN IMMEDIATE")
+            item = db.execute("SELECT name,image FROM equipment_catalog WHERE id=?", (equipment_id,)).fetchone()
+            if item:
+                takeout_history = db.execute("""SELECT 1 FROM equipment_reservation
+                    WHERE equipment_id=? OR ((equipment_id IS NULL OR equipment_id='') AND equipment=?) LIMIT 1""",
+                    (equipment_id, item[0])).fetchone()
+                room_history = db.execute(
+                    "SELECT 1 FROM equipment_room_reservation WHERE equipment_id=? LIMIT 1", (equipment_id,)
+                ).fetchone()
+                if takeout_history or room_history:
+                    message = "予約記録がある器具は削除できません。"
+                else:
+                    db.execute("DELETE FROM equipment_catalog WHERE id=?", (equipment_id,))
+                    db.commit()
+                    delete_equipment_upload(item[1])
+                    message = "器具を削除しました。"
+                    notice_type = "success"
+                if db.in_transaction:
+                    db.rollback()
+            else:
+                db.rollback()
+    except sqlite3.Error:
+        message = "器具を削除できませんでした。時間をおいて再度お試しください。"
+    request.session["equipment_catalog_notice"] = {"type": notice_type, "message": message}
+    request.session["equipment_catalog_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/admin/equipment-catalog", status_code=303)
+
+
+@app.get("/admin/equipment-reservation", response_class=HTMLResponse)
+async def AdminEquipmentReservationPage(
+    request: Request,
+    start_day: str = None,
+    end_day: str = None,
+    unreturned_only: str = None
+):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    today = datetime.datetime.now(JST).date().isoformat()
+    show_unreturned_only = unreturned_only == "1"
+
+    takeout_conditions = []
+    takeout_params = []
+    if start_day and end_day:
+        takeout_conditions.append("start_day <= ? AND end_day >= ?")
+        takeout_params.extend((end_day, start_day))
+    if show_unreturned_only:
+        takeout_conditions.append("returned = 0")
+    takeout_where = (
+        f"WHERE {' AND '.join(takeout_conditions)}" if takeout_conditions else ""
+    )
+    cursor.execute(f"""
+        SELECT id, userid, equipment, start_day, end_day, quantity, purpose, note, returned,
+               CASE WHEN end_day < ? AND returned = 0 THEN 1 ELSE 0 END AS is_overdue
+        FROM equipment_reservation
+        {takeout_where}
+        ORDER BY start_day ASC, id ASC
+    """, [today, *takeout_params])
+    equipment_reservations = cursor.fetchall()
+
+    room_conditions = []
+    room_params = []
+    if start_day and end_day:
+        room_conditions.append("use_day >= ? AND use_day <= ?")
+        room_params.extend((start_day, end_day))
+    room_where = f"WHERE {' AND '.join(room_conditions)}" if room_conditions else ""
+    cursor.execute(f"""
+        SELECT id, userid, equipment, use_day, start_time, end_time, quantity, purpose, note
+        FROM equipment_room_reservation
+        {room_where}
+        ORDER BY use_day ASC, start_time ASC, id ASC
+    """, room_params)
+    equipment_room_reservations = cursor.fetchall()
+
+    csrf_token = request.session.get("equipment_reservation_csrf_token")
+    if not csrf_token:
+        csrf_token = secrets.token_urlsafe(32)
+        request.session["equipment_reservation_csrf_token"] = csrf_token
+    notice = request.session.pop("equipment_reservation_notice", None)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/equipment_reservation.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "equipment_reservations": equipment_reservations,
+            "equipment_room_reservations": equipment_room_reservations,
+            "start_day": start_day,
+            "end_day": end_day,
+            "unreturned_only": show_unreturned_only,
+            "csrf_token": csrf_token,
+            "notice": notice
+        }
+    )
+
+
+@app.post("/admin/equipment-reservation/cancel")
+async def AdminCancelEquipmentReservation(
+    request: Request,
+    reservation_type: str = Form(...),
+    reservation_id: int = Form(...),
+    csrf_token: str = Form(...)
+):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    session_token = request.session.get("equipment_reservation_csrf_token", "")
+    if not session_token or not secrets.compare_digest(csrf_token, session_token):
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "操作を確認できませんでした。ページを再読み込みして、もう一度お試しください。"
+        }
+        return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+    table_by_type = {
+        "takeout": "equipment_reservation",
+        "in_room": "equipment_room_reservation"
+    }
+    table = table_by_type.get(reservation_type)
+    if table is None:
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "予約種別が正しくありません。"
+        }
+        return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        reservation = db.execute(f"SELECT * FROM {table} WHERE id = ?", (reservation_id,)).fetchone()
+        deleted_count = db.execute(f"DELETE FROM {table} WHERE id = ?", (reservation_id,)).rowcount
+        if deleted_count == 1 and reservation is not None:
+            related_type = "equipment_takeout" if reservation_type == "takeout" else "equipment_in_room"
+            create_notification(
+                db, reservation["userid"], "実験器具の予約がキャンセルされました",
+                reservation_body(related_type, reservation), "reservation_cancelled",
+                related_type, reservation_id
+            )
+        db.commit()
+
+    if deleted_count != 1:
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "取消対象の予約が見つかりませんでした。"
+        }
+    else:
+        request.session["equipment_reservation_notice"] = {
+            "type": "success",
+            "message": "実験器具の予約を取り消しました。"
+        }
+        request.session["equipment_reservation_csrf_token"] = secrets.token_urlsafe(32)
+
+    return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+
+@app.post("/admin/equipment-reservation/return-status")
+async def AdminUpdateEquipmentReturnStatus(
+    request: Request,
+    reservation_type: str = Form(...),
+    reservation_id: int = Form(...),
+    returned: int = Form(...),
+    csrf_token: str = Form(...)
+):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    session_token = request.session.get("equipment_reservation_csrf_token", "")
+    if not session_token or not secrets.compare_digest(csrf_token, session_token):
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "操作を確認できませんでした。ページを再読み込みして、もう一度お試しください。"
+        }
+        return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+    if reservation_type != "takeout" or returned not in (0, 1):
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "返却状態の指定が正しくありません。"
+        }
+        return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        updated_count = db.execute(
+            "UPDATE equipment_reservation SET returned = ? WHERE id = ?",
+            (returned, reservation_id)
+        ).rowcount
+        db.commit()
+
+    if updated_count != 1:
+        request.session["equipment_reservation_notice"] = {
+            "type": "error",
+            "message": "更新対象の予約が見つかりませんでした。"
+        }
+    else:
+        request.session["equipment_reservation_notice"] = {
+            "type": "success",
+            "message": "返却状態を更新しました。"
+        }
+        request.session["equipment_reservation_csrf_token"] = secrets.token_urlsafe(32)
+
+    return RedirectResponse("/admin/equipment-reservation", status_code=303)
+
+
+@app.get("/admin/studies", response_class=HTMLResponse)
+async def AdminStudiesPage(request: Request):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        studies = db.execute("""
+            SELECT
+                study.id,
+                study.name,
+                study.introduce,
+                study.filename,
+                study.pdfpath,
+                study.userid,
+                study.time,
+                student.id,
+                student.school,
+                study.registration_type
+            FROM study
+            LEFT JOIN student ON study.userid = student.id
+            ORDER BY study.id ASC
+        """).fetchall()
+        submission_details = get_submission_collaboration(db, [study[0] for study in studies])
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/studies.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "studies": studies,
+            "submission_details": submission_details
+        }
+    )
+
+
+@app.post("/admin/studies/{study_id}/delete")
+async def AdminDeleteStudy(request: Request, study_id: int):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    image_names = []
+    with closing(connect_studies(DATABASE_PATH)) as db:
+        try:
+            study = db.execute(
+                "SELECT pdfpath FROM study WHERE id = ?",
+                (study_id,)
+            ).fetchone()
+
+            if study is None:
+                return RedirectResponse("/admin/studies", status_code=303)
+
+            image_names = [row[0] for row in db.execute(
+                "SELECT stored_name FROM study_field_image WHERE study_id=?", (study_id,)).fetchall()]
+            db.execute("DELETE FROM study WHERE id = ?", (study_id,))
+            db.commit()
+        except sqlite3.Error:
+            db.rollback()
+            raise
+
+    pdfpath = study[0]
+    if pdfpath:
+        try:
+            target_path = study_file_path(UPLOADS_DIR, pdfpath)
+        except ValueError:
+            pass
+        else:
+            try:
+                target_path.unlink(missing_ok=True)
+            except OSError:
+                logging.exception("Failed to delete research file %s", target_path)
+    for stored_name in image_names:
+        try:
+            study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name).unlink(missing_ok=True)
+        except (ValueError, OSError):
+            logging.exception("Failed to delete research image %s", stored_name)
+
+    return RedirectResponse("/admin/studies", status_code=303)
+
+
+@app.get("/admin/accounts", response_class=HTMLResponse)
+async def AdminAccountsPage(request: Request, type: str = "student", school: str = None):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    account_type = type if type in ("student", "teacher") else "student"
+    schools = load_schools()
+    selected_school = school if school in schools else None
+    table_name = "student" if account_type == "student" else "teacher"
+
+    query = f"SELECT rowid, id, school, name, furigana FROM {table_name}"
+    if account_type == "teacher":
+        query = "SELECT rowid, id, school, role FROM teacher"
+    params = ()
+    if selected_school:
+        query += " WHERE school = ?"
+        params = (selected_school,)
+    query += " ORDER BY id ASC, rowid ASC"
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        accounts = db.execute(query, params).fetchall()
+
+    csrf_token = request.session.get("account_csrf_token")
+    if not csrf_token:
+        csrf_token = secrets.token_urlsafe(32)
+        request.session["account_csrf_token"] = csrf_token
+
+    school_query = urlencode({"school": selected_school}) if selected_school else ""
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/accounts.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "account_type": account_type,
+            "accounts": accounts,
+            "schools": schools,
+            "selected_school": selected_school,
+            "school_query": school_query,
+            "csrf_token": csrf_token,
+            "notice": request.session.pop("account_notice", None)
+        }
+    )
+
+
+@app.post("/admin/accounts/delete")
+async def AdminDeleteAccount(
+    request: Request,
+    account_type: str = Form(...),
+    account_rowid: int = Form(...),
+    account_id: str = Form(...),
+    admin_id: str = Form(...),
+    admin_password: str = Form(...),
+    csrf_token: str = Form(...),
+    return_school: str = Form("")
+):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    safe_type = account_type if account_type in ("student", "teacher") else "student"
+    schools = load_schools()
+    safe_school = return_school if return_school in schools else None
+    redirect_params = {"type": safe_type}
+    if safe_school:
+        redirect_params["school"] = safe_school
+    redirect_url = "/admin/accounts?" + urlencode(redirect_params)
+
+    session_token = request.session.get("account_csrf_token", "")
+    if not session_token or not secrets.compare_digest(csrf_token, session_token):
+        request.session["account_notice"] = {
+            "type": "error",
+            "message": "セッションを確認できませんでした。もう一度お試しください。"
+        }
+        return RedirectResponse(redirect_url, status_code=303)
+
+    if account_type not in ("student", "teacher"):
+        request.session["account_notice"] = {
+            "type": "error",
+            "message": "削除対象の種類が正しくありません。"
+        }
+        return RedirectResponse(redirect_url, status_code=303)
+
+    session_admin_id = request.session.get("admin_id")
+    authenticated = False
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        try:
+            admin = db.execute(
+                "SELECT pwd FROM admin WHERE id = ? AND deleted_at IS NULL",
+                (session_admin_id,)
+            ).fetchone()
+
+            if admin_id == session_admin_id and admin is not None:
+                try:
+                    authenticated = bcrypt.checkpw(
+                        admin_password.encode(),
+                        admin[0].encode()
+                    )
+                except ValueError:
+                    authenticated = False
+
+            if not authenticated:
+                request.session["account_notice"] = {
+                    "type": "error",
+                    "message": "管理者IDまたはパスワードが正しくありません。"
+                }
+                return RedirectResponse(redirect_url, status_code=303)
+
+            table_name = "student" if account_type == "student" else "teacher"
+            target = db.execute(
+                f"SELECT id FROM {table_name} WHERE rowid = ? AND id = ?",
+                (account_rowid, account_id)
+            ).fetchone()
+
+            if target is None:
+                request.session["account_notice"] = {
+                    "type": "error",
+                    "message": "削除対象のアカウントが見つかりませんでした。"
+                }
+                return RedirectResponse(redirect_url, status_code=303)
+
+            db.execute(
+                "BEGIN IMMEDIATE"
+            )
+            if account_type == "student":
+                revoke_student_identity(db, account_id)
+            db.execute(
+                f"DELETE FROM {table_name} WHERE rowid = ? AND id = ?",
+                (account_rowid, account_id)
+            )
+            db.commit()
+        except sqlite3.Error:
+            db.rollback()
+            raise
+
+    if account_type == "student":
+        await tekne_chat_service.connections.close_login_id(account_id)
+
+    account_label = "生徒" if account_type == "student" else "先生"
+    request.session["account_notice"] = {
+        "type": "success",
+        "message": f"{account_label}アカウント「{account_id}」を削除しました。"
+    }
+    request.session["account_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse(redirect_url, status_code=303)
+
+
+@app.post("/admin/accounts/teacher-role")
+async def AdminUpdateTeacherRole(
+    request: Request,
+    account_rowid: int = Form(...),
+    account_id: str = Form(...),
+    role: str = Form(...),
+    csrf_token: str = Form(...),
+    return_school: str = Form(""),
+):
+    if request.session.get("admin_login") != True:
+        return RedirectResponse("/admin/login", status_code=303)
+
+    schools = load_schools()
+    safe_school = return_school if return_school in schools else None
+    redirect_params = {"type": "teacher"}
+    if safe_school:
+        redirect_params["school"] = safe_school
+    redirect_url = "/admin/accounts?" + urlencode(redirect_params)
+    session_token = request.session.get("account_csrf_token", "")
+    if not session_token or not secrets.compare_digest(csrf_token, session_token):
+        request.session["account_notice"] = {
+            "type": "error",
+            "message": "セッションを確認できませんでした。もう一度お試しください。",
+        }
+        return RedirectResponse(redirect_url, status_code=303)
+    if role not in ("teacher", "super_teacher"):
+        request.session["account_notice"] = {
+            "type": "error",
+            "message": "指定された階級が正しくありません。",
+        }
+        return RedirectResponse(redirect_url, status_code=303)
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        try:
+            initialize_teacher_roles(db)
+            db.execute("BEGIN IMMEDIATE")
+            updated = db.execute(
+                "UPDATE teacher SET role = ? WHERE rowid = ? AND id = ?",
+                (role, account_rowid, account_id),
+            )
+            if updated.rowcount != 1:
+                db.rollback()
+                request.session["account_notice"] = {
+                    "type": "error",
+                    "message": "変更対象の先生アカウントが見つかりませんでした。",
+                }
+                return RedirectResponse(redirect_url, status_code=303)
+            db.commit()
+        except sqlite3.Error:
+            db.rollback()
+            request.session["account_notice"] = {
+                "type": "error",
+                "message": "階級を更新できませんでした。",
+            }
+            return RedirectResponse(redirect_url, status_code=303)
+
+    request.session["account_notice"] = {
+        "type": "success",
+        "message": f"先生アカウント「{account_id}」の階級を更新しました。",
+    }
+    request.session["account_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse(redirect_url, status_code=303)
+
+@app.get("/community", response_class=HTMLResponse)
+async def CommunityPage(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="community.html",
+        context={
+            "request": request,
+            "user_id": request.session.get("user_id"),
+            "csrf_token": community_csrf_token(request)
+        }
+    )
+
+
+@app.get("/community/posts")
+async def CommunityPosts(request: Request, before_id: int = None):
+    user_id = request.session.get("user_id")
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        if before_id is None:
+            rows = db.execute(
+                "SELECT id FROM community_post WHERE parent_id IS NULL AND deleted_at IS NULL ORDER BY id DESC LIMIT ?",
+                (COMMUNITY_PAGE_SIZE + 1,)
+            ).fetchall()
+        else:
+            rows = db.execute(
+                "SELECT id FROM community_post WHERE parent_id IS NULL AND deleted_at IS NULL AND id < ? ORDER BY id DESC LIMIT ?",
+                (before_id, COMMUNITY_PAGE_SIZE + 1)
+            ).fetchall()
+        has_more = len(rows) > COMMUNITY_PAGE_SIZE
+        root_ids = [row[0] for row in rows[:COMMUNITY_PAGE_SIZE]]
+        posts = community_post_payloads(db, root_ids, user_id)
+    return JSONResponse({
+        "posts": posts,
+        "next_cursor": root_ids[-1] if has_more and root_ids else None,
+        "has_more": has_more
+    })
+
+
+@app.post("/community/posts")
+async def CreateCommunityPost(
+    request: Request,
+    content: str = Form(...),
+    parent_id: int = Form(None),
+    csrf_token: str = Form(...)
+):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return JSONResponse({"error": "ログインが必要です。"}, status_code=401)
+    if not valid_community_csrf(request, csrf_token):
+        return JSONResponse({"error": "操作を確認できませんでした。"}, status_code=403)
+    error = validate_community_content(content)
+    if error:
+        return JSONResponse({"error": error}, status_code=422)
+
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        if parent_id is not None:
+            parent = db.execute(
+                "SELECT id FROM community_post WHERE id = ? AND deleted_at IS NULL",
+                (parent_id,)
+            ).fetchone()
+            if parent is None:
+                db.rollback()
+                return JSONResponse({"error": "返信先の投稿が見つかりません。"}, status_code=404)
+        created_at = community_now()
+        post_id = db.execute(
+            "INSERT INTO community_post (user_id, parent_id, content, created_at) VALUES (?, ?, ?, ?)",
+            (user_id, parent_id, content, created_at)
+        ).lastrowid
+        db.commit()
+        post = community_post_payloads(db, [post_id], user_id)[0]
+    return JSONResponse({"post": post}, status_code=201)
+
+
+@app.post("/community/posts/{post_id}/like")
+async def ToggleCommunityLike(
+    request: Request,
+    post_id: int,
+    csrf_token: str = Form(...)
+):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return JSONResponse({"error": "ログインが必要です。"}, status_code=401)
+    if not valid_community_csrf(request, csrf_token):
+        return JSONResponse({"error": "操作を確認できませんでした。"}, status_code=403)
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        post = db.execute(
+            "SELECT id FROM community_post WHERE id = ? AND deleted_at IS NULL", (post_id,)
+        ).fetchone()
+        if post is None:
+            db.rollback()
+            return JSONResponse({"error": "投稿が見つかりません。"}, status_code=404)
+        existing = db.execute(
+            "SELECT id FROM community_like WHERE post_id = ? AND user_id = ?",
+            (post_id, user_id)
+        ).fetchone()
+        if existing:
+            db.execute("DELETE FROM community_like WHERE id = ?", (existing[0],))
+            liked = False
+        else:
+            db.execute(
+                "INSERT OR IGNORE INTO community_like (post_id, user_id, created_at) VALUES (?, ?, ?)",
+                (post_id, user_id, community_now())
+            )
+            liked = True
+        count = db.execute(
+            "SELECT COUNT(*) FROM community_like WHERE post_id = ?", (post_id,)
+        ).fetchone()[0]
+        db.commit()
+    return JSONResponse({"liked": liked, "like_count": count})
+
+
+@app.post("/community/posts/{post_id}/delete")
+async def DeleteCommunityPost(
+    request: Request,
+    post_id: int,
+    csrf_token: str = Form(...)
+):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return JSONResponse({"error": "ログインが必要です。"}, status_code=401)
+    if not valid_community_csrf(request, csrf_token):
+        return JSONResponse({"error": "操作を確認できませんでした。"}, status_code=403)
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        target = db.execute(
+            "SELECT id FROM community_post WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+            (post_id, user_id)
+        ).fetchone()
+        if target is None:
+            db.rollback()
+            return JSONResponse({"error": "削除できる投稿が見つかりません。"}, status_code=403)
+        delete_community_subtrees(db, [post_id])
+        db.commit()
+    return JSONResponse({"deleted": True})
+
+
+@app.get("/admin/community", response_class=HTMLResponse)
+async def AdminCommunityPage(request: Request, page: int = 1):
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    safe_page = max(page, 1)
+    per_page = 50
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        total = db.execute(
+            "SELECT COUNT(*) FROM community_post WHERE deleted_at IS NULL"
+        ).fetchone()[0]
+        posts = db.execute(
+            """
+            SELECT p.id, p.user_id, p.parent_id, p.content, p.created_at,
+                   COUNT(l.id) AS like_count
+            FROM community_post p LEFT JOIN community_like l ON l.post_id = p.id
+            WHERE p.deleted_at IS NULL
+            GROUP BY p.id ORDER BY p.id DESC LIMIT ? OFFSET ?
+            """,
+            (per_page, (safe_page - 1) * per_page)
+        ).fetchall()
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/community.html",
+        context={
+            "request": request,
+            "admin_id": request.session.get("admin_id"),
+            "posts": posts,
+            "page": safe_page,
+            "has_previous": safe_page > 1,
+            "has_next": safe_page * per_page < total,
+            "csrf_token": community_csrf_token(request),
+            "notice": request.session.pop("community_admin_notice", None)
+        }
+    )
+
+
+@app.post("/admin/community/{post_id}/delete")
+async def AdminDeleteCommunityPost(
+    request: Request,
+    post_id: int,
+    csrf_token: str = Form(...),
+    return_page: int = Form(1)
+):
+    redirect_url = "/admin/community?" + urlencode({"page": max(return_page, 1)})
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    if not valid_community_csrf(request, csrf_token):
+        request.session["community_admin_notice"] = {"type": "error", "message": "操作を確認できませんでした。"}
+        return RedirectResponse(redirect_url, status_code=303)
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        target = db.execute(
+            "SELECT id FROM community_post WHERE id = ? AND deleted_at IS NULL",
+            (post_id,)
+        ).fetchone()
+        changed = bool(target)
+        if changed:
+            delete_community_subtrees(db, [post_id])
+        db.commit()
+    request.session["community_admin_notice"] = {
+        "type": "success" if changed else "error",
+        "message": "投稿を削除しました。" if changed else "削除対象の投稿が見つかりませんでした。"
+    }
+    return RedirectResponse(redirect_url, status_code=303)
+
+
+@app.get("/equipment-reservation", response_class=HTMLResponse)
+async def EquipmentReservationPage(request: Request):
+    today = datetime.date.today().isoformat()
+    return templates.TemplateResponse(
+        request=request,
+        name="equipment_reservation.html",
+        context={
+            "request": request,
+            "catalog": load_equipment_catalog(),
+            "selected_day": today,
+            "user_login": request.session.get("user_login"),
+            "user_id": request.session.get("user_id")
+        }
+    )
+
+@app.get("/registration")
+async def Registration(request: Request):
+    return templates.TemplateResponse(
+        request = request,
+        name = "registration.html",
+        context = {
+            "request": request
+        }
+    )
+
+@app.get("/school-registration")
+async def SchoolRegistration(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="school_registration.html",
+        context={"request": request},
+    )
+
+@app.get("/logout")
+async def Logout(request: Request):
+    role = request.query_params.get("role")
+    if role == "teacher":
+        for key in ("teacher_login", "teacher_id", "teacher_time"):
+            request.session.pop(key, None)
+        target = "/dashboard" if request.session.get("user_login") is True else "/login"
+        return RedirectResponse(target, status_code=303)
+    if role == "student":
+        chat_token = request.session.get("tekne_chat_session")
+        try:
+            revoke_chat_session(DATABASE_PATH, chat_token)
+            await tekne_chat_service.connections.close_session(chat_token)
+        except sqlite3.Error:
+            logging.exception("Failed to revoke TEKNE chat session during logout")
+        for key in ("user_login", "user_id", "user_time", "tekne_chat_session"):
+            request.session.pop(key, None)
+        target = "/teacher" if request.session.get("teacher_login") is True else "/login"
+        return RedirectResponse(target, status_code=303)
+    chat_token = request.session.get("tekne_chat_session")
+    try:
+        revoke_chat_session(DATABASE_PATH, chat_token)
+        await tekne_chat_service.connections.close_session(chat_token)
+    except sqlite3.Error:
+        logging.exception("Failed to revoke TEKNE chat session during logout")
+    request.session.pop("user_login", None)
+    request.session.pop("user_id", None)
+    request.session.pop("user_time", None)
+    request.session.pop("tekne_chat_session", None)
+    request.session.pop("teacher_login", None)
+    request.session.pop("teacher_id", None)
+    request.session.pop("teacher_time", None)
+    return templates.TemplateResponse(
+        request = request,
+        name = "logout.html"
+    )
+
+@app.get("/mypage")
+async def Mypage(request: Request):
+    user_id = request.session.get("user_id")
+
+    cursor.execute(
+        """
+        SELECT *
+        FROM student
+        WHERE id = ?
+        """,
+        (user_id,)
+    )
+
+    user = cursor.fetchone()
+    user_school = user[2]
+    current_profile_image = user[3] if len(user) > 3 else None
+
+    calendar_now = datetime.datetime.now(JST)
+    today = calendar_now.date().isoformat()
+    with closing(sqlite3.connect(DATABASE_PATH)) as calendar_db:
+        events = calendar_reservations(calendar_db, user_id, calendar_now)
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "mypage.html",
+        context = {
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": user_id,
+            "user_school": user_school,
+            "profile_image_url": profile_image_url(current_profile_image),
+            "calendar_events": events,
+            "calendar_today": today,
+            "mentor_reservation_csrf_token": mentor_csrf_token(request, "mypage_mentor_csrf"),
+            "mentor_reservation_notice": request.session.pop("mypage_mentor_notice", None),
+            "reservation_csrf_token": reservation_csrf_token(request, "mypage_reservation_csrf_token"),
+            "reservation_notice": request.session.pop("mypage_reservation_notice", None)
+        }
+    )
+
+@app.get("/mypage/edit")
+async def Edit(request: Request):
+    user_id = request.session.get("user_id")
+    cursor.execute("SELECT profile_image FROM student WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    current_profile_image = row[0] if row else None
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        student = db.execute("SELECT school FROM student WHERE id = ?", (user_id,)).fetchone()
+        fields = []
+        if student:
+            fields = db.execute("""SELECT f.*, v.value_json FROM student_custom_field f
+                LEFT JOIN student_custom_field_value v ON v.field_id=f.id AND v.student_id=?
+                WHERE f.school=? AND f.deleted_at IS NULL ORDER BY f.id""", (user_id, student["school"])).fetchall()
+        custom_fields = []
+        for field in fields:
+            item = dict(field)
+            item["options"] = json.loads(item["options_json"])
+            item["value"] = decode_custom_field_value(item["value_json"])
+            custom_fields.append(item)
+    return templates.TemplateResponse(
+        request = request,
+        name = "mypage/edit.html",
+        context = {
+            "request": request,
+            "user_login": request.session.get("user_login"),
+            "user_id": user_id,
+            "profile_image_url": profile_image_url(current_profile_image),
+            "has_profile_image": bool(current_profile_image),
+            "csrf_token": profile_csrf_token(request),
+            "profile_notice": request.session.pop("profile_notice", None),
+            "custom_fields": custom_fields,
+            "custom_fields_notice": request.session.pop("custom_fields_notice", None)
+        }
+    )
+
+
+@app.post("/mypage/edit/custom-fields")
+async def SaveStudentCustomFields(request: Request, csrf_token: str = Form("")):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not valid_profile_csrf(request, csrf_token):
+        request.session["custom_fields_notice"] = {"type": "error", "message": "操作を確認できませんでした。もう一度お試しください。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+    form = await request.form()
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        db.row_factory = sqlite3.Row
+        student = db.execute("SELECT school FROM student WHERE id=?", (user_id,)).fetchone()
+        if not student:
+            return RedirectResponse("/login", status_code=303)
+        fields = db.execute("SELECT * FROM student_custom_field WHERE school=? AND deleted_at IS NULL ORDER BY id", (student["school"],)).fetchall()
+        try:
+            values = []
+            for row in fields:
+                field = dict(row)
+                field["options"] = json.loads(field["options_json"])
+                raw = form.getlist(f"field_{field['id']}") if field["field_type"] == "multiselect" else form.get(f"field_{field['id']}")
+                value = validate_custom_field_value(field, raw)
+                values.append((user_id, field["id"], json.dumps(value, ensure_ascii=False), datetime.datetime.now(JST).isoformat()))
+            db.executemany("""INSERT INTO student_custom_field_value(student_id,field_id,value_json,updated_at)
+                VALUES(?,?,?,?) ON CONFLICT(student_id,field_id) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at""", values)
+            db.commit()
+        except ValueError as error:
+            request.session["custom_fields_notice"] = {"type": "error", "message": str(error)}
+            return RedirectResponse("/mypage/edit", status_code=303)
+    request.session["custom_fields_notice"] = {"type": "success", "message": "追加情報を保存しました。"}
+    return RedirectResponse("/mypage/edit", status_code=303)
+
+
+@app.post("/mypage/edit/profile-image")
+async def UpdateProfileImage(
+    request: Request,
+    profile_image: UploadFile = File(...),
+    csrf_token: str = Form("")
+):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not valid_profile_csrf(request, csrf_token):
+        request.session["profile_notice"] = {"type": "error", "message": "操作を確認できませんでした。もう一度お試しください。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+
+    suffix = Path(profile_image.filename or "").suffix.lower()
+    content_type = (profile_image.content_type or "").lower()
+    if suffix not in PROFILE_ALLOWED_SUFFIXES or content_type not in PROFILE_ALLOWED_CONTENT_TYPES:
+        request.session["profile_notice"] = {"type": "error", "message": "対応していない画像形式です。JPEG、PNG、WebPを選択してください。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+    contents = await profile_image.read(PROFILE_MAX_BYTES + 1)
+    await profile_image.close()
+    if len(contents) > PROFILE_MAX_BYTES:
+        request.session["profile_notice"] = {"type": "error", "message": "ファイルサイズが5MBを超えています。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+    processed, error = process_profile_image(contents)
+    if error:
+        request.session["profile_notice"] = {"type": "error", "message": error}
+        return RedirectResponse("/mypage/edit", status_code=303)
+
+    new_filename = f"{uuid4().hex}.webp"
+    final_path = PROFILE_UPLOADS_DIR / new_filename
+    temporary_path = PROFILE_UPLOADS_DIR / f".{new_filename}.tmp"
+    try:
+        temporary_path.write_bytes(processed)
+        temporary_path.replace(final_path)
+        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+            old_row = db.execute("SELECT profile_image FROM student WHERE id = ?", (user_id,)).fetchone()
+            if old_row is None:
+                raise RuntimeError("student not found")
+            old_filename = old_row[0]
+            db.execute("UPDATE student SET profile_image = ? WHERE id = ?", (new_filename, user_id))
+            db.commit()
+    except (OSError, sqlite3.Error, RuntimeError):
+        temporary_path.unlink(missing_ok=True)
+        final_path.unlink(missing_ok=True)
+        request.session["profile_notice"] = {"type": "error", "message": "プロフィール画像の保存に失敗しました。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+
+    delete_profile_file(old_filename)
+    request.session["profile_notice"] = {"type": "success", "message": "プロフィール画像を保存しました。"}
+    request.session["profile_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/mypage/edit", status_code=303)
+
+
+@app.post("/mypage/edit/profile-image/delete")
+async def DeleteProfileImage(request: Request, csrf_token: str = Form("")):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        return RedirectResponse("/login", status_code=303)
+    if not valid_profile_csrf(request, csrf_token):
+        request.session["profile_notice"] = {"type": "error", "message": "操作を確認できませんでした。もう一度お試しください。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+    try:
+        with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+            row = db.execute("SELECT profile_image FROM student WHERE id = ?", (user_id,)).fetchone()
+            if row is None:
+                raise RuntimeError("student not found")
+            old_filename = row[0]
+            db.execute("UPDATE student SET profile_image = NULL WHERE id = ?", (user_id,))
+            db.commit()
+    except (sqlite3.Error, RuntimeError):
+        request.session["profile_notice"] = {"type": "error", "message": "プロフィール画像の削除に失敗しました。"}
+        return RedirectResponse("/mypage/edit", status_code=303)
+    delete_profile_file(old_filename)
+    request.session["profile_notice"] = {"type": "success", "message": "プロフィール画像をデフォルトに戻しました。"}
+    request.session["profile_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/mypage/edit", status_code=303)
+
+@app.post("/mypage/reservation/{reservation_id}/cancel")
+async def CancelReservation(
+    request: Request,
+    reservation_id: int,
+    csrf_token: str = Form(...)
+):
+    user_id = request.session.get("user_id")
+    if not valid_reservation_csrf(request, csrf_token, "mypage_reservation_csrf_token"):
+        request.session["mypage_reservation_notice"] = {"type": "error", "message": "操作を確認できませんでした。"}
+        return RedirectResponse("/mypage", status_code=303)
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        reservation = db.execute("""
+            SELECT * FROM reservation
+            WHERE id = ? AND userid = ? AND status = 'active'
+        """, (reservation_id, user_id)).fetchone()
+        changed = False
+        if reservation is not None:
+            changed = db.execute(
+                """
+                UPDATE reservation
+                SET status = 'cancelled', cancelled_at = ?,
+                    cancelled_by_type = 'student', cancelled_by_id = ?
+                WHERE id = ? AND userid = ? AND status = 'active'
+                """,
+                (datetime.datetime.now(JST).isoformat(), user_id, reservation_id, user_id)
+            ).rowcount == 1
+            if changed:
+                create_notification(
+                    db, user_id, "TEKNE工作室の予約がキャンセルされました",
+                    reservation_body("tekne", reservation), "reservation_cancelled", "tekne", reservation["id"]
+                )
+        db.commit()
+    request.session["mypage_reservation_notice"] = {
+        "type": "success" if changed else "error",
+        "message": "予約をキャンセルしました。" if changed else "有効な予約が見つかりませんでした。"
+    }
+    request.session["mypage_reservation_csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse("/mypage", status_code=303)
+
+@app.post("/equipment-reservation")
+async def CreateEquipmentReservation(
+    request: Request,
+    equipment_id: str = Form(""),
+    equipment: str = Form(""),
+    start_day: str = Form(...),
+    end_day: str = Form(...),
+    quantity: int = Form(...),
+    purpose: str = Form(...),
+    note: str = Form("")
+):
+    catalog = load_equipment_catalog()
+    item = find_equipment(catalog, equipment_id=equipment_id, equipment_name=equipment)
+    if item is None:
+        raise HTTPException(status_code=400, detail="選択した器具は利用できません。")
+    if item["usage_type"] != "takeout":
+        raise HTTPException(status_code=400, detail="この器具は工作室内専用です。")
+    try:
+        start = datetime.date.fromisoformat(start_day)
+        end = datetime.date.fromisoformat(end_day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付の形式が正しくありません。")
+    if start < datetime.datetime.now(JST).date() or end < start:
+        raise HTTPException(status_code=400, detail="利用日を正しく指定してください。")
+    if (end - start).days + 1 > 7:
+        raise HTTPException(status_code=400, detail="貸出期間は最長7日間です。")
+    clean_purpose = purpose.strip()
+    clean_note = note.strip()
+    if quantity < 1 or not clean_purpose:
+        raise HTTPException(status_code=400, detail="数量と使用目的を入力してください。")
+    if len(clean_purpose) > 500 or len(clean_note) > 500:
+        raise HTTPException(status_code=400, detail="使用目的と備考は500文字以内で入力してください。")
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            availability = takeout_availability(item, start, end, db)
+            if quantity > availability["available"]:
+                db.rollback()
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"選択した期間は必要な数量を確保できません。利用可能数: {availability['available']}"
+                )
+            reservation_id = db.execute("""INSERT INTO equipment_reservation
+                (userid, equipment, start_day, end_day, quantity, purpose, note, equipment_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", (
+                    request.session.get("user_id"), item["name"], start.isoformat(),
+                    end.isoformat(), quantity, clean_purpose, clean_note, item["id"]
+                )).lastrowid
+            create_notification(
+                db, request.session.get("user_id"), "実験器具の予約を受け付けました",
+                reservation_body("equipment_takeout", {
+                    "equipment": item["name"], "start_day": start.isoformat(),
+                    "end_day": end.isoformat(), "quantity": quantity
+                }), "reservation_created", "equipment_takeout", reservation_id
+            )
+            db.commit()
+        except HTTPException:
+            raise
+        except Exception:
+            db.rollback()
+            raise
+    return {"result": True}
+
+@app.get("/mypage/equipment-reservation/{reservation_id}/cancel")
+async def CancelEquipmentReservation(request: Request, reservation_id: int):
+    user_id = request.session.get("user_id")
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        reservation = db.execute("SELECT * FROM equipment_reservation WHERE id = ? AND userid = ?", (reservation_id, user_id)).fetchone()
+        if reservation is not None:
+            deleted = db.execute("DELETE FROM equipment_reservation WHERE id = ? AND userid = ?", (reservation_id, user_id)).rowcount
+            if deleted == 1:
+                create_notification(
+                    db, user_id, "実験器具の予約がキャンセルされました",
+                    reservation_body("equipment_takeout", reservation), "reservation_cancelled",
+                    "equipment_takeout", reservation_id
+                )
+        db.commit()
+    return RedirectResponse("/mypage", status_code=303)
+
+@app.get("/equipment-availability")
+async def EquipmentAvailability(start_day: str, end_day: str, equipment_id: str = "", equipment: str = ""):
+    item = find_equipment(load_equipment_catalog(), equipment_id=equipment_id, equipment_name=equipment)
+    if item is None:
+        raise HTTPException(status_code=404, detail="器具が見つかりません。")
+    if item["usage_type"] != "takeout":
+        raise HTTPException(status_code=400, detail="この器具は工作室内専用です。")
+    try:
+        start = datetime.date.fromisoformat(start_day)
+        end = datetime.date.fromisoformat(end_day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付の形式が正しくありません。")
+    if start < datetime.datetime.now(JST).date() or end < start or (end - start).days + 1 > 7:
+        raise HTTPException(status_code=400, detail="利用期間は最長7日間で指定してください。")
+    availability = takeout_availability(item, start, end)
+    return {"count": item["count"], "available": availability["available"]}
+
+
+@app.get("/equipment-room-availability")
+async def EquipmentRoomAvailability(equipment_id: str, day: str):
+    item = find_equipment(load_equipment_catalog(), equipment_id=equipment_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="器具が見つかりません。")
+    if item["usage_type"] != "in_room":
+        raise HTTPException(status_code=400, detail="この器具は持ち出し用です。")
+    try:
+        use_day = datetime.date.fromisoformat(day)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付の形式が正しくありません。")
+    if use_day < datetime.datetime.now(JST).date():
+        raise HTTPException(status_code=400, detail="過去の日付は選択できません。")
+    return {"count": item["count"], "day": day, "slots": room_slot_availability(item, use_day)}
+
+
+@app.post("/equipment-room-reservation")
+async def CreateEquipmentRoomReservation(
+    request: Request,
+    equipment_id: str = Form(...),
+    use_day: str = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(...),
+    quantity: int = Form(...),
+    purpose: str = Form(...),
+    note: str = Form("")
+):
+    if request.session.get("user_login") is not True or not request.session.get("user_id"):
+        raise HTTPException(status_code=401, detail="ログインが必要です。")
+    item = find_equipment(load_equipment_catalog(), equipment_id=equipment_id)
+    if item is None:
+        raise HTTPException(status_code=400, detail="選択した器具は利用できません。")
+    if item["usage_type"] != "in_room":
+        raise HTTPException(status_code=400, detail="この器具は持ち出し用です。")
+    try:
+        reservation_day = datetime.date.fromisoformat(use_day)
+        parsed_start = datetime.datetime.strptime(start_time, "%H:%M").time()
+        parsed_end = datetime.datetime.strptime(end_time, "%H:%M").time()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="予約日時が正しくありません。")
+    reservation_start = datetime.datetime.combine(reservation_day, parsed_start, tzinfo=JST)
+    duration_minutes = (
+        datetime.datetime.combine(reservation_day, parsed_end, tzinfo=JST) - reservation_start
+    ).total_seconds() // 60
+    if (
+        reservation_start < datetime.datetime.now(JST) or
+        start_time != parsed_start.strftime("%H:%M") or
+        end_time != parsed_end.strftime("%H:%M") or
+        parsed_start < datetime.time(9, 0) or parsed_end > datetime.time(20, 30) or
+        duration_minutes < 30 or duration_minutes % 30 != 0 or
+        parsed_start.minute not in (0, 30) or parsed_end.minute not in (0, 30)
+    ):
+        raise HTTPException(status_code=400, detail="この時間帯は予約できません。")
+    clean_purpose = purpose.strip()
+    clean_note = note.strip()
+    if quantity < 1 or not clean_purpose:
+        raise HTTPException(status_code=400, detail="数量と使用目的を入力してください。")
+    if len(clean_purpose) > 500 or len(clean_note) > 500:
+        raise HTTPException(status_code=400, detail="使用目的と備考は500文字以内で入力してください。")
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            slots = room_slot_availability(item, reservation_day, db)
+            selected_slots = [
+                slot for slot in slots
+                if slot["start_time"] < end_time and slot["end_time"] > start_time
+            ]
+            if not selected_slots or any(slot["closed"] for slot in selected_slots):
+                db.rollback()
+                raise HTTPException(status_code=400, detail="この時間帯は予約できません。")
+            available = min(slot["available_quantity"] for slot in selected_slots)
+            if quantity > available:
+                db.rollback()
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"選択した時間帯は在庫が不足しています。利用可能数: {available}"
+                )
+            reservation_id = db.execute("""INSERT INTO equipment_room_reservation
+                (userid, equipment_id, equipment, use_day, start_time, end_time, quantity, purpose, note)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
+                    request.session.get("user_id"), item["id"], item["name"], reservation_day.isoformat(),
+                    start_time, end_time, quantity, clean_purpose, clean_note
+                )).lastrowid
+            create_notification(
+                db, request.session.get("user_id"), "実験器具の予約を受け付けました",
+                reservation_body("equipment_in_room", {
+                    "equipment": item["name"], "use_day": reservation_day.isoformat(),
+                    "start_time": start_time, "end_time": end_time, "quantity": quantity
+                }), "reservation_created", "equipment_in_room", reservation_id
+            )
+            db.commit()
+        except HTTPException:
+            raise
+        except Exception:
+            db.rollback()
+            raise
+    return {"result": True}
+
+
+@app.post("/mypage/equipment-room-reservation/{reservation_id}/cancel")
+async def CancelEquipmentRoomReservation(request: Request, reservation_id: int):
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        user_id = request.session.get("user_id")
+        reservation = db.execute(
+            "SELECT * FROM equipment_room_reservation WHERE id = ? AND userid = ?",
+            (reservation_id, user_id)
+        ).fetchone()
+        if reservation is not None:
+            deleted = db.execute(
+                "DELETE FROM equipment_room_reservation WHERE id = ? AND userid = ?", (reservation_id, user_id)
+            ).rowcount
+            if deleted == 1:
+                create_notification(
+                    db, user_id, "実験器具の予約がキャンセルされました",
+                    reservation_body("equipment_in_room", reservation), "reservation_cancelled",
+                    "equipment_in_room", reservation_id
+                )
+        db.commit()
+    return RedirectResponse("/mypage", status_code=303)
+
+#teacherページ
+@app.get("/teacher")
+async def teacher(request: Request):
+    teacher_id = request.session.get("teacher_id")
+
+    cursor.execute("""
+    SELECT *
+    FROM teacher
+    WHERE id = ?
+    """, (teacher_id,))
+
+    teacher_row = cursor.fetchone()
+    teacher_school = teacher_row[2]
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "teacher.html",
+        context = {
+            "request": request,
+            "teacher_login": request.session.get("teacher_login"),
+            "teacher_id": teacher_id,
+            "teacher_school": teacher_school,
+            "teacher_role": teacher_row[3]
+        }
+    )
+
+@app.get("/teacher/edit")
+async def Edit(request: Request):
+    teacher_id = request.session.get("teacher_id")
+
+    cursor.execute("""
+    SELECT school, role
+    FROM teacher
+    WHERE id = ?
+    """, (teacher_id,))
+    teacher = cursor.fetchone()
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "teacher/edit.html",
+        context = {
+            "request": request,
+            "teacher_login": request.session.get("teacher_login"),
+            "teacher_id": teacher_id,
+            "teacher_school": teacher[0] if teacher else "",
+            "teacher_role": teacher[1] if teacher else "teacher"
+        }
+    )
+
+
+def _is_finite_number(value):
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
+@app.get("/teacher/accounts", response_class=HTMLResponse)
+async def TeacherAccountsPage(request: Request):
+    teacher_id = request.session.get("teacher_id")
+    if request.session.get("teacher_login") is not True or not teacher_id:
+        return RedirectResponse("/login", status_code=303)
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.row_factory = sqlite3.Row
+        teacher = db.execute(
+            "SELECT school, role FROM teacher WHERE id = ?", (teacher_id,)
+        ).fetchone()
+        if teacher is None:
+            return RedirectResponse("/login", status_code=303)
+        fields = db.execute("SELECT * FROM student_custom_field WHERE school=? AND deleted_at IS NULL ORDER BY id", (teacher[0],)).fetchall()
+        students = db.execute("SELECT id, name, furigana FROM student WHERE school = ? ORDER BY id ASC, rowid ASC", (teacher[0],)).fetchall()
+        values = db.execute("""SELECT v.student_id,v.field_id,v.value_json FROM student_custom_field_value v
+            JOIN student s ON s.id=v.student_id JOIN student_custom_field f ON f.id=v.field_id
+            WHERE s.school=? AND f.school=? AND f.deleted_at IS NULL""", (teacher[0], teacher[0])).fetchall()
+        student_ids = [student["id"] for student in students]
+        submissions_by_student = {student_id: [] for student_id in student_ids}
+        if student_ids:
+            placeholders = ",".join("?" for _ in student_ids)
+            submissions = db.execute(f"""SELECT study.id, study.name, study.time, study.submission_kind,
+                    study.chat_group_name, study.userid
+                FROM study
+                WHERE (study.submission_kind='individual' AND study.userid IN ({placeholders}))
+                   OR (study.submission_kind='group' AND EXISTS (
+                       SELECT 1 FROM study_submission_member member
+                       WHERE member.study_id=study.id AND member.student_id_snapshot IN ({placeholders})
+                   ))
+                ORDER BY study.time DESC, study.id DESC""", (*student_ids, *student_ids)).fetchall()
+            for submission in submissions:
+                item = {"title": submission["name"], "time": submission["time"],
+                        "kind": submission["submission_kind"],
+                        "group_name": submission["chat_group_name"] if submission["submission_kind"] == "group" else ""}
+                if submission["submission_kind"] == "group":
+                    members = db.execute("SELECT student_id_snapshot FROM study_submission_member WHERE study_id=? ORDER BY position", (submission["id"],)).fetchall()
+                    for member in members:
+                        if member["student_id_snapshot"] in submissions_by_student:
+                            submissions_by_student[member["student_id_snapshot"]].append(item)
+                elif submission["userid"] in submissions_by_student:
+                    submissions_by_student[submission["userid"]].append(item)
+    value_map = {(row["student_id"], row["field_id"]): decode_custom_field_value(row["value_json"]) for row in values}
+    field_columns = []
+    for field in fields:
+        numeric_choices = []
+        if field["field_type"] == "select":
+            try:
+                numeric_choices = json.loads(field["options_json"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                numeric_choices = []
+        choices_are_numeric = bool(numeric_choices) and all(
+            str(choice).strip() and _is_finite_number(choice) for choice in numeric_choices
+        )
+        field_columns.append({"id": field["id"], "label": field["label"],
+                              "field_type": field["field_type"],
+                              "sortable_numeric": field["field_type"] == "number" or choices_are_numeric})
+    student_rows = [{"id": student["id"], "name": student["name"], "furigana": student["furigana"],
+                     "values": [value_map.get((student["id"], field["id"])) for field in fields],
+                     "submissions": submissions_by_student.get(student["id"], [])} for student in students]
+    csrf_token = request.session.setdefault("teacher_custom_fields_csrf", secrets.token_urlsafe(32))
+
+    return templates.TemplateResponse(
+        request=request,
+        name="teacher/accounts.html",
+        context={"request": request, "teacher_id": teacher_id, "teacher_role": teacher[1], "students": student_rows,
+                 "custom_fields": fields, "field_columns": field_columns,
+                 "field_types": STUDENT_CUSTOM_FIELD_TYPES, "csrf_token": csrf_token,
+                 "field_notice": request.session.pop("teacher_custom_fields_notice", None)}
+    )
+
+
+@app.get("/teacher/school-features", response_class=HTMLResponse)
+async def TeacherSchoolFeaturesPage(request: Request):
+    teacher_id = request.session.get("teacher_id")
+    if request.session.get("teacher_login") is not True or not teacher_id:
+        return RedirectResponse("/login", status_code=303)
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        initialize_teacher_roles(db)
+        teacher = db.execute(
+            "SELECT school, role FROM teacher WHERE id = ?", (teacher_id,)
+        ).fetchone()
+        if teacher is None:
+            return RedirectResponse("/login", status_code=303)
+        if teacher[1] != "super_teacher":
+            raise HTTPException(status_code=403, detail="このページを利用する権限がありません。")
+        school = teacher[0]
+        settings = school_feature_flags(db, school)
+
+    csrf_token = request.session.setdefault(
+        "teacher_school_features_csrf", secrets.token_urlsafe(32)
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="teacher/school_features.html",
+        context={
+            "request": request,
+            "teacher_id": teacher_id,
+            "teacher_role": teacher[1],
+            "school": school,
+            "features": STUDENT_FEATURES,
+            "settings": settings,
+            "csrf_token": csrf_token,
+            "notice": request.session.pop("teacher_school_features_notice", None),
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.post("/teacher/school-features")
+async def TeacherUpdateSchoolFeatures(request: Request, csrf_token: str = Form(...)):
+    teacher_id = request.session.get("teacher_id")
+    redirect = RedirectResponse("/teacher/school-features", status_code=303)
+    if request.session.get("teacher_login") is not True or not teacher_id:
+        return RedirectResponse("/login", status_code=303)
+
+    expected = request.session.get("teacher_school_features_csrf", "")
+    if not expected or not secrets.compare_digest(csrf_token, expected):
+        raise HTTPException(status_code=403, detail="CSRFトークンが不正です。")
+
+    form = await request.form()
+    allowed_fields = {f"enabled:{key}" for key in STUDENT_FEATURE_KEYS}
+    if any(key != "csrf_token" and key not in allowed_fields for key in form.keys()):
+        raise HTTPException(status_code=400, detail="設定値が不正です。")
+    for key in STUDENT_FEATURE_KEYS:
+        values = form.getlist(f"enabled:{key}")
+        if values not in ([], ["1"]):
+            raise HTTPException(status_code=400, detail="設定値が不正です。")
+    if form.getlist("csrf_token") != [csrf_token]:
+        raise HTTPException(status_code=400, detail="設定値が不正です。")
+
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        initialize_teacher_roles(db)
+        teacher = db.execute(
+            "SELECT school, role FROM teacher WHERE id = ?", (teacher_id,)
+        ).fetchone()
+        if teacher is None:
+            db.rollback()
+            return RedirectResponse("/login", status_code=303)
+        if teacher[1] != "super_teacher":
+            db.rollback()
+            raise HTTPException(status_code=403, detail="この操作を行う権限がありません。")
+
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        for feature in STUDENT_FEATURE_KEYS:
+            value = "1" if f"enabled:{feature}" in form else None
+            db.execute(
+                "INSERT INTO school_feature_setting(school,feature_key,enabled,updated_at) "
+                "VALUES(?,?,?,?) ON CONFLICT(school,feature_key) DO UPDATE "
+                "SET enabled=excluded.enabled,updated_at=excluded.updated_at",
+                (teacher[0], feature, int(value == "1"), now),
+            )
+        db.commit()
+
+    request.session["teacher_school_features_csrf"] = secrets.token_urlsafe(32)
+    request.session["teacher_school_features_notice"] = "自校の機能設定を保存しました。"
+    return redirect
+
+
+@app.post("/teacher/accounts/custom-fields")
+async def CreateStudentCustomField(request: Request, label: str = Form(""), field_type: str = Form(""),
+                                   required: str = Form("0"), options: str = Form(""), csrf_token: str = Form("")):
+    teacher_id = request.session.get("teacher_id")
+    if request.session.get("teacher_login") is not True or not teacher_id:
+        return RedirectResponse("/login", status_code=303)
+    expected = request.session.get("teacher_custom_fields_csrf", "")
+    if not expected or not secrets.compare_digest(csrf_token, expected):
+        request.session["teacher_custom_fields_notice"] = {"type": "error", "message": "操作を確認できませんでした。再読み込みしてください。"}
+        return RedirectResponse("/teacher/accounts", status_code=303)
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        teacher = db.execute("SELECT school FROM teacher WHERE id=?", (teacher_id,)).fetchone()
+        if not teacher:
+            return RedirectResponse("/login", status_code=303)
+        try:
+            label, field_type, required, options_list = validate_custom_field_definition(label, field_type, required, options)
+        except ValueError as error:
+            request.session["teacher_custom_fields_notice"] = {"type": "error", "message": str(error)}
+            return RedirectResponse("/teacher/accounts", status_code=303)
+        db.execute("INSERT INTO student_custom_field(school,label,field_type,required,options_json,created_at) VALUES(?,?,?,?,?,?)",
+                   (teacher[0], label, field_type, required, json.dumps(options_list, ensure_ascii=False), datetime.datetime.now(JST).isoformat()))
+        db.commit()
+    request.session["teacher_custom_fields_notice"] = {"type": "success", "message": "項目を追加しました。"}
+    return RedirectResponse("/teacher/accounts", status_code=303)
+
+
+@app.post("/teacher/accounts/custom-fields/{field_id}/delete")
+async def DeleteStudentCustomField(request: Request, field_id: int, csrf_token: str = Form("")):
+    teacher_id = request.session.get("teacher_id")
+    if request.session.get("teacher_login") is not True or not teacher_id:
+        return RedirectResponse("/login", status_code=303)
+    expected = request.session.get("teacher_custom_fields_csrf", "")
+    if not expected or not secrets.compare_digest(csrf_token, expected):
+        request.session["teacher_custom_fields_notice"] = {"type": "error", "message": "操作を確認できませんでした。再読み込みしてください。"}
+        return RedirectResponse("/teacher/accounts", status_code=303)
+    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as db:
+        teacher = db.execute("SELECT school FROM teacher WHERE id=?", (teacher_id,)).fetchone()
+        if not teacher:
+            return RedirectResponse("/login", status_code=303)
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            deleted = db.execute(
+                "UPDATE student_custom_field SET deleted_at=? WHERE id=? AND school=? AND deleted_at IS NULL",
+                (datetime.datetime.now(JST).isoformat(), field_id, teacher[0]),
+            )
+            if deleted.rowcount:
+                db.execute("DELETE FROM student_custom_field_value WHERE field_id=?", (field_id,))
+            db.commit()
+        except sqlite3.Error:
+            db.rollback()
+            raise
+    request.session["teacher_custom_fields_notice"] = {"type": "success", "message": "項目と保存済みの入力値を削除しました。"}
+    return RedirectResponse("/teacher/accounts", status_code=303)
+
+
+@app.get("/teacher/notifications", response_class=HTMLResponse)
+async def TeacherNotifications(request: Request, page: int = 1):
+    teacher_id = request.session.get("teacher_id")
+    page = max(1, page)
+    page_size = 20
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        teacher = db.execute(
+            "SELECT school, role FROM teacher WHERE id = ?", (teacher_id,)
+        ).fetchone()
+        if teacher is None:
+            return RedirectResponse("/login", status_code=303)
+        teacher_school = teacher[0]
+        students = db.execute(
+            "SELECT id FROM student WHERE school = ? ORDER BY id", (teacher_school,)
+        ).fetchall()
+        total = db.execute("""
+            SELECT COUNT(*) FROM notification_batch
+            WHERE sender_type = 'teacher' AND sender_school = ?
+        """, (teacher_school,)).fetchone()[0]
+        batches = db.execute("""
+            SELECT id, created_at, sender_id, title, body, target_label,
+                   notification_count
+            FROM notification_batch
+            WHERE sender_type = 'teacher' AND sender_school = ?
+            ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
+        """, (teacher_school, page_size, (page - 1) * page_size)).fetchall()
+        teacher_role = teacher[1]
+    return templates.TemplateResponse(
+        request=request,
+        name="teacher/notifications.html",
+        context={
+            "request": request,
+            "teacher_login": request.session.get("teacher_login"),
+            "teacher_id": teacher_id,
+            "teacher_role": teacher_role,
+            "students": students,
+            "batches": batches,
+            "page": page,
+            "has_previous": page > 1,
+            "has_next": page * page_size < total,
+            "csrf_token": notification_csrf_token(
+                request, "teacher_notification_csrf_token"
+            ),
+            "notice": request.session.pop("teacher_notification_notice", None),
+        }
+    )
+
+
+@app.post("/teacher/notifications/send")
+async def TeacherSendNotification(
+    request: Request,
+    target_type: str = Form(...),
+    student_id: str = Form(""),
+    title: str = Form(...),
+    body: str = Form(...),
+    csrf_token: str = Form(...),
+):
+    if not valid_notification_csrf(
+        request, csrf_token, "teacher_notification_csrf_token"
+    ):
+        raise HTTPException(status_code=403, detail="操作を確認できませんでした。")
+
+    redirect = RedirectResponse("/teacher/notifications", status_code=303)
+    clean_title, clean_body = title.strip(), body.strip()
+    if (
+        not clean_title or not clean_body
+        or len(clean_title) > 200 or len(clean_body) > 5000
+    ):
+        request.session["teacher_notification_notice"] = {
+            "type": "error",
+            "message": "タイトルは200文字、本文は5000文字以内で入力してください。",
+        }
+        return redirect
+
+    teacher_id = request.session.get("teacher_id")
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        teacher = db.execute(
+            "SELECT school FROM teacher WHERE id = ?", (teacher_id,)
+        ).fetchone()
+        if teacher is None:
+            return RedirectResponse("/login", status_code=303)
+        teacher_school = teacher[0]
+
+        if target_type == "student":
+            clean_student_id = student_id.strip()
+            recipients = [row[0] for row in db.execute(
+                "SELECT id FROM student WHERE id = ? AND school = ?",
+                (clean_student_id, teacher_school),
+            )]
+            target_value = clean_student_id
+            target_label = f"個人: {clean_student_id}"
+        elif target_type == "all":
+            recipients = [row[0] for row in db.execute(
+                "SELECT id FROM student WHERE school = ? ORDER BY id",
+                (teacher_school,),
+            )]
+            target_value = teacher_school
+            target_label = "自校の全生徒"
+        else:
+            recipients, target_value, target_label = [], None, ""
+
+        if not recipients:
+            request.session["teacher_notification_notice"] = {
+                "type": "error",
+                "message": "送信対象が見つかりませんでした。",
+            }
+            return redirect
+
+        try:
+            now = notification_now()
+            batch_id = db.execute("""
+                INSERT INTO notification_batch
+                    (target_type, target_value, target_label, title, body,
+                     sender_type, sender_name, notification_count, created_at,
+                     sender_school, sender_id)
+                VALUES (?, ?, ?, ?, ?, 'teacher', '先生', ?, ?, ?, ?)
+            """, (
+                target_type, target_value, target_label, clean_title, clean_body,
+                len(recipients), now, teacher_school, teacher_id,
+            )).lastrowid
+            for recipient in recipients:
+                create_notification(
+                    db,
+                    recipient,
+                    clean_title,
+                    clean_body,
+                    batch_id=batch_id,
+                    sender_type="teacher",
+                    sender_name=f"先生: {teacher_id}",
+                )
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+
+    request.session["teacher_notification_notice"] = {
+        "type": "success",
+        "message": f"{len(recipients)}人へ通知を送信しました。",
+    }
+    request.session["teacher_notification_csrf_token"] = secrets.token_urlsafe(32)
+    return redirect
+
+@app.get("/teacher/studylist", response_class = HTMLResponse)
+async def StudyList(request: Request):
+    if request.session.get("teacher_login") != True:
+        return RedirectResponse("/login", status_code=303)
+
+    teacher_id = request.session.get("teacher_id")
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        initialize_teacher_roles(db)
+        teacher = db.execute(
+            "SELECT school, role FROM teacher WHERE id = ?",
+            (teacher_id,)
+        ).fetchone()
+
+        studies = []
+        submission_details = {}
+        if teacher is not None:
+            studies = db.execute("""
+                SELECT study.*
+                FROM study
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM student
+                    WHERE student.id = study.userid
+                      AND student.school = ?
+                )
+                ORDER BY study.time DESC, study.id DESC
+            """, (teacher[0],)).fetchall()
+            submission_details = get_submission_collaboration(db, [study[0] for study in studies])
+
+    csrf_token = request.session.get("teacher_studylist_csrf_token")
+    if not csrf_token:
+        csrf_token = secrets.token_urlsafe(32)
+        request.session["teacher_studylist_csrf_token"] = csrf_token
+    delete_succeeded = request.session.pop("teacher_studylist_delete_succeeded", False)
+
+    return templates.TemplateResponse(
+        request = request,
+        name = "teacher/studylist.html",
+        context = {
+            "request": request,
+            "studies": studies,
+            "submission_details": submission_details,
+            "teacher_login": request.session.get("teacher_login"),
+            "teacher_id": teacher_id,
+            "teacher_role": teacher[1] if teacher else "teacher",
+            "csrf_token": csrf_token,
+            "delete_succeeded": delete_succeeded
+        }
+    )
+
+
+@app.post("/teacher/studylist/{study_id}/delete")
+async def TeacherDeleteStudy(
+    request: Request,
+    study_id: int,
+    csrf_token: str = Form("")
+):
+    redirect = RedirectResponse("/teacher/studylist", status_code=303)
+    if request.session.get("teacher_login") != True:
+        return RedirectResponse("/login", status_code=303)
+
+    expected_token = request.session.get("teacher_studylist_csrf_token")
+    if not expected_token or not secrets.compare_digest(expected_token, csrf_token):
+        return redirect
+
+    teacher_id = request.session.get("teacher_id")
+    study = None
+    image_names = []
+    with closing(connect_studies(DATABASE_PATH)) as db:
+        try:
+            teacher = db.execute(
+                "SELECT school FROM teacher WHERE id = ?",
+                (teacher_id,)
+            ).fetchone()
+            if teacher is None:
+                return redirect
+
+            study = db.execute("""
+                SELECT study.pdfpath
+                FROM study
+                WHERE study.id = ?
+                  AND EXISTS (
+                      SELECT 1
+                      FROM student
+                      WHERE student.id = study.userid
+                        AND student.school = ?
+                  )
+            """, (study_id, teacher[0])).fetchone()
+
+            if study is None:
+                return redirect
+
+            image_names = [row[0] for row in db.execute(
+                "SELECT stored_name FROM study_field_image WHERE study_id=?", (study_id,)).fetchall()]
+            deleted_count = db.execute("""
+                DELETE FROM study
+                WHERE id = ?
+                  AND EXISTS (
+                      SELECT 1
+                      FROM student
+                      WHERE student.id = study.userid
+                        AND student.school = ?
+                  )
+            """, (study_id, teacher[0])).rowcount
+            if deleted_count != 1:
+                db.rollback()
+                return redirect
+            db.commit()
+        except sqlite3.Error:
+            db.rollback()
+            return redirect
+
+    request.session["teacher_studylist_csrf_token"] = secrets.token_urlsafe(32)
+    pdfpath = study[0]
+    if pdfpath:
+        try:
+            target_path = study_file_path(UPLOADS_DIR, pdfpath)
+        except ValueError:
+            pass
+        else:
+            try:
+                target_path.unlink(missing_ok=True)
+            except OSError:
+                logging.exception("Failed to delete research file %s", target_path)
+    for stored_name in image_names:
+        try:
+            study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name).unlink(missing_ok=True)
+        except (ValueError, OSError):
+            logging.exception("Failed to delete research image %s", stored_name)
+
+    request.session["teacher_studylist_delete_succeeded"] = True
+    return redirect
+
+#仮 request.sessionをfalseにする
+@app.get("/reset")
+async def Reset(request: Request):
+    request.session["teacher_login"] = False
+    request.session["user_login"] = False
+
+#仮 sessionの中を確認
+@app.get("/session")
+async def Session(request: Request):
+    return request.session
+
+
+#post関数
+@app.post("/login")
+async def Login(
+    request: Request,
+    type: str = Form(...),
+    id: str = Form(...),
+    pwd: str = Form(...)
+):
+    if type == "student":
+        #dbからチェック
+        cursor.execute(
+            "SELECT * FROM student WHERE id = ?",
+            (id,)
+        )
+        
+        #入力情報と照合
+        hashed_pwd = cursor.fetchone()
+        if hashed_pwd is None:
+            return {"result": False}
+        else:    
+            pwdcheck = bcrypt.checkpw(
+                pwd.encode(),
+                hashed_pwd[1].encode()
+            )
+
+        if pwdcheck:
+            chat_token = request.session.get("tekne_chat_session")
+            revoke_chat_session(DATABASE_PATH, chat_token)
+            await tekne_chat_service.connections.close_session(chat_token)
+            request.session["user_login"] = True
+            request.session["user_id"] = id
+            request.session["user_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            request.session["tekne_chat_session"] = create_chat_session(DATABASE_PATH, id)
+            return {"result": True}
+        else:
+            return {"result": False}
+    
+    elif type == "teacher":
+        #dbからチェック
+        cursor.execute(
+            "SELECT * FROM teacher WHERE id = ?",
+            (id,)
+        )
+        
+        #入力情報と照合
+        hashed_pwd = cursor.fetchone()
+        if hashed_pwd is None:
+            return {"result": False}
+        else:    
+            pwdcheck = bcrypt.checkpw(
+                pwd.encode(),
+                hashed_pwd[1].encode()
+            )
+
+        if pwdcheck:
+            request.session["teacher_login"] = True
+            request.session["teacher_id"] = id
+            request.session["teacher_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            return {"result": True}
+        else:
+            return {"result": False}
+
+@app.post("/registration")
+async def Registration(
+    request: Request,
+    type: str = Form(...),
+    id: str = Form(""),
+    pwd: str = Form(""),
+    school_id: str = Form(""),
+    email: str = Form("")
+):
+    #生徒用
+    if type == "student":
+        # メールはUIだけで受け取り保存しない。将来有効化する際は正規化と一意制約を追加する。
+        return {"result": 3, "message": "未実装の機能です"}
+    #先生用
+    elif type == "teacher":
+        source_ip = request.client.host if request.client else "unknown"
+        result = await run_in_threadpool(
+            register_school_teacher,
+            DATABASE_PATH,
+            id,
+            pwd,
+            school_id,
+            source_ip,
+        )
+        if result == "created":
+            return {"result": 0, "message": "登録しました"}
+        if result == "duplicate":
+            return {"result": 2, "message": "そのIDはすでに使用されています。"}
+        if result == "rate_limited":
+            return JSONResponse(status_code=429, content={"result": 1, "message": "時間をおいて再度お試しください。"})
+        if result == "unavailable":
+            return JSONResponse(status_code=500, content={"result": 1, "message": "登録できませんでした。時間をおいて再度お試しください。"})
+        return JSONResponse(status_code=400, content={"result": 1, "message": "ID・パスワード・学校コードを確認してください。"})
+
+@app.post("/school-registration")
+async def SchoolRegistrationPost(
+    request: Request,
+    id: str = Form(...),
+    pwd: str = Form(...),
+    school_id: str = Form(...),
+    name: str = Form(...),
+    furigana: str = Form(...),
+):
+    source_ip = request.client.host if request.client else "unknown"
+    result = await run_in_threadpool(
+        register_school_student,
+        DATABASE_PATH,
+        id,
+        pwd,
+        school_id,
+        source_ip,
+        name,
+        furigana,
+    )
+    if result == "created":
+        return {"result": 0, "message": "登録しました"}
+    if result == "rate_limited":
+        return JSONResponse(
+            status_code=429,
+            content={"result": 1, "message": "時間をおいて再度お試しください。"},
+        )
+    if result == "duplicate":
+        return JSONResponse(
+            status_code=409,
+            content={"result": 2, "message": "そのIDはすでに使用されています。"},
+        )
+    if result == "unavailable":
+        return JSONResponse(
+            status_code=500,
+            content={"result": 1, "message": "登録できませんでした。時間をおいて再度お試しください。"},
+        )
+    return JSONResponse(
+        status_code=400,
+        content={"result": 1, "message": "入力内容を確認してください。"},
+    )
+
+@app.post("/addform")
+async def Add(request: Request):
+    user_id = request.session.get("user_id")
+    if request.session.get("user_login") is not True or not user_id:
+        raise HTTPException(401, "ログインしてください。")
+    async with request.form(max_part_size=2**63 - 1) as form:
+        def text_value(key, default=""):
+            value = form.get(key, default)
+            if not isinstance(value, str) or len(form.getlist(key)) > 1:
+                raise HTTPException(422, "入力形式が不正です。")
+            return value
+
+        csrf = request.session.get("study_csrf_token", "")
+        if not csrf or not secrets.compare_digest(csrf.encode(), text_value("csrf_token").encode()):
+            raise HTTPException(403, "画面を再読み込みして登録してください。")
+        token = text_value("submission_token")
+        nonce, separator, signature = token.partition(".")
+        expected = hmac.new(csrf.encode(), nonce.encode(), hashlib.sha256).hexdigest()
+        if len(nonce) != 64 or not separator or not secrets.compare_digest(signature.encode(), expected.encode()):
+            raise HTTPException(403, "送信情報が不正です。画面を再読み込みしてください。")
+        submission_key = hashlib.sha256((str(user_id) + ":" + token).encode()).hexdigest()
+        mode = text_value("registration_type")
+        if mode not in ("pdf", "template"):
+            raise HTTPException(422, "登録方式を選択してください。")
+        submission_kind = text_value("submission_kind", "individual")
+        if submission_kind not in ("individual", "group"):
+            raise HTTPException(422, "提出区分を選択してください。")
+        group_id = text_value("chat_group_id")
+        if submission_kind == "group" and not group_id:
+            raise HTTPException(422, "提出するグループを選択してください。")
+        if submission_kind == "individual" and group_id:
+            raise HTTPException(422, "個人提出ではグループを指定できません。")
+        name = text_value("name")
+        introduce = text_value("introduce")
+        if not name.strip():
+            raise HTTPException(422, "名前を入力してください。")
+        if not introduce.strip():
+            raise HTTPException(422, "紹介文を入力してください。")
+        temporary = final = None
+        created_image_paths = []
+        try:
+            with closing(connect_studies(DATABASE_PATH)) as db:
+                # Serialize duplicate requests before checking the unique key.
+                with db:
+                    db.execute("BEGIN IMMEDIATE")
+                    previous = db.execute("SELECT id FROM study WHERE submission_key = ?", (submission_key,)).fetchone()
+                    if previous:
+                        return JSONResponse({"ok": True, "id": previous[0]})
+                    if not db.execute("SELECT 1 FROM student WHERE id = ?", (user_id,)).fetchone():
+                        raise HTTPException(401, "ログインし直してください。")
+                    group_snapshot = None
+                    if submission_kind == "group":
+                        try:
+                            group_snapshot = tekne_chat_service.submission_group_snapshot(db, request.session, group_id)
+                        except HTTPException as exc:
+                            if exc.status_code in (401, 403, 404):
+                                raise HTTPException(422, "選択したグループに現在参加していません。画面を再読み込みしてください。")
+                            raise
+                    template_id, values, image_values, filename, pdfpath = None, [], [], "", ""
+                    if mode == "template":
+                        try:
+                            template_id = int(text_value("template_id"))
+                        except ValueError:
+                            raise HTTPException(422, "テンプレートを選択してください。")
+                        template = db.execute("SELECT id FROM study_template WHERE id = ? AND active = 1", (template_id,)).fetchone()
+                        if not template:
+                            raise HTTPException(422, "選択されたテンプレートは利用できません。")
+                        fields = db.execute("SELECT id, label, required, max_length, field_type FROM study_template_field WHERE template_id = ? ORDER BY position, id", (template_id,)).fetchall()
+                        allowed = set()
+                        for field_id, _label, _required, _max_length, field_type in fields:
+                            allowed.add(("field_" if field_type == "text" else "image_") + str(field_id))
+                            if field_type == "image":
+                                allowed.add(f"caption_{field_id}")
+                        if any((key.startswith("field_") or key.startswith("image_") or key.startswith("caption_")) and key not in allowed for key in form):
+                            raise HTTPException(422, "テンプレートに存在しない項目が含まれています。")
+                        for field_id, label, required, max_length, field_type in fields:
+                            if field_type == "text":
+                                value = text_value(f"field_{field_id}").replace('\r\n', '\n').replace('\r', '\n')
+                                if required and not value.strip():
+                                    raise HTTPException(422, f"「{label}」を入力してください。")
+                                if max_length and len(value) > max_length:
+                                    raise HTTPException(422, f"「{label}」は{max_length}文字以内で入力してください。")
+                                values.append((field_id, value))
+                                continue
+                            uploads = form.getlist(f"image_{field_id}")
+                            captions = form.getlist(f"caption_{field_id}")
+                            if required and not uploads:
+                                raise HTTPException(422, f"「{label}」の画像を1枚以上選択してください。")
+                            if len(uploads) > 4:
+                                raise HTTPException(422, f"「{label}」の画像は最大4枚です。")
+                            if len(uploads) != len(captions):
+                                raise HTTPException(422, f"「{label}」の画像と説明の数が一致しません。")
+                            for position, (upload, caption) in enumerate(zip(uploads, captions)):
+                                if not isinstance(upload, StarletteUploadFile) or not isinstance(caption, str):
+                                    raise HTTPException(422, "画像の入力形式が不正です。")
+                                caption = caption.strip()
+                                if not caption:
+                                    raise HTTPException(422, f"「{label}」の画像説明を入力してください。")
+                                if len(caption) > 50:
+                                    raise HTTPException(422, f"「{label}」の画像説明は50文字以内で入力してください。")
+                                try:
+                                    content, image_format, width, height, suffix, original_name = normalize_study_image(upload)
+                                except ValueError as exc:
+                                    raise HTTPException(422, f"「{label}」: {exc}")
+                                stored_name = uuid4().hex + suffix
+                                image_final = study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name)
+                                image_temporary = image_final.with_name("." + image_final.name + ".tmp")
+                                created_image_paths.append(image_temporary)
+                                with image_temporary.open("xb") as output:
+                                    output.write(content)
+                                image_temporary.replace(image_final)
+                                created_image_paths.remove(image_temporary)
+                                created_image_paths.append(image_final)
+                                image_values.append((field_id, position, stored_name, original_name,
+                                                     caption, image_format, width, height))
+                    else:
+                        upload = form.get("pdf")
+                        if not isinstance(upload, StarletteUploadFile) or len(form.getlist("pdf")) != 1:
+                            raise HTTPException(422, "研究成果ファイルを1つ選択してください。")
+                        filename = upload.filename.replace("\\", "/").rsplit("/", 1)[-1]
+                        filename = "".join(char for char in filename if ord(char) >= 32 and ord(char) != 127)
+                        if not filename:
+                            raise HTTPException(422, "ファイル名を確認してください。")
+                        upload.file.seek(0, 2)
+                        size = upload.file.tell()
+                        upload.file.seek(0)
+                        if size > STUDY_UPLOAD_MAX_BYTES:
+                            raise HTTPException(413, "ファイルは100MB以内にしてください。")
+                        if Path(filename).suffix.lower() == ".pdf":
+                            try:
+                                validate_pdf(upload)
+                            except ValueError as exc:
+                                raise HTTPException(422, str(exc))
+                        suffix = Path(filename).suffix.lower()
+                        pdfpath = uuid4().hex + suffix
+                        final = study_file_path(UPLOADS_DIR, pdfpath)
+                        temporary = final.with_suffix(".tmp")
+                        with temporary.open("xb") as output:
+                            shutil.copyfileobj(upload.file, output)
+                        temporary.replace(final)
+                    result = db.execute("""INSERT INTO study
+                        (name, introduce, filename, pdfpath, userid, time, registration_type, template_id, submission_key,
+                         submission_kind, chat_group_id, chat_group_name)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
+                            name, introduce, filename, pdfpath, user_id,
+                            datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"), mode, template_id, submission_key,
+                            submission_kind, group_snapshot["id"] if group_snapshot else None,
+                            group_snapshot["name"] if group_snapshot else None))
+                    study_id = result.lastrowid
+                    if group_snapshot:
+                        db.executemany("""INSERT INTO study_submission_member
+                            (study_id, tekne_student_id, student_id_snapshot, position) VALUES (?, ?, ?, ?)""",
+                            [(study_id, member[0], member[1], position)
+                             for position, member in enumerate(group_snapshot["members"])])
+                    db.executemany("INSERT INTO study_field_value(study_id, field_id, value) VALUES (?, ?, ?)",
+                                   [(study_id, field_id, value) for field_id, value in values])
+                    db.executemany("""INSERT INTO study_field_image
+                        (study_id,field_id,position,stored_name,original_name,caption,image_format,width,height)
+                        VALUES (?,?,?,?,?,?,?,?,?)""",
+                        [(study_id, *value) for value in image_values])
+            return JSONResponse({"ok": True, "id": study_id}, status_code=201)
+        except Exception as exc:
+            for path in (temporary, final):
+                if path is not None:
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError:
+                        logging.exception("Failed to clean research file %s", path)
+            for path in created_image_paths:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    logging.exception("Failed to clean research image %s", path)
+            if isinstance(exc, HTTPException):
+                raise
+            logging.exception("Research submission failed")
+            raise HTTPException(500, "登録に失敗しました。時間をおいて再度お試しください。")
+
+@app.post("/reservation/date")
+async def ReservationDate(
+    request: Request,
+    day: str = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(...),
+    purpose: str = Form(...),
+    people_count: str = Form(...),
+    csrf_token: str = Form(...)
+):
+    if not valid_reservation_csrf(request, csrf_token):
+        return JSONResponse(
+            {"result": False, "message": "操作を確認できませんでした。ページを再読み込みしてください。"},
+            status_code=403
+        )
+    try:
+        if not people_count.isascii() or not people_count.isdecimal():
+            raise ValueError
+        people_count_value = int(people_count)
+        if people_count_value < 1 or people_count_value > 9223372036854775807:
+            raise ValueError
+    except (AttributeError, ValueError):
+        return JSONResponse(
+            {"result": False, "message": "利用人数は1以上の整数で入力してください。"},
+            status_code=400
+        )
+    try:
+        reservation_day = datetime.date.fromisoformat(day)
+        parsed_start = datetime.datetime.strptime(start_time, "%H:%M").time()
+        parsed_end = datetime.datetime.strptime(end_time, "%H:%M").time()
+    except ValueError:
+        return JSONResponse(
+            {"result": False, "message": "予約日時が正しくありません。"},
+            status_code=400
+        )
+
+    reservation_start = datetime.datetime.combine(reservation_day, parsed_start, tzinfo=JST)
+    reservation_end = datetime.datetime.combine(reservation_day, parsed_end, tzinfo=JST)
+    duration_minutes = int((reservation_end - reservation_start).total_seconds() // 60)
+    if (
+        reservation_start < datetime.datetime.now(JST) or
+        duration_minutes <= 0 or
+        duration_minutes > 180 or
+        duration_minutes % 30 != 0 or
+        parsed_start.minute not in (0, 30) or
+        parsed_end.minute not in (0, 30) or
+        parsed_start < datetime.time(9, 0) or
+        parsed_end > datetime.time(22, 0)
+    ):
+        return JSONResponse(
+            {"result": False, "message": "予約時間は当日以降の9:00〜22:00から、30分単位・3時間以内で選択してください。"},
+            status_code=400
+        )
+
+    if not purpose.strip():
+        return JSONResponse(
+            {"result": False, "message": "使用目的を入力してください。"},
+            status_code=400
+        )
+
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        configured_slots = {
+            row[0] for row in db.execute(
+                "SELECT start_time FROM reservation_available_slot WHERE day = ?",
+                (reservation_day.isoformat(),)
+            ).fetchall()
+        }
+        required_slots = reservation_slot_range(start_time, end_time)
+        if any(slot_time not in configured_slots for slot_time in required_slots):
+            db.rollback()
+            return JSONResponse(
+                {"result": False, "message": "選択した時間帯は予約可能時間外です。空き状況を更新してください。"},
+                status_code=409
+            )
+
+        overlap = db.execute("""
+            SELECT 1 FROM reservation
+            WHERE userid = ? AND day = ? AND status = 'active'
+              AND start_time < ? AND end_time > ?
+            LIMIT 1
+        """, (request.session.get("user_id"), reservation_day.isoformat(), end_time, start_time)).fetchone()
+        if overlap:
+            db.rollback()
+            return JSONResponse(
+                {"result": False, "message": "同じ時間帯にすでに予約があります。"},
+                status_code=409
+            )
+
+        reservation_id = db.execute(
+            """
+            INSERT INTO reservation
+                (userid, day, start_time, end_time, purpose, people_count, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+            """,
+            (
+                request.session.get("user_id"),
+                reservation_day.isoformat(),
+                start_time,
+                end_time,
+                purpose.strip(),
+                people_count_value,
+                datetime.datetime.now(JST).isoformat()
+            )
+        ).lastrowid
+        create_notification(
+            db, request.session.get("user_id"), "TEKNE工作室の予約を受け付けました",
+            reservation_body("tekne", {
+                "day": reservation_day.isoformat(), "start_time": start_time,
+                "end_time": end_time, "purpose": purpose.strip(),
+                "people_count": people_count_value
+            }), "reservation_created", "tekne", reservation_id
+        )
+        db.commit()
+
+    return {"result": True, "message": "予約が完了しました。マイページで予約を確認できます。"}
+
+@app.post("/mypage/edit/id")
+async def Edit(
+    request: Request,
+    old_pwd: str = Form(...),
+    new_id: str= Form(...)
+):
+    current_id = request.session.get("user_id")
+    #dbからチェック
+    cursor.execute(
+        "SELECT * FROM student WHERE id = ?",
+        (current_id,)
+    )
+    
+    #入力情報と照合
+    hashed_pwd = cursor.fetchone()
+    if hashed_pwd is None:
+        return {"result": False}
+    else:    
+        pwdcheck = bcrypt.checkpw(
+            old_pwd.encode(),
+            hashed_pwd[1].encode()
+        )
+
+    if pwdcheck:
+        #IDがかぶっていないかチェック
+        cursor.execute(
+            "SELECT * FROM student WHERE id = ?",
+            (new_id,)
+        )
+
+        if cursor.fetchone() != None:
+            return {"result": 1}
+        else:
+            if(
+                new_id.isascii() and
+                len(new_id) > 7
+            ):
+                try:
+                    with closing(sqlite3.connect(DATABASE_PATH, timeout=10)) as identity_db:
+                        identity_db.execute("BEGIN IMMEDIATE")
+                        rename_student_identity(identity_db, current_id, new_id)
+                        changed = identity_db.execute("UPDATE student SET id=? WHERE id=?", (new_id, current_id)).rowcount
+                        if changed != 1:
+                            identity_db.rollback()
+                            return {"result": False}
+                        identity_db.commit()
+                    await tekne_chat_service.connections.close_login_id(current_id)
+                    request.session["user_id"] = new_id
+                    return {"result": 3}
+                except Exception:
+                    logging.exception("Failed to update student chat identity during ID change")
+                    return {"result": False}
+            else:
+                return {"result": 2}
+    else:
+        return {"result": 0}
+
+@app.post("/mypage/edit/pwd")
+async def Edit(
+    request: Request,
+    old_pwd: str = Form(...),
+    new_pwd: str= Form(...)
+):
+    current_id = request.session.get("user_id")
+    #dbからチェック
+    cursor.execute(
+        "SELECT * FROM student WHERE id = ?",
+        (current_id,)
+    )
+    
+    #入力情報と照合
+    hashed_pwd = cursor.fetchone()
+    if hashed_pwd is None:
+        return {"result": False}
+    else:    
+        pwdcheck = bcrypt.checkpw(
+            old_pwd.encode(),
+            hashed_pwd[1].encode()
+        )
+
+    if pwdcheck:
+        if(
+            new_pwd.isascii() and
+            len(new_pwd) > 7 and
+            any(i.isalpha() for i in new_pwd) and
+            any(i.isdigit() for i in new_pwd)
+        ):
+            new_hashed_pwd = bcrypt.hashpw(
+                new_pwd.encode(),
+                bcrypt.gensalt()
+            ).decode()
+            cursor.execute("""
+            UPDATE student
+            SET pwd = ?
+            WHERE id = ?
+            """, (new_hashed_pwd, current_id))
+            conn.commit()
+
+            return {"result": 2}
+        else:
+            return {"result": 1}
+    else:
+        return {"result": 0}
+
+@app.post("/teacher/edit/id")
+async def Edit(
+    request: Request,
+    old_id: str = Form(...),
+    old_pwd: str = Form(...),
+    new_id: str= Form(...)
+):
+    #dbからチェック
+    cursor.execute(
+        "SELECT * FROM teacher WHERE id = ?",
+        (old_id,)
+    )
+    
+    #入力情報と照合
+    hashed_pwd = cursor.fetchone()
+    if hashed_pwd is None:
+        return {"result": False}
+    else:    
+        pwdcheck = bcrypt.checkpw(
+            old_pwd.encode(),
+            hashed_pwd[1].encode()
+        )
+
+    if pwdcheck:
+        #IDがかぶっていないかチェック
+        cursor.execute(
+            "SELECT * FROM teacher WHERE id = ?",
+            (new_id,)
+        )
+
+        if cursor.fetchone() != None:
+            return {"result": 1}
+        else:
+            if(
+                new_id.isascii() and
+                len(new_id) > 7
+            ):
+                cursor.execute("""
+                UPDATE teacher
+                SET id = ?
+                WHERE id = ?
+                """, (new_id, old_id))
+                conn.commit()
+                request.session["teacher_id"] = new_id
+                return {"result": 3}
+            else:
+                return {"result": 2}
+    else:
+        return {"result": 0}
+
+@app.post("/teacher/edit/pwd")
+async def Edit(
+    request: Request,
+    old_id: str = Form(...),
+    old_pwd: str = Form(...),
+    new_pwd: str= Form(...)
+):
+    #dbからチェック
+    cursor.execute(
+        "SELECT * FROM teacher WHERE id = ?",
+        (old_id,)
+    )
+    
+    #入力情報と照合
+    hashed_pwd = cursor.fetchone()
+    if hashed_pwd is None:
+        return {"result": False}
+    else:    
+        pwdcheck = bcrypt.checkpw(
+            old_pwd.encode(),
+            hashed_pwd[1].encode()
+        )
+
+    if pwdcheck:
+        if(
+            new_pwd.isascii() and
+            len(new_pwd) > 7 and
+            any(i.isalpha() for i in new_pwd) and
+            any(i.isdigit() for i in new_pwd)
+        ):
+            new_hashed_pwd = bcrypt.hashpw(
+                new_pwd.encode(),
+                bcrypt.gensalt()
+            ).decode()
+            cursor.execute("""
+            UPDATE teacher
+            SET pwd = ?
+            WHERE id = ?
+            """, (new_hashed_pwd, old_id))
+            conn.commit()
+
+            return {"result": 2}
+        else:
+            return {"result": 1}
+    else:
+        return {"result": 0}

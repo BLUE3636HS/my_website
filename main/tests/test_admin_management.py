@@ -17,6 +17,7 @@ import main
 import create_admin
 from admin_management import initialize_admin_roles, migrate_admin_database, build_admin_router, build_password_router, session_secret
 from mentor_reservations import initialize_mentor_tables, build_router as build_mentor_router
+from notifications import initialize_notification_tables
 
 
 class AdminManagementTests(unittest.TestCase):
@@ -31,11 +32,14 @@ class AdminManagementTests(unittest.TestCase):
             db.executemany('INSERT INTO admin VALUES (?,?)', [('26A001', self.hash), ('ordinary', self.hash)])
             initialize_admin_roles(db)
             initialize_mentor_tables(db)
+            initialize_notification_tables(db)
             db.commit()
         self.app = FastAPI()
         templates = Jinja2Templates(directory=str(Path(main.__file__).parent / 'templates'),
             context_processors=[main.admin_template_context])
-        self.app.include_router(build_admin_router(self.path, templates))
+        self.image_dir = Path(self.temp.name) / 'images'
+        self.image_dir.mkdir()
+        self.app.include_router(build_admin_router(self.path, templates, self.image_dir))
         self.app.include_router(build_password_router(self.path))
         self.app.include_router(build_mentor_router(self.path, templates, Path(self.temp.name) / 'images'))
         self.app.add_api_route('/admin/login', main.AdminLogin, methods=['POST'])
@@ -100,7 +104,8 @@ class AdminManagementTests(unittest.TestCase):
             self.assertEqual(self.http(url)[0], 303)
         for url in ('/admin/administrators/new', '/admin/administrators/delete'):
             self.assertEqual(self.http(url, ordinary, 'POST', {'admin_id': 'victim', 'name': 'Name',
-                'password': self.password, 'csrf_token': 'x', 'role': 'super_admin'})[0], 403)
+                'password': self.password, 'csrf_token': 'x', 'role': 'super_admin',
+                'reauth_admin_id': 'ordinary', 'reauth_admin_password': self.password})[0], 403)
         super_cookie = self.login('26A001')
         status, html, _ = self.http('/admin/administrators', super_cookie)
         self.assertEqual(status, 200)
@@ -184,37 +189,53 @@ class AdminManagementTests(unittest.TestCase):
         self.assertEqual(self.db.execute("SELECT name FROM admin WHERE id='new'").fetchone()[0], '')
         self.assertNotIn(row[0], html)
 
-    def test_delete_protection_history_and_session_revocation(self):
+    def test_suspend_resume_and_permanent_delete(self):
         super_cookie = self.login('26A001')
         ordinary_cookie = self.login('ordinary')
         token, super_cookie = self.token(super_cookie)
-        data = {'admin_id': 'ordinary', 'csrf_token': token}
+        data = {'admin_id': 'ordinary', 'csrf_token': token,
+                'reauth_admin_id': '26A001', 'reauth_admin_password': self.password}
         self.assertEqual(self.http('/admin/administrators/delete', super_cookie, 'POST', dict(data, admin_id='26A001'))[0], 403)
         self.assertEqual(self.http('/admin/administrators/delete', super_cookie, 'POST', dict(data, csrf_token='bad'))[0], 403)
-        self.db.execute("INSERT INTO mentor_profile(admin_id,display_name,is_published,created_at,updated_at) VALUES ('ordinary','Keep',1,'now','now')")
+        image = self.image_dir / 'ordinary.webp'
+        image.write_bytes(b'image')
+        self.db.execute("INSERT INTO mentor_profile(admin_id,display_name,is_published,profile_image,created_at,updated_at) VALUES ('ordinary','Keep',1,'ordinary.webp','now','now')")
         self.db.execute("""INSERT INTO mentor_reservation(student_id,mentor_admin_id,day,start_time,end_time,meeting_type,consultation,created_at)
             VALUES('s','ordinary','2099-01-01','13:00','13:30','offline','Keep history','now')""")
+        self.db.execute("INSERT INTO admin_notification(recipient_admin_id,title,body,created_at,notification_type) VALUES('ordinary','title','body','now','test')")
         self.db.commit()
+        # Active accounts cannot be purged; suspension is a separate action.
         self.assertEqual(self.http('/admin/administrators/delete', super_cookie, 'POST', data)[0], 409)
         self.assertEqual(self.http('/admin/mypage', ordinary_cookie)[0], 200)
+        self.assertEqual(self.http('/admin/administrators/suspend', super_cookie, 'POST', data)[0], 303)
+        self.assertEqual(self.http('/admin/mypage', ordinary_cookie)[0], 303)
+        self.assertEqual(self.http('/admin/login', method='POST', data={'id': 'ordinary', 'pwd': self.password})[0], 401)
+        self.assertEqual(self.db.execute('SELECT display_name,is_published,profile_image FROM mentor_profile').fetchone(), ('Keep', 1, 'ordinary.webp'))
+        self.assertTrue(image.exists())
+        _, html, _ = self.http('/admin/administrators', super_cookie)
+        self.assertIn('name="reauth_admin_id"', html)
+        self.assertIn('name="reauth_admin_password"', html)
+        self.assertEqual(self.http('/admin/administrators/delete', super_cookie, 'POST', dict(data, reauth_admin_password='wrong-password'))[0], 403)
+        self.assertEqual(self.http('/admin/administrators/delete', super_cookie, 'POST', dict(data, reauth_admin_id='wrong-id'))[0], 403)
+        self.assertIsNotNone(self.db.execute("SELECT 1 FROM admin WHERE id='ordinary'").fetchone())
+        self.assertEqual(self.http('/admin/administrators/resume', super_cookie, 'POST', data)[0], 303)
+        self.assertEqual(self.http('/admin/login', method='POST', data={'id': 'ordinary', 'pwd': self.password})[0], 303)
+        ordinary_cookie = self.login('ordinary')
+        self.assertEqual(self.http('/admin/administrators/suspend', super_cookie, 'POST', data)[0], 303)
+        self.assertEqual(self.http('/admin/administrators/delete', super_cookie, 'POST', data)[0], 409)
         self.db.execute("UPDATE mentor_reservation SET day='2000-01-01'")
         self.db.commit()
         self.assertEqual(self.http('/admin/administrators/delete', super_cookie, 'POST', data)[0], 303)
-        self.assertEqual(self.db.execute('SELECT consultation FROM mentor_reservation').fetchone()[0], 'Keep history')
-        self.assertEqual(self.db.execute('SELECT display_name,is_published FROM mentor_profile').fetchone(), ('Keep', 0))
+        self.assertEqual(self.db.execute("SELECT 1 FROM admin WHERE id='ordinary'").fetchone(), None)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM mentor_reservation').fetchone()[0], 0)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM mentor_profile').fetchone()[0], 0)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM admin_notification').fetchone()[0], 0)
+        self.assertFalse(image.exists())
         self.assertEqual(self.http('/admin/mypage', ordinary_cookie)[0], 303)
         self.assertEqual(self.http('/admin/login', method='POST', data={'id': 'ordinary', 'pwd': self.password})[0], 401)
-        self.assertIsNotNone(self.db.execute("SELECT deleted_at FROM admin WHERE id='ordinary'").fetchone()[0])
-        self.assertEqual(self.http('/admin/administrators/new', super_cookie, 'POST', dict(data, name='Reuse', password=self.password))[0], 400)
-        # Even an in-flight profile save cannot make a deleted account bookable.
-        self.db.execute("UPDATE mentor_profile SET is_published=1 WHERE admin_id='ordinary'")
-        self.db.commit()
-        router = build_mentor_router(self.path, main.templates, Path(self.temp.name))
-        endpoint = next(r.endpoint for r in router.routes if r.path == '/mentor-reservation/{admin_id}/availability')
-        request = main.Request({'type': 'http', 'path': '/', 'headers': [], 'session': {'user_login': True, 'user_id': 's'}})
-        with self.assertRaises(main.HTTPException) as rejected:
-            asyncio.run(endpoint(request, 'ordinary', '2099-01-01', 'offline'))
-        self.assertEqual(rejected.exception.status_code, 404)
+        token, super_cookie = self.token(super_cookie)
+        status, _, _ = self.http('/admin/administrators/new', super_cookie, 'POST', {'admin_id': 'ordinary', 'csrf_token': token})
+        self.assertEqual(status, 200)
 
     def test_db_role_changes_apply_to_existing_sessions(self):
         cookie = self.login('26A001')

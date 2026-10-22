@@ -1,0 +1,51 @@
+{% extends 'admin/base.html' %}
+{% block title %}管理者管理{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/admin/administrators.css">{% endblock %}
+{% block content %}
+<section class="administrator-panel">
+<h1>{{ '管理者一覧' if page == 'list' else ('追加完了' if page == 'created' else '管理者追加') }}</h1>
+<nav class="administrator-actions" aria-label="管理者管理メニュー">
+{% if page == 'list' %}<a class="administrator-add" href="/admin/administrators/new">管理者追加</a>{% elif page != 'created' %}<a href="/admin/administrators">管理者一覧に戻る</a>{% endif %}
+</nav>
+{% if error %}<p class="login-error" role="alert">{{ error }}</p>{% endif %}
+{% if notice %}<p role="status">{{ notice }}</p>{% endif %}
+{% if page == 'new' %}
+<p>一般管理者（admin）を追加します。管理者名・画像・紹介文は本人がログイン後に設定します。</p>
+<form method="post" class="administrator-form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label>管理者ID<input name="admin_id" value="{{ values.get('admin_id', '') }}" required maxlength="128" autocomplete="off"></label>
+<p>臨時パスワードは追加後に一度だけ表示されます。完全削除後のIDは再利用できます。</p>
+<button type="submit">一般管理者を追加</button>
+</form>
+{% elif page == 'created' %}
+<p role="status">一般管理者を追加しました。次の臨時パスワードを本人へ安全に伝えてください。この画面を離れると再表示できません。</p>
+<dl><dt>管理者ID</dt><dd>{{ values.get('admin_id', '') }}</dd><dt>臨時パスワード</dt><dd><code>{{ values.get('password', '') }}</code></dd></dl>
+<p>本人は<a href="/admin/login">管理者ログイン画面</a>でログインし、初回に自分のパスワードを設定します。</p>
+<a href="/admin/administrators">管理者一覧へ戻る</a>
+{% else %}
+<p>有効な管理者はまず停止します。停止中はログインできませんが、データは保持され、再開できます。停止中の管理者は完全削除できます。今後の有効なメンター予約がある場合は削除できません。</p>
+<div class="administrator-table"><table><thead><tr><th>管理者ID</th><th>管理者名</th><th>権限</th><th>状態</th><th>操作</th></tr></thead><tbody>
+{% for id, name, role, deleted_at in administrators %}
+<tr><td>{{ id }}</td><td>{{ name or '未登録' }}</td><td>{{ '最上位管理者' if role == 'super_admin' else '一般管理者' }}（{{ role }}）</td><td>{{ '停止中' if deleted_at else '有効' }}</td><td><div class="administrator-row-actions">
+{% if role == 'admin' and not deleted_at %}
+<form method="post" action="/admin/administrators/suspend" onsubmit="return confirm('この管理者を停止しますか？ログインできなくなりますが、データは保持されます。');">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="admin_id" value="{{ id }}"><button class="administrator-suspend" type="submit">停止</button>
+</form>
+{% elif role == 'admin' %}
+<form method="post" action="/admin/administrators/resume" onsubmit="return confirm('この管理者を再開しますか？');">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="admin_id" value="{{ id }}"><button type="submit">再開</button>
+</form>
+<details class="administrator-purge">
+<summary class="administrator-delete">削除</summary>
+<form method="post" action="/admin/administrators/delete" onsubmit="return confirm('この管理者と関連する情報を完全に削除します。この操作は取り消せません。');">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="admin_id" value="{{ id }}">
+<label>現在の管理者ID<input name="reauth_admin_id" required maxlength="128" autocomplete="username"></label>
+<label>現在のパスワード<input type="password" name="reauth_admin_password" required autocomplete="current-password"></label>
+<button class="administrator-delete" type="submit">認証して完全削除</button>
+</form>
+</details>
+{% else %}—{% endif %}</div></td></tr>
+{% endfor %}</tbody></table></div>
+{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,399 @@
+
+/* ========================================
+   TEKNE工作室予約確認
+======================================== */
+
+.reservation-page {
+    width: 100%;
+    padding: 30px;
+    box-sizing: border-box;
+}
+
+
+/* ========================================
+   メインカード
+======================================== */
+
+.reservation-page .dashboard-card-wide {
+    width: 100%;
+    box-sizing: border-box;
+    container-type: inline-size;
+}
+
+
+/* ========================================
+   タイトル
+======================================== */
+
+.reservation-page .dashboard-eyebrow {
+    margin-bottom: 8px;
+}
+
+.reservation-page h1 {
+    margin-top: 0;
+    margin-bottom: 30px;
+}
+
+
+/* ========================================
+   検索フォーム
+======================================== */
+
+.reservation-filter {
+    margin-bottom: 30px;
+}
+
+.reservation-filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 0 18px;
+    color: #333;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-sizing: border-box;
+    list-style: none;
+}
+
+.reservation-filter-toggle::-webkit-details-marker {
+    display: none;
+}
+
+.reservation-filter-toggle::after {
+    content: "＋";
+    font-size: 16px;
+    line-height: 1;
+}
+
+.reservation-filter[open] .reservation-filter-toggle::after {
+    content: "−";
+}
+
+.reservation-filter-toggle:hover {
+    background: #f7f7f7;
+}
+
+.reservation-filter-toggle:focus-visible {
+    outline: 2px solid #555;
+    outline-offset: 2px;
+}
+
+.reservation-filter-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+    align-items: flex-end;
+    gap: 20px;
+
+    padding: 20px;
+    margin-top: 12px;
+
+    background: #f7f7f7;
+    border: 1px solid #e2e2e2;
+    border-radius: 10px;
+
+    box-sizing: border-box;
+}
+
+
+/* ========================================
+   日付入力
+======================================== */
+
+.reservation-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-width: 0;
+}
+
+.reservation-filter-group label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #444;
+}
+
+.reservation-filter-group input[type="date"] {
+    width: min(100%, 180px);
+    max-width: 100%;
+    min-width: 0;
+    height: 42px;
+
+    padding: 0 12px;
+
+    font-size: 14px;
+    color: #333;
+
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+
+    box-sizing: border-box;
+}
+
+.reservation-filter-group input[type="date"]:focus {
+    outline: none;
+    border-color: #555;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.08);
+}
+
+
+/* ========================================
+   ボタン
+======================================== */
+
+.reservation-filter-btn-group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    min-width: 0;
+}
+
+
+/* 共通 */
+.reservation-btn-search,
+.reservation-btn-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    height: 42px;
+    padding: 0 22px;
+
+    border-radius: 6px;
+
+    font-size: 14px;
+    font-weight: 600;
+
+    text-decoration: none;
+    cursor: pointer;
+
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+
+/* 検索 */
+.reservation-btn-search {
+    color: #fff;
+    background: #333;
+    border: 1px solid #333;
+}
+
+.reservation-btn-search:hover {
+    background: #222;
+}
+
+
+/* クリア */
+.reservation-btn-clear {
+    color: #444;
+    background: #fff;
+    border: 1px solid #ccc;
+}
+
+.reservation-btn-clear:hover {
+    background: #f0f0f0;
+}
+
+
+/* ========================================
+   テーブル外側
+======================================== */
+
+.reservation-table-container {
+    width: 100%;
+    overflow-x: auto;
+    background: #fff;
+    border: 1px solid #dbe8df;
+    border-radius: 10px;
+    scrollbar-color: #adbfB2 #f2f7f3;
+    scrollbar-width: thin;
+}
+
+
+/* ========================================
+   テーブル
+======================================== */
+
+.reservation-admin-table {
+    width: 100%;
+    min-width: 900px;
+    border-collapse: collapse;
+    table-layout: auto;
+    background: #fff;
+    font-size: 14px;
+}
+
+
+/* ========================================
+   ヘッダー
+======================================== */
+
+.reservation-admin-table thead th {
+    padding: 13px 14px;
+    color: #405b49;
+    background: #f2f8f4;
+    border-bottom: 1px solid #cedfd3;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-align: left;
+    white-space: nowrap;
+}
+
+
+/* ========================================
+   セル
+======================================== */
+
+.reservation-admin-table tbody td {
+    padding: 16px 14px;
+    color: #354f3e;
+    border-bottom: 1px solid #e5eee8;
+    line-height: 1.65;
+    vertical-align: top;
+}
+
+
+/* ========================================
+   行
+======================================== */
+
+.reservation-admin-table tbody tr {
+    transition: background-color .15s ease;
+}
+
+.reservation-admin-table tbody tr:nth-child(even) {
+    background: #fafcfb;
+}
+
+.reservation-admin-table tbody tr:hover {
+    background: #f3f9f5;
+}
+
+
+/* 最後の行の線を消す */
+.reservation-admin-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+
+/* ========================================
+   ID・ユーザーID
+======================================== */
+
+.reservation-admin-table th:nth-child(1),
+.reservation-admin-table td:nth-child(1),
+.reservation-admin-table th:nth-child(2),
+.reservation-admin-table td:nth-child(2) {
+    text-align: center;
+}
+
+.reservation-admin-table th:nth-child(1),
+.reservation-admin-table td:nth-child(1) {
+    width: 1%;
+    color: #748b7b;
+    white-space: nowrap;
+}
+
+
+/* ========================================
+   日付・時刻
+======================================== */
+
+.reservation-admin-table th:nth-child(3),
+.reservation-admin-table td:nth-child(3),
+.reservation-admin-table th:nth-child(4),
+.reservation-admin-table td:nth-child(4),
+.reservation-admin-table th:nth-child(5),
+.reservation-admin-table td:nth-child(5) {
+    white-space: nowrap;
+}
+
+
+/* ========================================
+   利用目的
+======================================== */
+
+.reservation-admin-table th:nth-child(6),
+.reservation-admin-table td:nth-child(6) {
+    min-width: 260px;
+    max-width: 360px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+
+/* ========================================
+   データなし
+======================================== */
+
+.reservation-no-data {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    min-height: 180px;
+
+    padding: 24px;
+    background: #fafcfb;
+    color: #748b7b;
+    text-align: center;
+}
+
+.reservation-no-data p {
+    margin: 0;
+    font-size: 14px;
+}
+
+
+/* ========================================
+   レスポンシブ
+======================================== */
+
+/* カード自体の幅で切り替えるため、サイドバー表示時もはみ出さない */
+@container (max-width: 640px) {
+
+    .reservation-filter-form {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+
+    .reservation-filter-group input[type="date"] {
+        width: 100%;
+    }
+
+    .reservation-filter-btn-group {
+        width: 100%;
+    }
+
+    .reservation-btn-search,
+    .reservation-btn-clear {
+        width: 100%;
+    }
+
+}
+
+@media (max-width: 900px) {
+
+    .reservation-page {
+        padding: 20px;
+    }
+
+}
+
+
+@media (max-width: 600px) {
+
+    .reservation-page {
+        padding: 15px;
+    }
+
+}
+
+.reservation-admin-notice{margin:16px 0;padding:12px 16px;border-radius:10px}.reservation-admin-notice.is-success{background:#e6f4ea;color:#19472d}.reservation-admin-notice.is-error{background:#fdecec;color:#9b2424}.reservation-state{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:700;white-space:nowrap}.reservation-state.is-active{background:#e2f2e7;color:#19472d}.reservation-state.is-cancelled{background:#eceeed;color:#5f6761}.reservation-admin-table tr.is-cancelled{color:#6b716d;background:#f5f6f5}.reservation-cancel-form button{border:0;border-radius:7px;background:#a83232;color:#fff;padding:7px 10px;font-weight:700;cursor:pointer}

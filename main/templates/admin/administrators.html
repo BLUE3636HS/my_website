@@ -14,7 +14,7 @@
 <form method="post" class="administrator-form">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 <label>管理者ID<input name="admin_id" value="{{ values.get('admin_id', '') }}" required maxlength="128" autocomplete="off"></label>
-<p>臨時パスワードは追加後に一度だけ表示されます。削除済みのIDは再利用できません。</p>
+<p>臨時パスワードは追加後に一度だけ表示されます。完全削除後のIDは再利用できます。</p>
 <button type="submit">一般管理者を追加</button>
 </form>
 {% elif page == 'created' %}
@@ -23,14 +23,28 @@
 <p>本人は<a href="/admin/login">管理者ログイン画面</a>でログインし、初回に自分のパスワードを設定します。</p>
 <a href="/admin/administrators">管理者一覧へ戻る</a>
 {% else %}
-<p>削除はログイン停止として行い、履歴を保持します。今後の有効なメンター予約がある管理者は削除できません。</p>
+<p>有効な管理者はまず停止します。停止中はログインできませんが、データは保持され、再開できます。停止中の管理者は完全削除できます。今後の有効なメンター予約がある場合は削除できません。</p>
 <div class="administrator-table"><table><thead><tr><th>管理者ID</th><th>管理者名</th><th>権限</th><th>状態</th><th>操作</th></tr></thead><tbody>
 {% for id, name, role, deleted_at in administrators %}
-<tr><td>{{ id }}</td><td>{{ name or '未登録' }}</td><td>{{ '最上位管理者' if role == 'super_admin' else '一般管理者' }}（{{ role }}）</td><td>{{ '削除済み' if deleted_at else '有効' }}</td><td>
+<tr><td>{{ id }}</td><td>{{ name or '未登録' }}</td><td>{{ '最上位管理者' if role == 'super_admin' else '一般管理者' }}（{{ role }}）</td><td>{{ '停止中' if deleted_at else '有効' }}</td><td><div class="administrator-row-actions">
 {% if role == 'admin' and not deleted_at %}
-<form method="post" action="/admin/administrators/delete" onsubmit="return confirm('この管理者を削除し、ログインと新規予約受付を停止しますか？履歴は保持されます。');">
-<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="admin_id" value="{{ id }}"><button class="administrator-delete" type="submit">削除</button>
-</form>{% else %}—{% endif %}</td></tr>
+<form method="post" action="/admin/administrators/suspend" onsubmit="return confirm('この管理者を停止しますか？ログインできなくなりますが、データは保持されます。');">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="admin_id" value="{{ id }}"><button class="administrator-suspend" type="submit">停止</button>
+</form>
+{% elif role == 'admin' %}
+<form method="post" action="/admin/administrators/resume" onsubmit="return confirm('この管理者を再開しますか？');">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="admin_id" value="{{ id }}"><button type="submit">再開</button>
+</form>
+<details class="administrator-purge">
+<summary class="administrator-delete">削除</summary>
+<form method="post" action="/admin/administrators/delete" onsubmit="return confirm('この管理者と関連する情報を完全に削除します。この操作は取り消せません。');">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="admin_id" value="{{ id }}">
+<label>現在の管理者ID<input name="reauth_admin_id" required maxlength="128" autocomplete="username"></label>
+<label>現在のパスワード<input type="password" name="reauth_admin_password" required autocomplete="current-password"></label>
+<button class="administrator-delete" type="submit">認証して完全削除</button>
+</form>
+</details>
+{% else %}—{% endif %}</div></td></tr>
 {% endfor %}</tbody></table></div>
 {% endif %}
 </section>

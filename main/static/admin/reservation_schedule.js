@@ -27,7 +27,6 @@ const detailTime = document.getElementById("schedule-detail-time");
 const detailOwn = document.getElementById("schedule-detail-own");
 const detailCapacity = document.getElementById("schedule-detail-capacity");
 const detailReserved = document.getElementById("schedule-detail-reserved");
-const detailRemaining = document.getElementById("schedule-detail-remaining");
 let calendarCursor = new Date(`${selectedDay}T00:00:00`);
 calendarCursor.setDate(1);
 
@@ -74,7 +73,7 @@ function renderScale() {
 }
 
 function stateLabel(slot) {
-    return {available: "空きあり", full: "満席", unset: "未設定", closed: "受付終了"}[slot.state] || slot.state;
+    return {available: "設定済み", unset: "未設定", closed: "受付終了"}[slot.state] || slot.state;
 }
 
 function clearTimeSelection() {
@@ -87,7 +86,6 @@ function clearTimeSelection() {
     detailOwn.hidden = true;
     detailCapacity.textContent = "-";
     detailReserved.textContent = "-";
-    detailRemaining.textContent = "-";
 }
 
 function showSelectedRange() {
@@ -105,9 +103,8 @@ function showSelectedRange() {
     submitButton.disabled = false;
     detailTime.textContent = `${firstSlot.start_time}〜${lastSlot.end_time}`;
     detailOwn.hidden = !selectedSlots.every((slot) => slot.own);
-    detailCapacity.textContent = Math.min(...selectedSlots.map((slot) => slot.capacity));
+    detailCapacity.textContent = selectedSlots.every((slot) => slot.capacity > 0) ? "設定済み" : "未設定を含む";
     detailReserved.textContent = Math.max(...selectedSlots.map((slot) => slot.reserved));
-    detailRemaining.textContent = Math.min(...selectedSlots.map((slot) => slot.remaining));
     timeline.querySelectorAll(".schedule-timeline-slot").forEach((button, index) => {
         const selected = index >= firstIndex && index <= lastIndex;
         button.classList.toggle("is-range-selected", selected);
@@ -137,14 +134,8 @@ function renderTimeline() {
         button.dataset.time = slot.start_time;
         button.dataset.index = String(index);
         button.setAttribute("aria-pressed", "false");
-        button.setAttribute("aria-label", `${slot.start_time}から${slot.end_time}、${stateLabel(slot)}、登録枠${slot.capacity}、予約${slot.reserved}、残り${slot.remaining}${slot.own ? "、自分が設定" : ""}`);
+        button.setAttribute("aria-label", `${slot.start_time}から${slot.end_time}、${stateLabel(slot)}、予約${slot.reserved}`);
         button.title = `${slot.start_time}〜${slot.end_time} ${stateLabel(slot)}`;
-        if (slot.own) {
-            const marker = document.createElement("span");
-            marker.className = "schedule-own-marker";
-            marker.setAttribute("aria-hidden", "true");
-            button.append(marker);
-        }
         button.addEventListener("pointerdown", (event) => {
             if (event.button !== 0) return;
             event.preventDefault();

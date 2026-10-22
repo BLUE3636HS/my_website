@@ -1,6 +1,7 @@
 """School-scoped TEKNE chat, group files, and administrator tools."""
 
 import asyncio
+import bcrypt
 import datetime as dt
 import hashlib
 import json
@@ -220,6 +221,15 @@ def initialize_tekne_chat(db):
             name TEXT PRIMARY KEY NOT NULL,
             applied_at TEXT NOT NULL
         )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS tekne_chat_maintenance (
+            name TEXT PRIMARY KEY NOT NULL,
+            last_run_at TEXT NOT NULL
+        )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS tekne_chat_storage_cleanup (
+            object_key TEXT NOT NULL,
+            storage_kind TEXT NOT NULL CHECK(storage_kind IN ('file','icon')),
+            PRIMARY KEY(object_key,storage_kind)
+        )""")
 
         now = _now()
         for school_name in sorted(registered_names):
@@ -279,6 +289,11 @@ def revoke_student_identity(db, login_id):
     now = _now()
     db.execute("UPDATE tekne_student_identity SET login_id=NULL, deleted_at=? WHERE id=?", (now, identity[0]))
     db.execute("UPDATE tekne_chat_member SET left_at=? WHERE student_id=? AND left_at IS NULL", (now, identity[0]))
+    db.execute("""UPDATE tekne_chat_group SET updated_at=?
+        WHERE id IN (SELECT group_id FROM tekne_chat_member WHERE student_id=? AND left_at=?)
+          AND NOT EXISTS (SELECT 1 FROM tekne_chat_member m
+                          WHERE m.group_id=tekne_chat_group.id AND m.left_at IS NULL)""",
+        (now, identity[0], now))
     db.execute("UPDATE tekne_student_session SET revoked_at=? WHERE student_id=? AND revoked_at IS NULL", (now, identity[0]))
 
 
@@ -664,8 +679,13 @@ class TekneChatService:
         with closing(_connect(self.database_path)) as db, db:
             db.execute("BEGIN IMMEDIATE")
             identity, _ = self._member(db, session, group_id)
+            now = _now()
             db.execute("UPDATE tekne_chat_member SET left_at=? WHERE group_id=? AND student_id=? AND left_at IS NULL",
-                       (_now(), group_id, identity[0]))
+                       (now, group_id, identity[0]))
+            db.execute("""UPDATE tekne_chat_group SET updated_at=?
+                WHERE id=? AND NOT EXISTS (SELECT 1 FROM tekne_chat_member
+                                           WHERE group_id=? AND left_at IS NULL)""",
+                (now, group_id, group_id))
             return {"left": True}
 
     def message_history(self, session, group_id, before_id=None, limit=50, after_id=None):
@@ -777,7 +797,8 @@ class TekneChatService:
                 if not row:
                     raise HTTPException(404, "メッセージが見つかりません。")
                 deleted_by_type, deleted_by_id = "admin", admin_id
-                self._audit(db, admin_id, "message.delete", "message", str(message_id), {})
+                self._audit(db, admin_id, "message.delete", "message", str(message_id),
+                            {"group_id": row["group_id"]})
             db.execute("UPDATE tekne_chat_message SET deleted_at=?,deleted_by_type=?,deleted_by_id=? WHERE id=?",
                        (_now(), deleted_by_type, deleted_by_id, message_id))
             updated = db.execute("SELECT * FROM tekne_chat_message WHERE id=?", (message_id,)).fetchone()
@@ -889,7 +910,8 @@ class TekneChatService:
                 identity = self._identity(db, session)
                 self._member(db, session, row["group_id"])
             else:
-                self._audit(db, admin_id, "file.delete", "file", file_id, {})
+                self._audit(db, admin_id, "file.delete", "file", file_id,
+                            {"group_id": row["group_id"]})
             db.execute("UPDATE tekne_chat_file SET deleted_at=? WHERE id=?", (_now(), file_id))
             return row["group_id"], row["object_key"]
 
@@ -928,7 +950,8 @@ class TekneChatService:
             if admin_id is None:
                 self._member(db, session, row["group_id"])
             else:
-                self._audit(db, admin_id, "folder.delete", "folder", folder_id, {})
+                self._audit(db, admin_id, "folder.delete", "folder", folder_id,
+                            {"group_id": row["group_id"]})
             file_rows = db.execute("""WITH RECURSIVE tree(id) AS (
                 SELECT id FROM tekne_chat_folder WHERE id=? AND group_id=? AND deleted_at IS NULL
                 UNION SELECT f.id FROM tekne_chat_folder f JOIN tree t ON f.parent_id=t.id
@@ -1019,11 +1042,196 @@ class TekneChatService:
     def admin_remove_member(self, admin_id, group_id, student_id):
         with closing(_connect(self.database_path)) as db, db:
             db.execute("BEGIN IMMEDIATE")
+            now = _now()
             changed = db.execute("UPDATE tekne_chat_member SET left_at=? WHERE group_id=? AND student_id=? AND left_at IS NULL",
-                                 (_now(), group_id, student_id)).rowcount
+                                 (now, group_id, student_id)).rowcount
             if not changed:
                 raise HTTPException(404, "参加中のメンバーが見つかりません。")
+            db.execute("""UPDATE tekne_chat_group SET updated_at=?
+                WHERE id=? AND NOT EXISTS (SELECT 1 FROM tekne_chat_member
+                                           WHERE group_id=? AND left_at IS NULL)""",
+                (now, group_id, group_id))
             self._audit(db, admin_id, "member.remove", "member", student_id, {"group_id": group_id})
+
+    def admin_delete_group(self, admin_id, group_id, entered_admin_id, password):
+        """Delete a chat group after reauthenticating the current administrator."""
+        if not isinstance(entered_admin_id, str) or not isinstance(password, str):
+            raise HTTPException(422, "管理者IDとパスワードを入力してください。")
+        deleted_storage = set()
+        with closing(_connect(self.database_path)) as db:
+            db.execute("BEGIN IMMEDIATE")
+            admin = db.execute("SELECT id,pwd FROM admin WHERE id=? AND deleted_at IS NULL", (admin_id,)).fetchone()
+            valid_password = False
+            if admin:
+                try:
+                    valid_password = bcrypt.checkpw(password.encode("utf-8"), admin["pwd"].encode())
+                except (ValueError, TypeError):
+                    valid_password = False
+            if entered_admin_id.strip() != admin_id or not valid_password:
+                db.rollback()
+                raise HTTPException(403, "管理者IDまたはパスワードが正しくありません。")
+            group = db.execute("SELECT id,name,icon_key FROM tekne_chat_group WHERE id=?", (group_id,)).fetchone()
+            if not group:
+                db.rollback()
+                raise HTTPException(404, "グループが見つかりません。")
+
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='study_group_access'").fetchone():
+                db.execute("""INSERT OR IGNORE INTO study_group_access(study_id,tekne_student_id)
+                    SELECT s.id,m.student_id FROM study s
+                    JOIN tekne_chat_member m ON m.group_id=s.chat_group_id
+                    WHERE s.chat_group_id=? AND s.submission_kind='group'""", (group_id,))
+
+            files = [row[0] for row in db.execute(
+                "SELECT object_key FROM tekne_chat_file WHERE group_id=?", (group_id,)).fetchall()]
+            if group["icon_key"]:
+                db.execute("INSERT OR IGNORE INTO tekne_chat_storage_cleanup(object_key,storage_kind) VALUES(?,'icon')",
+                           (group["icon_key"],))
+            db.executemany("INSERT OR IGNORE INTO tekne_chat_storage_cleanup(object_key,storage_kind) VALUES(?,'file')",
+                           [(key,) for key in files])
+            db.execute("""DELETE FROM tekne_chat_admin_audit WHERE
+                (entity_type='message' AND entity_id IN
+                    (SELECT CAST(id AS TEXT) FROM tekne_chat_message WHERE group_id=?)) OR
+                (entity_type='file' AND entity_id IN
+                    (SELECT id FROM tekne_chat_file WHERE group_id=?)) OR
+                (entity_type='folder' AND entity_id IN
+                    (SELECT id FROM tekne_chat_folder WHERE group_id=?)) OR
+                (entity_type='group' AND entity_id=?)""", (group_id, group_id, group_id, group_id))
+            audit_rows = db.execute("SELECT id,details FROM tekne_chat_admin_audit WHERE details LIKE ?",
+                                    (f"%{group_id}%",)).fetchall()
+            for audit in audit_rows:
+                try:
+                    details = json.loads(audit["details"] or "{}")
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                if isinstance(details, dict) and details.get("group_id") == group_id:
+                    db.execute("DELETE FROM tekne_chat_admin_audit WHERE id=?", (audit["id"],))
+            db.execute("DELETE FROM tekne_chat_message WHERE group_id=?", (group_id,))
+            db.execute("DELETE FROM tekne_chat_file WHERE group_id=?", (group_id,))
+            db.execute("UPDATE tekne_chat_folder SET parent_id=NULL WHERE group_id=?", (group_id,))
+            db.execute("DELETE FROM tekne_chat_folder WHERE group_id=?", (group_id,))
+            db.execute("DELETE FROM tekne_chat_member WHERE group_id=?", (group_id,))
+            db.execute("DELETE FROM tekne_chat_group WHERE id=?", (group_id,))
+            self._audit(db, admin_id, "group.delete", "group", group_id,
+                        {"name": group["name"], "method": "admin_reauthentication"})
+            queued = db.execute("SELECT object_key,storage_kind FROM tekne_chat_storage_cleanup").fetchall()
+            db.commit()
+
+        for item in queued:
+            try:
+                path = (_icon_file(self.storage_root, item["object_key"]) if item["storage_kind"] == "icon"
+                        else _storage_file(self.storage_root, item["object_key"]))
+                path.unlink(missing_ok=True)
+                deleted_storage.add((item["object_key"], item["storage_kind"]))
+            except ValueError:
+                deleted_storage.add((item["object_key"], item["storage_kind"]))
+            except OSError:
+                logging.exception("Failed to remove manually deleted TEKNE chat storage item")
+        if deleted_storage:
+            with closing(_connect(self.database_path)) as db, db:
+                db.executemany("DELETE FROM tekne_chat_storage_cleanup WHERE object_key=? AND storage_kind=?",
+                               sorted(deleted_storage))
+
+
+def cleanup_expired_groups(database_path, storage_root, *, now=None, force=False):
+    """Remove empty groups inactive for one year, preserving linked research access."""
+    current = now or dt.datetime.now(dt.timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=dt.timezone.utc)
+    current = current.astimezone(dt.timezone.utc).replace(microsecond=0)
+    cutoff = current - dt.timedelta(days=365)
+    current_text, cutoff_text = current.isoformat(timespec="seconds"), cutoff.isoformat(timespec="seconds")
+    deleted_storage = set()
+    retry_storage = []
+
+    with closing(_connect(database_path)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        last_run = db.execute("SELECT last_run_at FROM tekne_chat_maintenance WHERE name='empty_group_cleanup'").fetchone()
+        if not force and last_run:
+            try:
+                previous = dt.datetime.fromisoformat(last_run[0])
+                if current - previous.astimezone(dt.timezone.utc) < dt.timedelta(days=1):
+                    db.rollback()
+                    return 0
+            except (TypeError, ValueError):
+                pass
+
+        groups = db.execute("""SELECT g.id,g.icon_key
+            FROM tekne_chat_group g
+            WHERE g.updated_at<=?
+              AND NOT EXISTS (SELECT 1 FROM tekne_chat_member active
+                              WHERE active.group_id=g.id AND active.left_at IS NULL)
+              AND COALESCE((SELECT MAX(m.left_at) FROM tekne_chat_member m
+                            WHERE m.group_id=g.id), g.updated_at)<=?
+            ORDER BY g.id""", (cutoff_text, cutoff_text)).fetchall()
+        study_access_exists = db.execute("""SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='study_group_access'""").fetchone()
+
+        for group in groups:
+            group_id, icon_key = group["id"], group["icon_key"]
+            if study_access_exists:
+                db.execute("""INSERT OR IGNORE INTO study_group_access(study_id,tekne_student_id)
+                    SELECT s.id,m.student_id
+                    FROM study s
+                    JOIN tekne_chat_member m ON m.group_id=s.chat_group_id
+                    WHERE s.chat_group_id=? AND s.submission_kind='group'""", (group_id,))
+
+            db.executemany("""INSERT OR IGNORE INTO tekne_chat_storage_cleanup(object_key,storage_kind)
+                VALUES(?,'file')""", [(row[0],) for row in db.execute(
+                    "SELECT object_key FROM tekne_chat_file WHERE group_id=?", (group_id,)).fetchall()])
+            if icon_key:
+                db.execute("""INSERT OR IGNORE INTO tekne_chat_storage_cleanup(object_key,storage_kind)
+                    VALUES(?,'icon')""", (icon_key,))
+
+            db.execute("""DELETE FROM tekne_chat_admin_audit
+                WHERE (entity_type='message' AND entity_id IN
+                       (SELECT CAST(id AS TEXT) FROM tekne_chat_message WHERE group_id=?))
+                   OR (entity_type='file' AND entity_id IN
+                       (SELECT id FROM tekne_chat_file WHERE group_id=?))
+                   OR (entity_type='folder' AND entity_id IN
+                       (SELECT id FROM tekne_chat_folder WHERE group_id=?))""",
+                (group_id, group_id, group_id))
+            db.execute("DELETE FROM tekne_chat_message WHERE group_id=?", (group_id,))
+            db.execute("DELETE FROM tekne_chat_file WHERE group_id=?", (group_id,))
+            db.execute("UPDATE tekne_chat_folder SET parent_id=NULL WHERE group_id=?", (group_id,))
+            db.execute("DELETE FROM tekne_chat_folder WHERE group_id=?", (group_id,))
+            db.execute("DELETE FROM tekne_chat_member WHERE group_id=?", (group_id,))
+            db.execute("DELETE FROM tekne_chat_admin_audit WHERE entity_type='group' AND entity_id=?", (group_id,))
+            audit_rows = db.execute("SELECT id,details FROM tekne_chat_admin_audit WHERE details LIKE ?",
+                                    (f"%{group_id}%",)).fetchall()
+            group_audit_ids = []
+            for audit in audit_rows:
+                try:
+                    details = json.loads(audit["details"] or "{}")
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                if isinstance(details, dict) and details.get("group_id") == group_id:
+                    group_audit_ids.append(audit["id"])
+            if group_audit_ids:
+                db.executemany("DELETE FROM tekne_chat_admin_audit WHERE id=?",
+                               [(audit_id,) for audit_id in group_audit_ids])
+            db.execute("DELETE FROM tekne_chat_group WHERE id=?", (group_id,))
+
+        retry_storage = db.execute("SELECT object_key,storage_kind FROM tekne_chat_storage_cleanup").fetchall()
+        db.execute("""INSERT INTO tekne_chat_maintenance(name,last_run_at) VALUES('empty_group_cleanup',?)
+            ON CONFLICT(name) DO UPDATE SET last_run_at=excluded.last_run_at""", (current_text,))
+        db.commit()
+
+    for item in retry_storage:
+        try:
+            path = (_icon_file(storage_root, item["object_key"]) if item["storage_kind"] == "icon"
+                    else _storage_file(storage_root, item["object_key"]))
+            path.unlink(missing_ok=True)
+            deleted_storage.add((item["object_key"], item["storage_kind"]))
+        except ValueError:
+            logging.warning("Skipping invalid TEKNE chat storage key during cleanup")
+            deleted_storage.add((item["object_key"], item["storage_kind"]))
+        except OSError:
+            logging.exception("Failed to remove expired TEKNE chat storage item")
+    if deleted_storage:
+        with closing(_connect(database_path)) as db, db:
+            db.executemany("DELETE FROM tekne_chat_storage_cleanup WHERE object_key=? AND storage_kind=?",
+                           sorted(deleted_storage))
+    return len(groups)
 
 
 def _like(value):
@@ -1366,6 +1574,15 @@ def build_tekne_chat_router(database_path, templates, storage_root):
         await asyncio.to_thread(service.admin_rename_group, admin[0], group_id, name)
         await service.connections.broadcast(group_id, {"type": "group.updated", "id": group_id})
         return {"updated": True}
+
+    @router.delete("/admin/tekne-chat/api/groups/{group_id}")
+    async def admin_group_delete(request: Request, group_id: str, admin_id: str = Form(...),
+                                 password: str = Form(...), csrf: str = Form(...)):
+        require_csrf(request, csrf)
+        admin = await admin_page(request)
+        await asyncio.to_thread(service.admin_delete_group, admin[0], group_id, admin_id, password)
+        await service.connections.broadcast(group_id, {"type": "group.deleted", "id": group_id})
+        return {"deleted": True}
 
     @router.post("/admin/tekne-chat/api/groups/{group_id}/members/{student_id}/remove")
     async def admin_member_remove(request: Request, group_id: str, student_id: str, csrf: str = Form(...)):

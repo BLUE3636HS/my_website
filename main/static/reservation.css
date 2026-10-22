@@ -216,6 +216,15 @@
     opacity: .82;
 }
 
+.reservation-slot-people {
+    margin-right: 10px;
+    color: #6b7785;
+    font-size: 11px;
+    font-weight: 500;
+    opacity: .72;
+    white-space: nowrap;
+}
+
 .reservation-time.available .reservation-slot-body {
     background: #f4faf2;
     color: #2d6a31;
@@ -229,6 +238,12 @@
 .reservation-time.reserved .reservation-slot-body {
     background: #fbeaea;
     color: #a13c3c;
+}
+
+.reservation-time.own-reserved .reservation-slot-body {
+    background: #fbeaea;
+    color: #a13c3c;
+    cursor: not-allowed;
 }
 
 .reservation-time.closed .reservation-slot-body {
@@ -283,6 +298,29 @@
     display: block;
 }
 
+.people-count-field {
+    display: grid;
+    gap: 8px;
+    max-width: 220px;
+    margin-bottom: 20px;
+    color: #334155;
+    font-weight: 700;
+}
+
+.people-count-field input {
+    width: 100%;
+    min-height: 44px;
+    padding: 9px 12px;
+    border: 1px solid #cbd6e2;
+    border-radius: 9px;
+    font: inherit;
+}
+
+.people-count-field input:focus {
+    outline: 3px solid rgba(31, 78, 121, .18);
+    border-color: #1f4e79;
+}
+
 .purpose-field {
     color: #334155;
     font-weight: 700;
@@ -311,7 +349,7 @@
 .reservation-submit {
     display: block;
     min-width: 240px;
-    margin: 25px auto 0;
+    margin: 12px auto 0;
     padding: 13px 24px;
     border: 0;
     border-radius: 8px;
@@ -328,7 +366,7 @@
 }
 
 .reservation-message {
-    margin: 0 0 20px;
+    margin: 18px 0 0;
     padding: 12px 16px;
     border: 1px solid #e5b7b7;
     border-radius: 9px;

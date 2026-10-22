@@ -11,7 +11,7 @@ from contextlib import closing
 from pathlib import Path
 from uuid import uuid4
 
-import sqlite3, shutil, bcrypt, datetime, csv, secrets, io, json, math, mimetypes
+import asyncio, sqlite3, shutil, bcrypt, datetime, csv, secrets, io, json, math, mimetypes
 import hashlib, hmac, logging
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from studies import connect_studies, initialize_studies, get_templates, get_submission_collaboration, study_file_path, study_pdf_path, validate_pdf
@@ -29,7 +29,7 @@ from mentor_reservations import (
     initialize_mentor_tables,
     mentor_image_url,
 )
-from admin_management import migrate_admin_database, build_admin_router, active_admin, session_secret, build_password_router
+from admin_management import migrate_admin_database, build_admin_router, active_admin, require_super_admin, session_secret, build_password_router
 from school_registration import (
     initialize_student_account_fields,
     initialize_school_registration,
@@ -48,6 +48,7 @@ from school_features import (
 )
 from tekne_chat import (
     build_tekne_chat_router,
+    cleanup_expired_groups,
     create_chat_session,
     initialize_tekne_chat,
     rename_student_identity,
@@ -236,11 +237,32 @@ if cursor.execute(
             "INSERT INTO schema_migration (name, applied_at) VALUES (?, ?)",
             (reservation_capacity_migration, datetime.datetime.now(JST).isoformat())
         )
+reservation_people_migration = "reservation_people_count_v1"
+if cursor.execute(
+    "SELECT 1 FROM schema_migration WHERE name = ?",
+    (reservation_people_migration,)
+).fetchone() is None:
+    with conn:
+        current_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(reservation)").fetchall()
+        }
+        if "people_count" not in current_columns:
+            conn.execute(
+                "ALTER TABLE reservation ADD COLUMN people_count TEXT NOT NULL DEFAULT '1'"
+            )
+        conn.execute(
+            "UPDATE reservation SET people_count = '1' WHERE people_count IS NULL OR CAST(people_count AS INTEGER) < 1"
+        )
+        conn.execute(
+            "INSERT INTO schema_migration (name, applied_at) VALUES (?, ?)",
+            (reservation_people_migration, datetime.datetime.now(JST).isoformat())
+        )
 initialize_school_registration(conn)
 initialize_custom_fields(conn)
 initialize_tekne_chat(conn)
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS reservation_available_slot (
+def initialize_reservation_schedule(db):
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS reservation_available_slot (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         admin_id TEXT NOT NULL,
         day TEXT NOT NULL,
@@ -249,12 +271,27 @@ cursor.execute("""
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         UNIQUE (admin_id, day, start_time)
-    )
-""")
-cursor.execute("""
-    CREATE INDEX IF NOT EXISTS idx_reservation_available_slot_day_time
-    ON reservation_available_slot(day, start_time)
-""")
+        )
+    """)
+    db.execute("CREATE INDEX IF NOT EXISTS idx_reservation_available_slot_day_time ON reservation_available_slot(day, start_time)")
+    migration_name = "reservation_schedule_single_owner_v1"
+    if db.execute("SELECT 1 FROM schema_migration WHERE name = ?", (migration_name,)).fetchone() is None:
+        with db:
+            # Keep every existing date/time slot, but collapse per-admin duplicates
+            # into one workshop-wide schedule owned by the first active super admin.
+            schedule_owner = db.execute(
+                "SELECT id FROM admin WHERE role='super_admin' AND deleted_at IS NULL ORDER BY id LIMIT 1"
+            ).fetchone()
+            owner_id = schedule_owner[0] if schedule_owner else "system"
+            db.execute("""
+            DELETE FROM reservation_available_slot
+            WHERE id NOT IN (
+                SELECT MIN(id) FROM reservation_available_slot GROUP BY day, start_time
+            )
+            """)
+            db.execute("UPDATE reservation_available_slot SET admin_id=?", (owner_id,))
+            db.execute("INSERT INTO schema_migration(name, applied_at) VALUES (?, ?)",
+                       (migration_name, datetime.datetime.now(JST).isoformat()))
 cursor.execute("""
     CREATE INDEX IF NOT EXISTS idx_reservation_day_status_time
     ON reservation(day, status, start_time, end_time)
@@ -344,6 +381,7 @@ initialize_notification_tables(conn)
 initialize_mentor_tables(conn)
 conn.commit()
 migrate_admin_database(DATABASE_PATH)
+initialize_reservation_schedule(conn)
 seed_school_feature_settings(DATABASE_PATH)
 with closing(connect_studies(DATABASE_PATH)) as study_db:
     initialize_studies(study_db)
@@ -376,13 +414,38 @@ def student_template_context(request):
 
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"), context_processors=[student_template_context, admin_template_context])
-app.include_router(build_admin_router(DATABASE_PATH, templates))
+app.include_router(build_admin_router(DATABASE_PATH, templates, MENTOR_PROFILE_UPLOADS_DIR))
 app.include_router(build_school_feature_router(DATABASE_PATH, templates))
 app.include_router(build_password_router(DATABASE_PATH))
 app.include_router(create_template_router(lambda: DATABASE_PATH, templates))
 app.include_router(build_mentor_router(DATABASE_PATH, templates, MENTOR_PROFILE_UPLOADS_DIR))
 tekne_chat_router, tekne_chat_service = build_tekne_chat_router(DATABASE_PATH, templates, TEKNE_CHAT_STORAGE_DIR)
 app.include_router(tekne_chat_router)
+
+
+async def _tekne_chat_cleanup_loop():
+    while True:
+        try:
+            await asyncio.to_thread(cleanup_expired_groups, DATABASE_PATH, TEKNE_CHAT_STORAGE_DIR)
+        except Exception:
+            logging.exception("Daily TEKNE chat cleanup failed")
+        await asyncio.sleep(datetime.timedelta(days=1).total_seconds())
+
+
+@app.on_event("startup")
+async def start_tekne_chat_cleanup():
+    app.state.tekne_chat_cleanup_task = asyncio.create_task(_tekne_chat_cleanup_loop())
+
+
+@app.on_event("shutdown")
+async def stop_tekne_chat_cleanup():
+    task = getattr(app.state, "tekne_chat_cleanup_task", None)
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 COMMUNITY_PAGE_SIZE = 20
 
@@ -832,31 +895,20 @@ def reservation_slot_range(start_time, end_time):
     ]
 
 
-def reservation_slot_summary(db, day, admin_id=None):
-    capacity_rows = db.execute(
+def reservation_slot_summary(db, day, admin_id=None, student_id=None):
+    configured_slots = {
+        row[0] for row in db.execute(
         """
-        SELECT start_time, COUNT(*)
+        SELECT start_time
         FROM reservation_available_slot
-        WHERE day = ? AND admin_id NOT IN (SELECT id FROM admin WHERE deleted_at IS NOT NULL)
-        GROUP BY start_time
+        WHERE day = ?
         """,
         (day,)
-    ).fetchall()
-    capacities = {row[0]: row[1] for row in capacity_rows}
-    own_slots = set()
-    if admin_id:
-        own_slots = {
-            row[0] for row in db.execute(
-                """
-                SELECT start_time FROM reservation_available_slot
-                WHERE day = ? AND admin_id = ?
-                """,
-                (day, admin_id)
-            ).fetchall()
-        }
+        ).fetchall()
+    }
     active_reservations = db.execute(
         """
-        SELECT start_time, end_time
+        SELECT userid, start_time, end_time, people_count
         FROM reservation
         WHERE day = ? AND status = 'active'
         """,
@@ -866,19 +918,24 @@ def reservation_slot_summary(db, day, admin_id=None):
         reservation_minutes_to_time(value): 0
         for value in range(RESERVATION_OPEN_MINUTES, RESERVATION_CLOSE_MINUTES, 30)
     }
-    for start_time, end_time in active_reservations:
+    reservation_people_counts = dict.fromkeys(reservation_counts, 0)
+    own_reserved_slots = set()
+    for userid, start_time, end_time, people_count in active_reservations:
         for slot_time in reservation_slot_range(start_time, end_time):
             if slot_time in reservation_counts:
                 reservation_counts[slot_time] += 1
+                reservation_people_counts[slot_time] += int(people_count)
+                if student_id and userid == student_id:
+                    own_reserved_slots.add(slot_time)
     now = datetime.datetime.now(JST)
     target_date = datetime.date.fromisoformat(day)
     result = []
     for value in range(RESERVATION_OPEN_MINUTES, RESERVATION_CLOSE_MINUTES, 30):
         start_time = reservation_minutes_to_time(value)
         end_time = reservation_minutes_to_time(value + 30)
-        capacity = capacities.get(start_time, 0)
+        capacity = 1 if start_time in configured_slots else 0
         reserved = reservation_counts[start_time]
-        remaining = max(capacity - reserved, 0)
+        remaining = capacity
         slot_start = datetime.datetime.combine(
             target_date, datetime.time(value // 60, value % 60), tzinfo=JST
         )
@@ -887,8 +944,6 @@ def reservation_slot_summary(db, day, admin_id=None):
             state = "closed"
         elif capacity == 0:
             state = "unset"
-        elif remaining == 0:
-            state = "full"
         else:
             state = "available"
         result.append({
@@ -896,8 +951,10 @@ def reservation_slot_summary(db, day, admin_id=None):
             "end_time": end_time,
             "capacity": capacity,
             "reserved": reserved,
+            "reserved_people": reservation_people_counts[start_time],
+            "own_reserved": start_time in own_reserved_slots,
             "remaining": remaining,
-            "own": start_time in own_slots,
+            "own": start_time in configured_slots,
             "state": state
         })
     return result
@@ -1024,8 +1081,13 @@ async def StudyList(request: Request):
             LEFT JOIN study_submission_member sm ON sm.study_id=s.id
             WHERE (s.submission_kind='individual' AND s.userid=?)
                OR (s.submission_kind='group' AND s.chat_group_id IN (""" +
-            (",".join("?" for _ in group_ids) if group_ids else "NULL") + ")) ORDER BY s.time DESC, s.id DESC",
-            (user_id, *group_ids)).fetchall()
+            (",".join("?" for _ in group_ids) if group_ids else "NULL") + """))
+               OR EXISTS (
+                    SELECT 1 FROM study_group_access access
+                    JOIN tekne_student_identity identity ON identity.id=access.tekne_student_id
+                    WHERE access.study_id=s.id AND identity.login_id=? AND identity.deleted_at IS NULL
+               ) ORDER BY s.time DESC, s.id DESC""",
+            (user_id, *group_ids, user_id)).fetchall()
         submission_details = get_submission_collaboration(db, [study[0] for study in studies])
 
     return templates.TemplateResponse(
@@ -1068,6 +1130,11 @@ async def pdf(id: int, request: Request):
                     allowed = study[5] in {group["id"] for group in tekne_chat_service.groups(request.session)}
                 except HTTPException:
                     allowed = False
+                if not allowed:
+                    allowed = bool(db.execute("""SELECT 1 FROM study_group_access access
+                        JOIN tekne_student_identity identity ON identity.id=access.tekne_student_id
+                        WHERE access.study_id=? AND identity.login_id=? AND identity.deleted_at IS NULL""",
+                        (id, request.session.get("user_id"))).fetchone())
             if not allowed:
                 raise HTTPException(404, "PDFが見つかりません。")
         sections = []
@@ -1174,7 +1241,7 @@ async def ReservationAvailableDays(month: str):
 
 
 @app.get("/reservation/availability")
-async def ReservationAvailability(day: str):
+async def ReservationAvailability(request: Request, day: str):
     try:
         target_date = datetime.date.fromisoformat(day)
     except ValueError:
@@ -1185,7 +1252,9 @@ async def ReservationAvailability(day: str):
         raise HTTPException(status_code=400, detail="過去の日付は選択できません。")
 
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
-        slots = reservation_slot_summary(db, target_date.isoformat())
+        slots = reservation_slot_summary(
+            db, target_date.isoformat(), student_id=request.session.get("user_id")
+        )
     return {"day": target_date.isoformat(), "slots": slots}
 
 
@@ -1434,9 +1503,8 @@ async def AdminReservationSchedule(request: Request, day: str = None):
     if selected_day < today:
         selected_day = today
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
-        slots = reservation_slot_summary(
-            db, selected_day.isoformat(), request.session.get("admin_id")
-        )
+        require_super_admin(db, request)
+        slots = reservation_slot_summary(db, selected_day.isoformat())
     return templates.TemplateResponse(
         request=request,
         name="admin/reservation_schedule.html",
@@ -1461,9 +1529,8 @@ async def AdminReservationScheduleAvailability(request: Request, day: str):
     if target_date < datetime.datetime.now(JST).date():
         raise HTTPException(status_code=400, detail="過去の日付は選択できません。")
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
-        slots = reservation_slot_summary(
-            db, target_date.isoformat(), request.session.get("admin_id")
-        )
+        require_super_admin(db, request)
+        slots = reservation_slot_summary(db, target_date.isoformat())
     return {"day": target_date.isoformat(), "slots": slots}
 
 
@@ -1478,6 +1545,8 @@ async def UpdateAdminReservationSchedule(
 ):
     redirect_url = f"/admin/reservation-schedule?{urlencode({'day': day})}"
     notice_key = "admin_reservation_schedule_notice"
+    with closing(sqlite3.connect(DATABASE_PATH)) as auth_db:
+        require_super_admin(auth_db, request)
     if not valid_reservation_csrf(request, csrf_token, "admin_reservation_schedule_csrf_token"):
         request.session[notice_key] = {"type": "error", "message": "操作を確認できませんでした。ページを再読み込みしてください。"}
         return RedirectResponse(redirect_url, status_code=303)
@@ -1506,7 +1575,6 @@ async def UpdateAdminReservationSchedule(
         request.session[notice_key] = {"type": "error", "message": "日付または時間帯が正しくありません。"}
         return RedirectResponse(redirect_url, status_code=303)
 
-    admin_id = request.session.get("admin_id")
     slot_times = reservation_slot_range(start_time, end_time)
     now_text = datetime.datetime.now(JST).isoformat()
     try:
@@ -1516,23 +1584,23 @@ async def UpdateAdminReservationSchedule(
                 row[0] for row in db.execute(
                     f"""
                     SELECT start_time FROM reservation_available_slot
-                    WHERE admin_id = ? AND day = ?
+                    WHERE day = ?
                       AND start_time IN ({','.join('?' for _ in slot_times)})
                     """,
-                    (admin_id, day, *slot_times)
+                    (day, *slot_times)
                 ).fetchall()
             }
             if action == "add":
                 if existing:
-                    raise ValueError("選択範囲には、すでに自分が登録した時間が含まれています。")
+                    raise ValueError("選択範囲には、すでに予約可能時間が含まれています。")
                 db.executemany(
                     """
                     INSERT INTO reservation_available_slot
                         (admin_id, day, start_time, end_time, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES ('system', ?, ?, ?, ?, ?)
                     """,
                     [
-                        (admin_id, day, slot_time,
+                        (day, slot_time,
                          reservation_minutes_to_time(reservation_time_to_minutes(slot_time) + 30),
                          now_text, now_text)
                         for slot_time in slot_times
@@ -1540,18 +1608,15 @@ async def UpdateAdminReservationSchedule(
                 )
                 success_message = "予約可能時間を追加しました。"
             else:
-                if existing != set(slot_times):
-                    raise ValueError("選択範囲に、自分が登録していない時間が含まれています。")
-                summaries = {slot["start_time"]: slot for slot in reservation_slot_summary(db, day)}
-                if any(summaries[slot_time]["capacity"] - 1 < summaries[slot_time]["reserved"] for slot_time in slot_times):
-                    raise ValueError("既存予約の定員を下回るため、この時間帯は削除できません。")
+                if not existing:
+                    raise ValueError("選択範囲に予約可能時間がありません。")
                 db.execute(
                     f"""
                     DELETE FROM reservation_available_slot
-                    WHERE admin_id = ? AND day = ?
+                    WHERE day = ?
                       AND start_time IN ({','.join('?' for _ in slot_times)})
                     """,
-                    (admin_id, day, *slot_times)
+                    (day, *slot_times)
                 )
                 success_message = "予約可能時間を削除しました。"
             db.commit()
@@ -3967,12 +4032,24 @@ async def ReservationDate(
     start_time: str = Form(...),
     end_time: str = Form(...),
     purpose: str = Form(...),
+    people_count: str = Form(...),
     csrf_token: str = Form(...)
 ):
     if not valid_reservation_csrf(request, csrf_token):
         return JSONResponse(
             {"result": False, "message": "操作を確認できませんでした。ページを再読み込みしてください。"},
             status_code=403
+        )
+    try:
+        if not people_count.isascii() or not people_count.isdecimal():
+            raise ValueError
+        people_count_value = int(people_count)
+        if people_count_value < 1:
+            raise ValueError
+    except (AttributeError, ValueError):
+        return JSONResponse(
+            {"result": False, "message": "利用人数は1以上の整数で入力してください。"},
+            status_code=400
         )
     try:
         reservation_day = datetime.date.fromisoformat(day)
@@ -4010,26 +4087,38 @@ async def ReservationDate(
 
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
         db.execute("BEGIN IMMEDIATE")
-        summaries = {
-            slot["start_time"]: slot
-            for slot in reservation_slot_summary(db, reservation_day.isoformat())
+        configured_slots = {
+            row[0] for row in db.execute(
+                "SELECT start_time FROM reservation_available_slot WHERE day = ?",
+                (reservation_day.isoformat(),)
+            ).fetchall()
         }
         required_slots = reservation_slot_range(start_time, end_time)
-        if any(
-            slot_time not in summaries or summaries[slot_time]["remaining"] <= 0
-            for slot_time in required_slots
-        ):
+        if any(slot_time not in configured_slots for slot_time in required_slots):
             db.rollback()
             return JSONResponse(
-                {"result": False, "message": "選択した時間帯は満席になったか、予約できなくなりました。空き状況を更新しました。"},
+                {"result": False, "message": "選択した時間帯は予約可能時間外です。空き状況を更新してください。"},
+                status_code=409
+            )
+
+        overlap = db.execute("""
+            SELECT 1 FROM reservation
+            WHERE userid = ? AND day = ? AND status = 'active'
+              AND start_time < ? AND end_time > ?
+            LIMIT 1
+        """, (request.session.get("user_id"), reservation_day.isoformat(), end_time, start_time)).fetchone()
+        if overlap:
+            db.rollback()
+            return JSONResponse(
+                {"result": False, "message": "同じ時間帯にすでに予約があります。"},
                 status_code=409
             )
 
         reservation_id = db.execute(
             """
             INSERT INTO reservation
-                (userid, day, start_time, end_time, purpose, status, created_at)
-            VALUES (?, ?, ?, ?, ?, 'active', ?)
+                (userid, day, start_time, end_time, purpose, people_count, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
             """,
             (
                 request.session.get("user_id"),
@@ -4037,6 +4126,7 @@ async def ReservationDate(
                 start_time,
                 end_time,
                 purpose.strip(),
+                str(people_count_value),
                 datetime.datetime.now(JST).isoformat()
             )
         ).lastrowid
@@ -4044,7 +4134,8 @@ async def ReservationDate(
             db, request.session.get("user_id"), "TEKNE工作室の予約を受け付けました",
             reservation_body("tekne", {
                 "day": reservation_day.isoformat(), "start_time": start_time,
-                "end_time": end_time, "purpose": purpose.strip()
+                "end_time": end_time, "purpose": purpose.strip(),
+                "people_count": people_count_value
             }), "reservation_created", "tekne", reservation_id
         )
         db.commit()

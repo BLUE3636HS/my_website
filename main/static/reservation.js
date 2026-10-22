@@ -12,6 +12,7 @@ const timeMessage = document.getElementById("time-message");
 const selectedStart = document.getElementById("selected-start");
 const selectedEnd = document.getElementById("selected-end");
 const purpose = document.getElementById("purpose");
+const peopleCount = document.getElementById("people-count");
 const submitButton = document.getElementById("reservation-submit");
 const message = document.getElementById("reservation-message");
 let selectedDay = "";
@@ -116,11 +117,11 @@ async function chooseDate(key) {
 function renderTimeSlots(slots) {
     reservationStatus.innerHTML = "";
     reservationStatus.classList.remove("is-disabled");
-    unavailableTimes = new Set(slots.filter((slot) => slot.state !== "available").map((slot) => slot.start_time));
+    unavailableTimes = new Set(slots.filter((slot) => slot.state !== "available" || slot.own_reserved).map((slot) => slot.start_time));
     const labels = {full: "満席", unset: "未設定", closed: "受付終了"};
     slots.forEach((data) => {
         const slot = document.createElement("div");
-        slot.className = `reservation-time ${data.state}`;
+        slot.className = `reservation-time ${data.state}${data.own_reserved ? " own-reserved" : ""}`;
         slot.dataset.time = data.start_time;
         const label = document.createElement("span");
         label.className = "reservation-time-label";
@@ -129,7 +130,13 @@ function renderTimeSlots(slots) {
         body.className = "reservation-slot-body";
         const status = document.createElement("span");
         status.className = "reservation-slot-status";
-        status.textContent = data.state === "available" ? `空き（残り${data.remaining}）` : labels[data.state];
+        status.textContent = data.own_reserved ? "予約済み" : data.state === "available" ? "予約可能" : labels[data.state];
+        if (data.reserved_people > 0) {
+            const peopleReserved = document.createElement("span");
+            peopleReserved.className = "reservation-slot-people";
+            peopleReserved.textContent = `${data.reserved_people}人予約済み`;
+            body.append(peopleReserved);
+        }
         body.append(status);
         slot.append(label, body);
         addTimeEvents(slot);
@@ -168,7 +175,7 @@ function updateSelection(currentTime) {
 
 function addTimeEvents(slot) {
     slot.addEventListener("mousedown", (event) => {
-        if (event.button !== 0 || !slot.classList.contains("available")) return;
+        if (event.button !== 0 || !slot.classList.contains("available") || slot.classList.contains("own-reserved")) return;
         event.preventDefault();
         resetTimeSelection();
         isDragging = true;
@@ -203,17 +210,31 @@ submitButton.addEventListener("click", async () => {
         showMessage("使用目的を入力してください。");
         return;
     }
+    if (!/^[0-9]+$/.test(peopleCount.value) || BigInt(peopleCount.value) < 1n) {
+        showMessage("利用人数は1以上の整数で入力してください。");
+        peopleCount.focus();
+        return;
+    }
     const formData = new FormData();
     formData.append("day", selectedDay);
     formData.append("start_time", selectedStart.textContent);
     formData.append("end_time", selectedEnd.textContent);
     formData.append("purpose", purpose.value);
+    formData.append("people_count", peopleCount.value);
     formData.append("csrf_token", csrfToken);
     submitButton.disabled = true;
     try {
         const response = await fetch("/reservation/date", {method: "POST", body: formData});
         const data = await response.json();
-        if (!response.ok || !data.result) throw new Error(data.message || "予約を登録できませんでした。");
+        if (!response.ok || !data.result) {
+            if (response.status === 422) {
+                throw new Error("予約フォームの情報が不足しています。ページを再読み込みして、もう一度予約してください。");
+            }
+            const detail = Array.isArray(data.detail)
+                ? data.detail.map((item) => item.msg).filter(Boolean).join("、")
+                : data.detail;
+            throw new Error(data.message || detail || "予約を登録できませんでした。");
+        }
         purpose.value = "";
         await chooseDate(selectedDay);
         showMessage(data.message, "success");

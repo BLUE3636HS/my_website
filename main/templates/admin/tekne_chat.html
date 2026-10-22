@@ -3,7 +3,7 @@
 {% block page_title %}TEKNEチャット管理{% endblock %}
 {% block css %}<link rel="stylesheet" href="/static/admin/tekne_chat.css">{% endblock %}
 {% block content %}
-<div id="tc-admin-app" data-csrf="{{ csrf_token }}">
+<div id="tc-admin-app" data-csrf="{{ csrf_token }}" data-admin-id="{{ admin_id }}">
     <section class="tc-admin-groups">
         <form method="get" action="/admin/tekne-chat" class="tc-admin-search">
             <label for="tc-admin-query">グループ・学校を検索</label>

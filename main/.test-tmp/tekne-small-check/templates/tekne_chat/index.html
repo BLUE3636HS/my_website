@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}TEKNEチャット{% endblock %}
+{% block page_title %}TEKNEチャット{% endblock %}
+{% block css %}
+<link rel="stylesheet" href="/static/tekne_chat/chat.css">
+{% endblock %}
+
+{% block content %}
+<div id="tekne-chat-app" class="tekne-chat-app"
+     data-csrf="{{ csrf_token }}"
+     data-initial-group="{{ initial_group_id }}"
+     data-initial-file="{{ initial_file_id }}"
+     data-initial-folder="{{ initial_folder_id }}"
+     data-current-user="{{ request.session.get('user_id', '') }}">
+    <aside class="tc-groups">
+        <div class="tc-group-heading"><h1>チャット</h1><button id="tc-create-group" type="button" aria-label="グループを作成">＋</button></div>
+        <label class="tc-search-label" for="tc-group-search">グループを検索</label>
+        <input id="tc-group-search" type="search" placeholder="グループ名">
+        <div id="tc-group-list" class="tc-group-list" aria-live="polite"></div>
+    </aside>
+    <main class="tc-conversation">
+        <header class="tc-conversation-header">
+            <div class="tc-conversation-title"><div id="tc-current-icon" class="tc-avatar">T</div><div><h2 id="tc-current-name">グループを選択</h2><span id="tc-current-members"></span></div></div>
+            <div class="tc-header-actions">
+                <button id="tc-rename-group" class="tc-icon-action" type="button" aria-label="グループ設定" title="グループ設定" disabled><img src="/static/tekne_chat/icons/settings.png" alt=""></button>
+                <button id="tc-toggle-members" class="tc-icon-action" type="button" aria-label="メンバー" title="メンバー" disabled><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7-1a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM9 13c-3.3 0-6 1.7-6 3.8V20h12v-3.2C15 14.7 12.3 13 9 13Zm7.2.1c-.5 0-1 .1-1.5.2 1.3.8 2.1 2 2.1 3.5V20h4.2v-3c0-2.1-2.2-3.9-4.8-3.9Z"/></svg></button>
+                <button id="tc-toggle-files" class="tc-icon-action" type="button" aria-label="共有フォルダ" title="共有フォルダ" disabled><img src="/static/tekne_chat/icons/folder.png" alt=""></button>
+            </div>
+        </header>
+        <div id="tc-notice" class="tc-notice" role="status"></div>
+        <button id="tc-load-older" class="tc-load-older" type="button" hidden>過去のメッセージを読み込む</button>
+        <section id="tc-messages" class="tc-messages" aria-label="メッセージ"></section>
+        <form id="tc-message-form" class="tc-message-form">
+            <label class="visually-hidden" for="tc-message-input">メッセージ</label>
+            <textarea id="tc-message-input" rows="2" maxlength="5000" placeholder="メッセージを入力（Enterで送信、Shift+Enterで改行）" disabled></textarea>
+            <button id="tc-send-message" type="submit" disabled>送信</button>
+        </form>
+    </main>
+    <aside id="tc-side-panel" class="tc-side-panel" hidden>
+        <div class="tc-panel-heading"><h2 id="tc-panel-title">メンバー</h2><button id="tc-close-panel" type="button" aria-label="チャットに戻る">×</button></div>
+        <section id="tc-members-panel" hidden>
+            <label for="tc-student-search">同じ学校の生徒を招待</label>
+            <input id="tc-student-search" type="search" placeholder="生徒IDを2文字以上入力">
+            <div id="tc-student-results" class="tc-panel-list"></div>
+            <h3>参加メンバー</h3><div id="tc-member-list" class="tc-panel-list"></div>
+            <button id="tc-leave-group" class="tc-danger-button" type="button">このグループを退出</button>
+        </section>
+        <section id="tc-files-panel" hidden>
+            <div class="tc-file-layout">
+                <nav class="tc-folder-navigation" aria-label="フォルダ階層">
+                    <div class="tc-folder-nav-heading"><h3>フォルダ</h3><button id="tc-up-folder" type="button" title="上の階層へ">↑</button></div>
+                    <div id="tc-folder-tree" class="tc-folder-tree" role="tree"></div>
+                </nav>
+                <div class="tc-file-content">
+                    <div class="tc-file-toolbar">
+                        <div class="tc-file-toolbar-primary">
+                            <button id="tc-new-folder" type="button">フォルダ作成</button>
+                            <label class="tc-upload-button">ファイルをアップロード<input id="tc-upload-file" type="file" hidden></label>
+                        </div>
+                        <div class="tc-file-toolbar-actions" role="group" aria-label="選択した項目の操作">
+                            <span id="tc-selection-status" class="tc-selection-status">項目を選択してください</span>
+                            <button id="tc-selected-download" type="button" disabled>ダウンロード</button>
+                            <button id="tc-selected-rename" type="button" disabled>名前変更</button>
+                            <button id="tc-selected-move" type="button" disabled>移動</button>
+                            <button id="tc-selected-delete" type="button" disabled>削除</button>
+                        </div>
+                    </div>
+                    <label for="tc-file-search">ファイル・フォルダ検索</label>
+                    <input id="tc-file-search" type="search" placeholder="グループ内を検索">
+                    <p id="tc-folder-path" class="tc-folder-path">ルート</p>
+                    <div class="tc-file-table-header" aria-hidden="true"><span>名前</span><span>アップロード者</span><span>登録日時</span><span>サイズ</span></div>
+                    <div id="tc-file-list" class="tc-file-list" aria-live="polite"></div>
+                </div>
+            </div>
+        </section>
+    </aside>
+</div>
+<dialog id="tc-create-dialog" class="tc-dialog">
+    <form method="dialog" id="tc-create-form">
+        <h2>グループを作成</h2><label for="tc-new-group-name">グループ名</label>
+        <input id="tc-new-group-name" maxlength="100" pattern="[\p{L}\p{M}\p{N} 　_\(\)（）・ー\-]{1,100}" title="日本語・英数字・空白・一部の記号（_ - ( ) ・ ー）が使用できます。スラッシュや制御文字は使用できません。" required>
+        <div class="tc-dialog-actions"><button value="cancel" type="button" class="tc-dialog-cancel">キャンセル</button><button id="tc-confirm-create" type="submit">作成</button></div>
+    </form>
+</dialog>
+<dialog id="tc-icon-dialog" class="tc-dialog">
+    <form id="tc-icon-form">
+        <h2>グループ設定</h2><label for="tc-edit-group-name">グループ名</label><input id="tc-edit-group-name" maxlength="100" pattern="[\p{L}\p{M}\p{N} 　_\(\)（）・ー\-]{1,100}" title="日本語・英数字・空白・一部の記号（_ - ( ) ・ ー）が使用できます。スラッシュや制御文字は使用できません。" required>
+        <label for="tc-group-icon-file">グループアイコン（任意）</label><input id="tc-group-icon-file" type="file" accept="image/*">
+        <div class="tc-dialog-actions"><button type="button" class="tc-dialog-cancel">キャンセル</button><button type="submit">保存</button></div>
+    </form>
+</dialog>
+<dialog id="tc-move-dialog" class="tc-dialog">
+    <form id="tc-move-form">
+        <h2>保存先を選択</h2>
+        <label for="tc-move-target">移動先フォルダ</label>
+        <select id="tc-move-target" class="tc-select"><option value="">ルート</option></select>
+        <div class="tc-dialog-actions"><button type="button" class="tc-dialog-cancel">キャンセル</button><button type="submit">移動</button></div>
+    </form>
+</dialog>
+<dialog id="tc-folder-create-dialog" class="tc-dialog">
+    <form id="tc-folder-create-form">
+        <h2>フォルダを作成</h2>
+        <label for="tc-new-folder-name">フォルダ名</label>
+        <input id="tc-new-folder-name" maxlength="100" required>
+        <div class="tc-dialog-actions"><button type="button" class="tc-dialog-cancel">キャンセル</button><button type="submit">作成</button></div>
+    </form>
+</dialog>
+{% endblock %}
+
+{% block script %}
+<script src="/static/tekne_chat/chat.js" defer></script>
+{% endblock %}

@@ -61,6 +61,11 @@ def initialize_studies(db):
             position INTEGER NOT NULL CHECK(position >= 0),
             PRIMARY KEY(study_id, tekne_student_id),
             UNIQUE(study_id, position))""")
+        db.execute("""CREATE TABLE IF NOT EXISTS study_group_access (
+            study_id INTEGER NOT NULL REFERENCES study(id) ON DELETE CASCADE,
+            tekne_student_id TEXT NOT NULL,
+            PRIMARY KEY(study_id, tekne_student_id))""")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_study_group_access_student ON study_group_access(tekne_student_id,study_id)")
         db.execute("""CREATE TABLE IF NOT EXISTS study_field_value (
             study_id INTEGER NOT NULL REFERENCES study(id) ON DELETE CASCADE,
             field_id INTEGER NOT NULL REFERENCES study_template_field(id) ON DELETE RESTRICT,

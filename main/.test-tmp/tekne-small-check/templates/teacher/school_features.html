@@ -1,0 +1,24 @@
+{% extends "teacher/base.html" %}
+{% block title %}自校の機能設定{% endblock %}
+{% block content %}
+<div class="teacher-page teacher-school-features-page">
+    <section class="teacher-dashboard-card">
+        <p class="teacher-eyebrow">School Features</p>
+        <h1>自校の機能設定</h1>
+        <p>{{ school }}の生徒画面で利用できる機能を設定します。無効にした機能は関連ページやAPIも利用できなくなります。</p>
+        {% if notice %}<p class="teacher-field-notice teacher-field-notice-success" role="status">{{ notice }}</p>{% endif %}
+        <form method="post" action="/teacher/school-features" class="teacher-school-features-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <ul class="teacher-school-features-list">
+                {% for key, label in features %}
+                <li>
+                    <label><span>{{ label }}</span><input type="checkbox" name="enabled:{{ key }}" value="1"{% if settings[key] %} checked{% endif %}><span class="teacher-feature-switch" aria-hidden="true"></span></label>
+                    <p class="teacher-school-feature-description">{% if key == 'dashboard' %}予約状況などの様々な情報を一覧で確認できます{% elif key == 'studies_add' %}生徒が研究成果を新しく提出できます。{% elif key == 'studies_list' %}生徒が自分の高校、または全国の高校生の研究成果の一覧を確認できます。{% elif key == 'community' %}生徒が全国の高校生とつながれるTEKNEコミュニティを閲覧・利用できます。{% elif key == 'workshop_reservation' %}生徒がTEKNE工作室の空き状況を確認し、利用予約をすることができます。{% elif key == 'mentor_reservation' %}大学生メンターからのサポートを予約することができます。{% elif key == 'equipment_reservation' %}実験器具の在庫を確認し、貸し出しを予約できます。{% endif %}</p>
+                </li>
+                {% endfor %}
+            </ul>
+            <button type="submit">設定を保存</button>
+        </form>
+    </section>
+</div>
+{% endblock %}

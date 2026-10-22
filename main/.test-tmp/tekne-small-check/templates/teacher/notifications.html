@@ -1,0 +1,50 @@
+{% extends "teacher/base.html" %}
+{% block title %}通知送信{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/teacher/notifications.css">{% endblock %}
+{% block content %}
+<div class="teacher-page teacher-notification-page">
+    <section class="teacher-notification-card">
+        <p class="teacher-eyebrow">NOTIFICATIONS</p>
+        <h1>通知を送信</h1>
+        <p>自校の生徒へサイト内通知を送信します。</p>
+        {% if notice %}<p class="teacher-notice teacher-notice-{{ notice.type }}">{{ notice.message }}</p>{% endif %}
+        <form class="teacher-notification-form" method="post" action="/teacher/notifications/send">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label>送信対象
+                <select name="target_type" id="teacher-notification-target" required>
+                    <option value="student">自校の生徒1人</option>
+                    <option value="all">自校の生徒全員</option>
+                </select>
+            </label>
+            <label id="teacher-student-target">対象生徒
+                <input type="text" name="student_id" id="teacher-student-id" list="teacher-student-options" placeholder="生徒IDを入力して検索" autocomplete="off" required>
+                <datalist id="teacher-student-options">
+                    {% for student in students %}<option value="{{ student[0] }}">{{ student[0] }}</option>{% endfor %}
+                </datalist>
+                <span class="teacher-field-help">自校に登録されている生徒だけが送信対象になります。</span>
+            </label>
+            <label>タイトル<input name="title" maxlength="200" required></label>
+            <label>本文<textarea name="body" maxlength="5000" rows="7" required></textarea></label>
+            <button type="submit">通知を送信</button>
+        </form>
+    </section>
+
+    <section class="teacher-notification-card">
+        <h2>自校の送信履歴</h2>
+        <div class="teacher-notification-table-wrap"><table>
+            <thead><tr><th>送信日時</th><th>送信者</th><th>タイトル・本文</th><th>送信対象</th><th>件数</th></tr></thead>
+            <tbody>
+                {% for batch in batches %}
+                <tr><td>{{ batch[1] }}</td><td>先生: {{ batch[2] or "不明" }}</td><td><strong>{{ batch[3] }}</strong><p>{{ batch[4] }}</p></td><td>{{ batch[5] }}</td><td>{{ batch[6] }}件</td></tr>
+                {% else %}<tr><td colspan="5" class="teacher-no-data">送信履歴はありません。</td></tr>{% endfor %}
+            </tbody>
+        </table></div>
+        <nav class="teacher-notification-pagination" aria-label="ページ移動">
+            {% if has_previous %}<a href="?page={{ page - 1 }}">前へ</a>{% endif %}
+            <span>{{ page }}ページ</span>
+            {% if has_next %}<a href="?page={{ page + 1 }}">次へ</a>{% endif %}
+        </nav>
+    </section>
+</div>
+{% endblock %}
+{% block script %}<script src="/static/teacher/notifications.js"></script>{% endblock %}

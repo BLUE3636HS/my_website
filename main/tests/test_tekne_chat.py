@@ -3,6 +3,8 @@ import io
 import sqlite3
 import tempfile
 import unittest
+import bcrypt
+from contextlib import closing
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -16,6 +18,7 @@ from tekne_chat import (
     _connect,
     _storage_file,
     _same_origin,
+    cleanup_expired_groups,
     create_chat_session,
     initialize_tekne_chat,
     link_student_identity,
@@ -258,6 +261,92 @@ class TekneChatTests(unittest.TestCase):
         self.assertTrue(deleted["deleted"])
         with _connect(self.database_path) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM tekne_chat_admin_audit").fetchone()[0], 2)
+
+    def test_admin_group_delete_reauthenticates_and_removes_chat_data_and_storage(self):
+        group_id = self._create_group()
+        message = self.service.create_message(self.sessions["student_0001"], group_id, "削除対象")
+        uploaded = self.service.upload_file(self.sessions["student_0001"], group_id, None,
+                                            MemoryUpload("remove.txt", b"chat attachment"))
+        with closing(_connect(self.database_path)) as db:
+            db.execute("""CREATE TABLE admin(
+                id TEXT PRIMARY KEY,pwd TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',
+                role TEXT NOT NULL DEFAULT 'admin',deleted_at TEXT,
+                session_version INTEGER NOT NULL DEFAULT 0)""")
+            password_hash = bcrypt.hashpw(b"secret-password", bcrypt.gensalt(rounds=4)).decode()
+            db.execute("INSERT INTO admin(id,pwd) VALUES ('admin-1',?)", (password_hash,))
+            file_path = _storage_file(self.storage_path,
+                                      self.service.file_record(db, uploaded["file_id"])["object_key"])
+            db.commit()
+
+        with self.assertRaises(HTTPException) as wrong_id:
+            self.service.admin_delete_group("admin-1", group_id, "other-admin", "secret-password")
+        self.assertEqual(wrong_id.exception.status_code, 403)
+        with self.assertRaises(HTTPException) as wrong_password:
+            self.service.admin_delete_group("admin-1", group_id, "admin-1", "incorrect-password")
+        self.assertEqual(wrong_password.exception.status_code, 403)
+
+        self.service.admin_delete_group("admin-1", group_id, " admin-1 ", "secret-password")
+        self.assertFalse(file_path.exists())
+        with closing(_connect(self.database_path)) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM tekne_chat_group WHERE id=?", (group_id,)).fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM tekne_chat_message WHERE id=?", (message["id"],)).fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM tekne_chat_file WHERE id=?", (uploaded["file_id"],)).fetchone()[0], 0)
+            audit = db.execute("SELECT admin_id,action,entity_id FROM tekne_chat_admin_audit").fetchone()
+            self.assertEqual(tuple(audit), ("admin-1", "group.delete", group_id))
+        with self.assertRaises(HTTPException):
+            self.service.admin_delete_group("admin-1", group_id, "admin-1", "secret-password")
+
+    def test_cleanup_removes_only_empty_groups_at_one_year_boundary_and_deletes_files(self):
+        boundary_group = self._create_group()
+        old_group = self._create_group()
+        active_group = self._create_group()
+        self.service.invite(self.sessions["student_0001"], boundary_group, "student_0002")
+        parent = self.service.create_folder(self.sessions["student_0001"], old_group, "親フォルダ")
+        child = self.service.create_folder(self.sessions["student_0001"], old_group, "子フォルダ", parent["id"])
+        uploaded = self.service.upload_file(self.sessions["student_0001"], old_group, child["id"],
+                                            MemoryUpload("old-file.txt", b"discard me"))
+        with closing(_connect(self.database_path)) as db:
+            old_file = _storage_file(self.storage_path,
+                                     self.service.file_record(db, uploaded["file_id"])["object_key"])
+        self.service.leave(self.sessions["student_0001"], boundary_group)
+        self.service.leave(self.sessions["student_0002"], boundary_group)
+        self.service.leave(self.sessions["student_0001"], old_group)
+
+        now = datetime.datetime(2025, 3, 1, tzinfo=datetime.timezone.utc)
+        cutoff = now.replace(year=2024)
+        just_before = cutoff - datetime.timedelta(seconds=1)
+        with closing(_connect(self.database_path)) as db:
+            db.execute("UPDATE tekne_chat_group SET updated_at=? WHERE id=?", (cutoff.isoformat(), boundary_group))
+            db.execute("UPDATE tekne_chat_member SET left_at=? WHERE group_id=?", (cutoff.isoformat(), boundary_group))
+            db.execute("UPDATE tekne_chat_group SET updated_at=? WHERE id=?", (just_before.isoformat(), old_group))
+            db.execute("UPDATE tekne_chat_member SET left_at=? WHERE group_id=?", (just_before.isoformat(), old_group))
+            db.execute("UPDATE tekne_chat_group SET updated_at=? WHERE id=?", (just_before.isoformat(), active_group))
+            db.commit()
+
+        removed = cleanup_expired_groups(self.database_path, self.storage_path, now=now, force=True)
+        self.assertEqual(removed, 2)
+        self.assertFalse(old_file.exists())
+        self.assertEqual(cleanup_expired_groups(self.database_path, self.storage_path, now=now, force=True), 0)
+        with closing(_connect(self.database_path)) as db:
+            remaining = {row[0] for row in db.execute("SELECT id FROM tekne_chat_group")}
+            self.assertEqual(remaining, {active_group})
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM tekne_chat_file WHERE group_id=?", (old_group,)).fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM tekne_chat_folder WHERE group_id=?", (old_group,)).fetchone()[0], 0)
+
+    def test_cleanup_does_not_remove_group_with_rejoined_member_and_resets_expiration_on_last_exit(self):
+        group_id = self._create_group()
+        old = datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc).isoformat()
+        with closing(_connect(self.database_path)) as db:
+            db.execute("UPDATE tekne_chat_group SET updated_at=? WHERE id=?", (old, group_id))
+            db.execute("UPDATE tekne_chat_member SET joined_at=?,left_at=? WHERE group_id=?", (old, old, group_id))
+            db.execute("UPDATE tekne_chat_member SET left_at=NULL WHERE group_id=?", (group_id,))
+            db.commit()
+        self.assertEqual(cleanup_expired_groups(
+            self.database_path, self.storage_path,
+            now=datetime.datetime(2025, 1, 2, tzinfo=datetime.timezone.utc), force=True), 0)
+        self.service.leave(self.sessions["student_0001"], group_id)
+        with closing(_connect(self.database_path)) as db:
+            self.assertNotEqual(db.execute("SELECT updated_at FROM tekne_chat_group WHERE id=?", (group_id,)).fetchone()[0], old)
 
     def test_expired_or_revoked_chat_session_is_rejected(self):
         group_id = self._create_group()

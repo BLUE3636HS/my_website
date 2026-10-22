@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -16,9 +17,9 @@ from notifications import create_notification, create_reservation_reminders, ini
 SCHEMA = """
 CREATE TABLE student (id TEXT NOT NULL, pwd TEXT NOT NULL, school TEXT NOT NULL, profile_image TEXT);
 CREATE TABLE teacher (id TEXT NOT NULL, pwd TEXT NOT NULL, school TEXT NOT NULL);
-CREATE TABLE admin (id TEXT PRIMARY KEY, pwd TEXT NOT NULL, deleted_at TEXT);
-CREATE TABLE reservation (id INTEGER PRIMARY KEY AUTOINCREMENT, userid TEXT NOT NULL, day TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, purpose TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', created_at TEXT, cancelled_at TEXT, cancelled_by_type TEXT, cancelled_by_id TEXT);
-CREATE TABLE reservation_available_slot (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id TEXT NOT NULL, day TEXT NOT NULL, start_time TEXT NOT NULL);
+CREATE TABLE admin (id TEXT PRIMARY KEY, pwd TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'admin', deleted_at TEXT, session_version INTEGER NOT NULL DEFAULT 0, name TEXT NOT NULL DEFAULT '');
+CREATE TABLE reservation (id INTEGER PRIMARY KEY AUTOINCREMENT, userid TEXT NOT NULL, day TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, purpose TEXT NOT NULL, people_count TEXT NOT NULL DEFAULT '1', status TEXT NOT NULL DEFAULT 'active', created_at TEXT, cancelled_at TEXT, cancelled_by_type TEXT, cancelled_by_id TEXT);
+CREATE TABLE reservation_available_slot (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id TEXT NOT NULL, day TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL DEFAULT '10:30', created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '', UNIQUE(admin_id, day, start_time));
 CREATE TABLE equipment_reservation (id INTEGER PRIMARY KEY AUTOINCREMENT, userid TEXT NOT NULL, equipment TEXT NOT NULL, start_day TEXT NOT NULL, end_day TEXT NOT NULL, quantity INTEGER NOT NULL, purpose TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', equipment_id TEXT, returned INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE equipment_room_reservation (id INTEGER PRIMARY KEY AUTOINCREMENT, userid TEXT NOT NULL, equipment_id TEXT NOT NULL, equipment TEXT NOT NULL, use_day TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, quantity INTEGER NOT NULL, purpose TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', returned INTEGER NOT NULL DEFAULT 0);
 """
@@ -45,6 +46,9 @@ class NotificationTests(unittest.TestCase):
             db.executemany("INSERT INTO teacher (id, pwd, school) VALUES (?, 'x', ?)", [
                 ("teacher-1", "school-1"), ("teacher-2", "school-1"),
                 ("teacher-3", "school-2")
+            ])
+            db.executemany("INSERT INTO admin (id, pwd, role) VALUES (?, 'x', ?)", [
+                ("super", "super_admin"), ("admin", "admin")
             ])
             db.commit()
         self.patch = patch.object(main, "DATABASE_PATH", self.db_path)
@@ -182,21 +186,20 @@ class NotificationTests(unittest.TestCase):
     def test_tekne_create_and_cancel_notifications(self):
         future = (datetime.datetime.now(main.JST).date() + datetime.timedelta(days=3)).isoformat()
         with closing(sqlite3.connect(self.db_path)) as db:
-            db.executemany(
-                "INSERT INTO reservation_available_slot (admin_id, day, start_time) VALUES ('admin', ?, ?)",
-                [(future, "10:00"), (future, "10:30")],
-            )
+            db.executemany("INSERT INTO reservation_available_slot (admin_id, day, start_time) VALUES ('system', ?, ?)",
+                           [(future, value) for value in ("10:00", "10:30", "11:00")])
             db.commit()
         student = request("/reservation/date", {
             "user_login": True, "user_id": "a", "reservation_csrf_token": "token"
         }, "POST")
         response = self.await_result(main.ReservationDate(
-            student, future, "10:00", "11:00", "研究", "token"
+            student, future, "10:00", "11:00", "研究", "2", "token"
         ))
         self.assertTrue(response["result"])
         with closing(sqlite3.connect(self.db_path)) as db:
             created = db.execute("SELECT notification_type FROM notification WHERE recipient_user_id = 'a'").fetchall()
-            reservation_id = db.execute("SELECT id FROM reservation").fetchone()[0]
+            reservation_id, saved_people_count = db.execute("SELECT id, people_count FROM reservation").fetchone()
+        self.assertEqual(saved_people_count, "2")
         self.assertEqual(created, [("reservation_created",)])
         student.session["mypage_reservation_csrf_token"] = "cancel-token"
         self.await_result(main.CancelReservation(student, reservation_id, "cancel-token"))
@@ -204,6 +207,131 @@ class NotificationTests(unittest.TestCase):
             types = db.execute("SELECT notification_type FROM notification WHERE recipient_user_id = 'a' ORDER BY id").fetchall()
             self.assertEqual(types, [("reservation_created",), ("reservation_cancelled",)])
             self.assertEqual(db.execute("SELECT status FROM reservation").fetchone()[0], "cancelled")
+
+    def test_workshop_reservations_allow_other_students_but_reject_own_overlap(self):
+        future = (datetime.datetime.now(main.JST).date() + datetime.timedelta(days=3)).isoformat()
+        with closing(sqlite3.connect(self.db_path)) as db:
+            db.executemany("INSERT INTO reservation_available_slot (admin_id, day, start_time) VALUES ('system', ?, ?)",
+                           [(future, value) for value in ("10:00", "10:30", "11:00", "11:30")])
+            db.commit()
+        def reserve(student, start, end):
+            response = self.await_result(main.ReservationDate(
+                request("/reservation/date", {"user_login": True, "user_id": student,
+                                               "reservation_csrf_token": "token"}, "POST"),
+                future, start, end, "研究", "1", "token"
+            ))
+            return json.loads(response.body) if isinstance(response, main.JSONResponse) else response
+        self.assertTrue(reserve("a", "10:00", "11:00")["result"])
+        self.assertTrue(reserve("b", "10:00", "11:00")["result"])
+        overlap = reserve("a", "10:30", "11:30")
+        self.assertFalse(overlap["result"])
+        self.assertIn("すでに予約", overlap["message"])
+        with closing(sqlite3.connect(self.db_path)) as db:
+            db.execute("UPDATE reservation SET status='cancelled' WHERE userid='a'")
+            db.commit()
+        self.assertTrue(reserve("a", "10:30", "11:30")["result"])
+
+    def test_reservation_slot_summary_sums_active_people_for_each_overlapping_slot(self):
+        future = (datetime.datetime.now(main.JST).date() + datetime.timedelta(days=3)).isoformat()
+        with closing(sqlite3.connect(self.db_path)) as db:
+            db.executemany(
+                "INSERT INTO reservation_available_slot (admin_id, day, start_time) VALUES ('system', ?, ?)",
+                [(future, value) for value in ("10:00", "10:30", "11:00")]
+            )
+            db.executemany("""
+                INSERT INTO reservation (userid, day, start_time, end_time, purpose, people_count, status)
+                VALUES (?, ?, ?, ?, '研究', ?, ?)
+            """, [
+                ("a", future, "10:00", "11:00", 2, "active"),
+                ("b", future, "10:30", "11:30", 5, "active"),
+                ("c", future, "10:00", "11:00", 20, "cancelled"),
+            ])
+            db.commit()
+            summary = {
+                slot["start_time"]: slot
+                for slot in main.reservation_slot_summary(db, future, student_id="a")
+            }
+        self.assertEqual(summary["10:00"]["reserved_people"], 2)
+        self.assertEqual(summary["10:30"]["reserved_people"], 7)
+        self.assertEqual(summary["11:00"]["reserved_people"], 5)
+        self.assertEqual(summary["10:30"]["state"], "available")
+        self.assertTrue(summary["10:00"]["own_reserved"])
+        self.assertFalse(summary["10:30"]["own_reserved"])
+        availability = self.await_result(main.ReservationAvailability(
+            request("/reservation/availability", {"user_login": True, "user_id": "a"}), future
+        ))
+        availability_by_time = {slot["start_time"]: slot for slot in availability["slots"]}
+        self.assertTrue(availability_by_time["10:00"]["own_reserved"])
+        self.assertEqual(availability_by_time["10:30"]["reserved_people"], 7)
+
+    def test_workshop_reservation_rejects_invalid_people_count(self):
+        session = {"user_login": True, "user_id": "a", "reservation_csrf_token": "token"}
+        for invalid_count in ("", "0", "-1", "1.5", "abc"):
+            response = self.await_result(main.ReservationDate(
+                request("/reservation/date", session.copy(), "POST"),
+                "2030-01-02", "10:00", "10:30", "研究", invalid_count, "token"
+            ))
+            self.assertEqual(response.status_code, 400, invalid_count)
+        with closing(sqlite3.connect(self.db_path)) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM reservation").fetchone()[0], 0)
+
+    def test_reservation_schedule_requires_super_admin_for_page_api_and_update(self):
+        ordinary = request("/admin/reservation-schedule", {"admin_login": True, "admin_id": "admin"})
+        with self.assertRaises(main.HTTPException) as page_error:
+            self.await_result(main.AdminReservationSchedule(ordinary))
+        self.assertEqual(page_error.exception.status_code, 403)
+        with self.assertRaises(main.HTTPException) as api_error:
+            self.await_result(main.AdminReservationScheduleAvailability(ordinary, "2030-01-02"))
+        self.assertEqual(api_error.exception.status_code, 403)
+        post = request("/admin/reservation-schedule", {
+            "admin_login": True, "admin_id": "admin",
+            "admin_reservation_schedule_csrf_token": "token"
+        }, "POST")
+        from unittest.mock import patch as mock_patch
+        with mock_patch.object(main, "valid_reservation_csrf", return_value=True):
+            with self.assertRaises(main.HTTPException) as post_error:
+                self.await_result(main.UpdateAdminReservationSchedule(
+                    post, "2030-01-02", "add", "10:00", "10:30", "token"
+                ))
+        self.assertEqual(post_error.exception.status_code, 403)
+
+    def test_super_admin_can_add_and_delete_workshop_schedule(self):
+        from unittest.mock import patch as mock_patch
+        future = (datetime.datetime.now(main.JST).date() + datetime.timedelta(days=3)).isoformat()
+        admin_request = request("/admin/reservation-schedule", {
+            "admin_login": True, "admin_id": "super", "admin_session_version": 0,
+            "admin_reservation_schedule_csrf_token": "token"
+        }, "POST")
+        with mock_patch.object(main, "valid_reservation_csrf", return_value=True):
+            added = self.await_result(main.UpdateAdminReservationSchedule(
+                admin_request, future, "add", "10:00", "11:00", "token"
+            ))
+            self.assertEqual(added.status_code, 303)
+            with closing(sqlite3.connect(self.db_path)) as db:
+                self.assertEqual(db.execute(
+                    "SELECT start_time FROM reservation_available_slot WHERE day=? ORDER BY start_time", (future,)
+                ).fetchall(), [("10:00",), ("10:30",)])
+            deleted = self.await_result(main.UpdateAdminReservationSchedule(
+                admin_request, future, "delete", "10:00", "11:00", "token"
+            ))
+        self.assertEqual(deleted.status_code, 303)
+        with closing(sqlite3.connect(self.db_path)) as db:
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM reservation_available_slot WHERE day=?", (future,)
+            ).fetchone()[0], 0)
+
+    def test_workshop_schedule_migration_merges_duplicate_slots_and_is_idempotent(self):
+        with closing(sqlite3.connect(self.db_path)) as db:
+            db.execute("CREATE TABLE schema_migration (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)")
+            db.executemany("INSERT INTO reservation_available_slot (admin_id, day, start_time, end_time, created_at, updated_at) VALUES (?, '2030-01-02', '10:00', '10:30', 'old', 'old')",
+                           [("admin",), ("super",)])
+            db.commit()
+        with closing(sqlite3.connect(self.db_path)) as db:
+            main.initialize_reservation_schedule(db)
+            main.initialize_reservation_schedule(db)
+            db.commit()
+            self.assertEqual(db.execute("SELECT admin_id,day,start_time FROM reservation_available_slot").fetchall(),
+                             [("super", "2030-01-02", "10:00")])
 
     def test_equipment_create_and_cancel_notifications(self):
         future = (datetime.datetime.now(main.JST).date() + datetime.timedelta(days=3)).isoformat()

@@ -18,7 +18,8 @@ from starlette.datastructures import FormData, UploadFile
 from starlette.requests import Request
 
 import main
-from tekne_chat import TekneChatService, create_chat_session, initialize_tekne_chat
+from tekne_chat import (TekneChatService, cleanup_expired_groups, create_chat_session,
+                        initialize_tekne_chat, link_student_identity)
 from studies import connect_studies, get_templates, initialize_studies, study_file_path, study_pdf_path
 
 
@@ -89,11 +90,15 @@ class StudyTests(unittest.TestCase):
             return result.value
         self.fail('Teacher study list unexpectedly awaited an async operation')
 
-    def render_student_studylist(self):
-        with patch.object(main, 'tekne_chat_service', self.chat):
+    def render_student_studylist(self, session=None):
+        with patch.object(main, 'tekne_chat_service', self.chat), \
+             patch.object(main.templates, 'context_processors', [
+                 lambda _request: {'student_features': {}, 'unread_notification_count': 0,
+                                    'is_super_admin': False}
+             ]):
             endpoint = next(route.endpoint for route in main.app.routes
                             if getattr(route, 'path', '') == '/studylist' and 'GET' in route.methods)
-            coroutine = endpoint(request('/studylist', self.session))
+            coroutine = endpoint(request('/studylist', self.session if session is None else session))
             try:
                 coroutine.send(None)
             except StopIteration as result:
@@ -186,6 +191,73 @@ class StudyTests(unittest.TestCase):
         self.chat.leave(other_session, group_id)
         self.assertEqual(self.rows('SELECT student_id_snapshot FROM study_submission_member WHERE study_id=1 ORDER BY position'),
                          [('a',), ('c',)])
+
+    def test_expired_group_keeps_research_and_all_historical_members_can_view_it(self):
+        with closing(connect_studies(self.path)) as db:
+            db.execute("INSERT INTO student VALUES ('d','x','school1','D','')")
+            link_student_identity(db, 'd', 'school1')
+            db.commit()
+        group_id = self.create_study_group()
+        self.chat.invite(self.session, group_id, 'd')
+        former_session = {
+            'user_login': True, 'user_id': 'd', 'study_csrf_token': 'csrf',
+            'user_time': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'tekne_chat_session': create_chat_session(self.path, 'd')
+        }
+        self.chat.leave(former_session, group_id)
+        study_file = study_file_path(self.uploads, 'retained.pdf')
+        study_file.write_bytes(b'%PDF preserved research')
+        with closing(connect_studies(self.path)) as db:
+            db.execute("""INSERT INTO study
+                (name,introduce,filename,pdfpath,userid,time,registration_type,template_id,submission_key,
+                 submission_kind,chat_group_id,chat_group_name)
+                VALUES ('保持する研究','説明','retained.pdf','retained.pdf','a','2024-01-01 00:00:00',
+                        'pdf',NULL,'preserved-study','group',?,'共同研究')""", (group_id,))
+            study_id = db.execute("SELECT id FROM study WHERE submission_key='preserved-study'").fetchone()[0]
+            members = db.execute("SELECT id,login_id FROM tekne_student_identity WHERE login_id IN ('a','c')").fetchall()
+            db.executemany("""INSERT INTO study_submission_member
+                (study_id,tekne_student_id,student_id_snapshot,position) VALUES (?,?,?,?)""",
+                [(study_id, member[0], member[1], position) for position, member in enumerate(members)])
+            db.commit()
+        old = datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc).isoformat()
+        with closing(connect_studies(self.path)) as db:
+            db.execute("UPDATE tekne_chat_group SET updated_at=? WHERE id=?", (old, group_id))
+            db.execute("UPDATE tekne_chat_member SET left_at=? WHERE group_id=?", (old, group_id))
+            db.commit()
+
+        removed = cleanup_expired_groups(
+            self.path, self.root / 'chat-files',
+            now=datetime.datetime(2025, 1, 2, tzinfo=datetime.timezone.utc), force=True)
+        self.assertEqual(removed, 1)
+        self.assertEqual(self.rows('SELECT name,chat_group_name FROM study'), [('保持する研究', '共同研究')])
+        self.assertTrue(study_file.exists())
+        self.assertEqual(self.rows('SELECT student_id_snapshot FROM study_submission_member ORDER BY position'),
+                         [('a',), ('c',)])
+        self.assertEqual(self.rows('''SELECT i.login_id FROM study_group_access access
+            JOIN tekne_student_identity i ON i.id=access.tekne_student_id
+            ORDER BY i.login_id'''), [('a',), ('c',), ('d',)])
+
+        former_html = self.render_student_studylist(former_session).body.decode()
+        self.assertIn('保持する研究', former_html)
+        unrelated_session = {
+            'user_login': True, 'user_id': 'b',
+            'user_time': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'tekne_chat_session': create_chat_session(self.path, 'b')
+        }
+        unrelated_html = self.render_student_studylist(unrelated_session).body.decode()
+        self.assertNotIn('保持する研究', unrelated_html)
+
+        pdf_endpoint = next(route.endpoint for route in main.app.routes
+                            if getattr(route, 'path', '') == '/uploads/{id}.pdf' and 'GET' in route.methods)
+        with patch.object(main, 'tekne_chat_service', self.chat), \
+             patch.object(main, 'enabled_for_student', return_value=True):
+            allowed_coroutine = pdf_endpoint(study_id, request(f'/uploads/{study_id}.pdf', former_session))
+            with self.assertRaises(StopIteration) as returned:
+                allowed_coroutine.send(None)
+            self.assertEqual(returned.exception.value.media_type, 'application/pdf')
+            with self.assertRaises(HTTPException) as denied:
+                pdf_endpoint(study_id, request(f'/uploads/{study_id}.pdf', unrelated_session)).send(None)
+            self.assertEqual(denied.exception.status_code, 404)
 
     def test_student_studylist_shows_names_for_individual_and_group_submitters(self):
         with closing(connect_studies(self.path)) as db:

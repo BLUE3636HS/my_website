@@ -109,8 +109,9 @@ def validate_admin(admin_id, name, password):
         raise ValueError("パスワードは12文字以上、UTF-8で72バイト以内で入力してください。")
 
 
-def build_admin_router(database_path, templates):
+def build_admin_router(database_path, templates, mentor_profile_uploads_dir=None):
     router = APIRouter(prefix='/admin/administrators')
+    image_dir = Path(mentor_profile_uploads_dir).resolve() if mentor_profile_uploads_dir else None
 
     def render(request, page, error=None, status_code=200, values=None):
         with closing(sqlite3.connect(database_path)) as db:
@@ -154,13 +155,13 @@ def build_admin_router(database_path, templates):
                 db.commit()
             except (ValueError, sqlite3.IntegrityError) as exc:
                 db.rollback()
-                message = 'その管理者IDはすでに使用されています（削除済みも含む）。' if isinstance(exc, sqlite3.IntegrityError) else str(exc)
+                message = 'その管理者IDはすでに使用されています。' if isinstance(exc, sqlite3.IntegrityError) else str(exc)
                 return render(request, 'new', message, 400, {'admin_id': admin_id})
         request.session['admin_management_csrf'] = secrets.token_urlsafe(32)
         return render(request, 'created', values={'admin_id': admin_id, 'password': password})
 
-    @router.post('/delete')
-    async def administrator_delete(request: Request, admin_id: str = Form(...), csrf_token: str = Form(...)):
+    @router.post('/suspend')
+    async def administrator_suspend(request: Request, admin_id: str = Form(...), csrf_token: str = Form(...)):
         with closing(sqlite3.connect(database_path, timeout=10)) as db:
             db.execute('BEGIN IMMEDIATE')
             require_super_admin(db, request)
@@ -169,20 +170,114 @@ def build_admin_router(database_path, templates):
             if target is None:
                 raise HTTPException(404, '管理者が見つかりません。')
             if target[0] == 'super_admin':
-                raise HTTPException(403, '最上位管理者は削除できません。')
+                raise HTTPException(403, '最上位管理者は停止できません。')
             if target[1] is not None:
-                raise HTTPException(409, 'すでに削除された管理者です。')
+                raise HTTPException(409, 'すでに停止中の管理者です。')
             now = datetime.datetime.now(JST)
-            pending = db.execute("""SELECT 1 FROM mentor_reservation WHERE mentor_admin_id=? AND status='active'
+            db.execute('UPDATE admin SET deleted_at=?,session_version=session_version+1 WHERE id=? AND role=\'admin\'', (now.isoformat(), admin_id))
+            db.commit()
+        request.session['admin_management_notice'] = '管理者を停止しました。データは保持されています。'
+        request.session['admin_management_csrf'] = secrets.token_urlsafe(32)
+        return RedirectResponse('/admin/administrators', status_code=303)
+
+    @router.post('/resume')
+    async def administrator_resume(request: Request, admin_id: str = Form(...), csrf_token: str = Form(...)):
+        with closing(sqlite3.connect(database_path, timeout=10)) as db:
+            db.execute('BEGIN IMMEDIATE')
+            require_super_admin(db, request)
+            csrf(request, csrf_token)
+            target = db.execute('SELECT role,deleted_at FROM admin WHERE id=?', (admin_id,)).fetchone()
+            if target is None:
+                raise HTTPException(404, '管理者が見つかりません。')
+            if target[0] == 'super_admin':
+                raise HTTPException(403, '最上位管理者の状態は変更できません。')
+            if target[1] is None:
+                raise HTTPException(409, '管理者はすでに有効です。')
+            db.execute('UPDATE admin SET deleted_at=NULL,session_version=session_version+1 WHERE id=? AND role=\'admin\'', (admin_id,))
+            db.commit()
+        request.session['admin_management_notice'] = '管理者を再開しました。'
+        request.session['admin_management_csrf'] = secrets.token_urlsafe(32)
+        return RedirectResponse('/admin/administrators', status_code=303)
+
+    @router.post('/delete')
+    async def administrator_delete(request: Request, admin_id: str = Form(...), csrf_token: str = Form(...),
+                                   reauth_admin_id: str = Form(...), reauth_admin_password: str = Form(...)):
+        image_name = None
+        with closing(sqlite3.connect(database_path, timeout=10)) as db:
+            db.execute('BEGIN IMMEDIATE')
+            actor = require_super_admin(db, request)
+            csrf(request, csrf_token)
+            target = db.execute('SELECT role,deleted_at FROM admin WHERE id=?', (admin_id,)).fetchone()
+            if target is None:
+                raise HTTPException(404, '管理者が見つかりません。')
+            if target[0] == 'super_admin':
+                raise HTTPException(403, '最上位管理者は削除できません。')
+            if target[1] is None:
+                raise HTTPException(409, '有効な管理者は削除できません。先に停止してください。')
+            actor_row = db.execute('SELECT pwd FROM admin WHERE id=? AND role=\'super_admin\' AND deleted_at IS NULL',
+                                   (actor[0],)).fetchone()
+            try:
+                credentials_valid = (reauth_admin_id == actor[0] and actor_row is not None
+                                     and bcrypt.checkpw(reauth_admin_password.encode(), actor_row[0].encode()))
+            except (ValueError, TypeError):
+                credentials_valid = False
+            if not credentials_valid:
+                db.rollback()
+                return render(request, 'list', 'ログインIDまたはパスワードが正しくありません。', 403)
+            now = datetime.datetime.now(JST)
+            if db.execute("""SELECT 1 FROM mentor_reservation WHERE mentor_admin_id=? AND status='active'
                 AND (day>? OR (day=? AND end_time>?)) LIMIT 1""",
-                (admin_id, now.date().isoformat(), now.date().isoformat(), now.strftime('%H:%M'))).fetchone()
-            if pending:
+                (admin_id, now.date().isoformat(), now.date().isoformat(), now.strftime('%H:%M'))).fetchone():
                 db.rollback()
                 return render(request, 'list', '今後の有効なメンター予約があります。予約に対応してから削除してください。', 409)
-            db.execute('UPDATE admin SET deleted_at=? WHERE id=? AND role=\'admin\'', (now.isoformat(), admin_id))
-            db.execute('UPDATE mentor_profile SET is_published=0, updated_at=? WHERE admin_id=?', (now.isoformat(), admin_id))
+
+            profile = db.execute('SELECT profile_image FROM mentor_profile WHERE admin_id=?', (admin_id,)).fetchone() if db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='mentor_profile'").fetchone() else None
+            image_name = profile[0] if profile else None
+            reservation_ids = []
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='mentor_reservation'").fetchone():
+                reservation_ids = [row[0] for row in db.execute(
+                    'SELECT id FROM mentor_reservation WHERE mentor_admin_id=?', (admin_id,))]
+            if reservation_ids and db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='notification'").fetchone():
+                placeholders = ','.join('?' for _ in reservation_ids)
+                db.execute(f"DELETE FROM notification WHERE related_reservation_type='mentor' AND related_reservation_id IN ({placeholders})", reservation_ids)
+
+            # Workshop schedule slots are shared data. Keep them and transfer their
+            # owner marker to another active admin or the system marker.
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='reservation_available_slot'").fetchone():
+                replacement = db.execute("SELECT id FROM admin WHERE id<>? AND role='super_admin' AND deleted_at IS NULL ORDER BY id LIMIT 1", (admin_id,)).fetchone()
+                db.execute('UPDATE reservation_available_slot SET admin_id=? WHERE admin_id=?', (replacement[0] if replacement else 'system', admin_id))
+
+            for table, column in (
+                ('mentor_reservation', 'mentor_admin_id'),
+                ('mentor_available_slot', 'admin_id'),
+                ('mentor_profile', 'admin_id'),
+                ('admin_notification', 'recipient_admin_id'),
+                ('tekne_chat_admin_audit', 'admin_id'),
+            ):
+                if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
+                    columns = {row[1] for row in db.execute(f'PRAGMA table_info({table})')}
+                    if column in columns:
+                        db.execute(f'DELETE FROM {table} WHERE {column}=?', (admin_id,))
+
+            # Remove notifications sent in explicit admin broadcasts with their batch.
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='notification_batch'").fetchone():
+                columns = {row[1] for row in db.execute('PRAGMA table_info(notification_batch)')}
+                if {'sender_type', 'sender_id'} <= columns:
+                    batch_ids = [row[0] for row in db.execute(
+                        "SELECT id FROM notification_batch WHERE sender_type='admin' AND sender_id=?", (admin_id,))]
+                    if batch_ids and db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='notification'").fetchone():
+                        placeholders = ','.join('?' for _ in batch_ids)
+                        db.execute(f'DELETE FROM notification WHERE batch_id IN ({placeholders})', batch_ids)
+                    db.execute("DELETE FROM notification_batch WHERE sender_type='admin' AND sender_id=?", (admin_id,))
+            db.execute('DELETE FROM admin WHERE id=? AND role=\'admin\' AND deleted_at IS NOT NULL', (admin_id,))
             db.commit()
-        request.session['admin_management_notice'] = '管理者を削除しました。履歴とIDは保持されています。'
+
+        if image_dir and image_name:
+            candidate = (image_dir / image_name).resolve()
+            if Path(image_name).name == image_name and candidate.parent == image_dir:
+                candidate.unlink(missing_ok=True)
+        request.session['admin_management_notice'] = '管理者と関連データを完全に削除しました。'
         request.session['admin_management_csrf'] = secrets.token_urlsafe(32)
         return RedirectResponse('/admin/administrators', status_code=303)
 

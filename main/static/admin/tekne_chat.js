@@ -40,7 +40,27 @@
             try { await api(`/admin/tekne-chat/api/groups/${group.id}`, { method: "PATCH", body }); await openGroup(group.id); location.reload(); }
             catch (error) { alert(error.message); }
         });
-        detail.append(heading, row("グループ操作", "すべての変更は監査ログに記録されます。", [rename]));
+        const removeGroup = action("グループを削除", () => {
+            if (!confirm(`「${group.name}」を削除しますか？メッセージ、参加履歴、フォルダ、共有ファイル、アイコンが削除されます。グループで提出した研究成果は保持されます。`)) return;
+            const dialog = node("dialog", undefined, "tc-admin-delete-dialog");
+            const formElement = node("form"); formElement.method = "dialog";
+            formElement.append(node("h2", "管理者の再認証"));
+            formElement.append(node("p", "削除を確定するには、ログイン中の管理者IDとパスワードを入力してください。"));
+            const idLabel = node("label", `管理者ID（現在のログインID: ${app.dataset.adminId || "不明"}）`); const idInput = node("input"); idInput.name = "admin_id"; idInput.autocomplete = "username"; idInput.required = true; idInput.value = app.dataset.adminId || ""; idLabel.append(idInput);
+            const passwordLabel = node("label", "パスワード"); const passwordInput = node("input"); passwordInput.type = "password"; passwordInput.name = "password"; passwordInput.autocomplete = "current-password"; passwordInput.required = true; passwordLabel.append(passwordInput);
+            const error = node("p", "", "tc-admin-delete-error"); error.setAttribute("role", "alert");
+            const cancel = node("button", "キャンセル"); cancel.type = "button"; cancel.addEventListener("click", () => dialog.close());
+            const submit = node("button", "削除を実行"); submit.type = "submit"; submit.className = "tc-admin-danger";
+            formElement.append(idLabel, passwordLabel, error, cancel, submit);
+            formElement.addEventListener("submit", async (event) => {
+                event.preventDefault(); submit.disabled = true; error.textContent = "";
+                const body = form(); body.set("admin_id", idInput.value.trim()); body.set("password", passwordInput.value);
+                try { await api(`/admin/tekne-chat/api/groups/${encodeURIComponent(group.id)}`, { method: "DELETE", body }); dialog.close(); location.reload(); }
+                catch (failure) { error.textContent = failure.message; submit.disabled = false; passwordInput.focus(); }
+            });
+            dialog.append(formElement); detail.append(dialog); dialog.addEventListener("close", () => dialog.remove()); dialog.showModal(); idInput.focus();
+        }, true);
+        detail.append(heading, row("グループ操作", "すべての変更は監査ログに記録されます。", [rename, removeGroup]));
         detail.append(node("h3", `メンバー（${data.members.length}）`));
         const members = node("div", undefined, "tc-admin-section");
         for (const member of data.members) {
