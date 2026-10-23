@@ -51,6 +51,7 @@
                         {% if account_type == 'student' %}<th>名前</th><th>フリガナ</th>{% endif %}
                         <th>学校名</th>
                         {% if account_type == 'teacher' %}<th>階級</th>{% endif %}
+                        <th>最終アクセス日時</th>
                         <th class="account-action-column">操作</th>
                     </tr>
                 </thead>
@@ -79,6 +80,7 @@
                             </form>
                         </td>
                         {% endif %}
+                        <td>{{ account[5] if account_type == 'student' else account[4] or '-' }}</td>
                         <td class="account-action-column">
                             <button
                                 type="button"

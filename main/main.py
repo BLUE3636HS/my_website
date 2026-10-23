@@ -145,6 +145,9 @@ cursor.execute("""
     )
 """)
 initialize_student_account_fields(conn)
+student_columns = {row[1] for row in conn.execute("PRAGMA table_info(student)").fetchall()}
+if "last_access_at" not in student_columns:
+    conn.execute("ALTER TABLE student ADD COLUMN last_access_at TEXT")
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS teacher (
         id TEXT NOT NULL,
@@ -153,6 +156,9 @@ cursor.execute("""
     )
 """)
 initialize_teacher_roles(conn)
+teacher_columns = {row[1] for row in conn.execute("PRAGMA table_info(teacher)").fetchall()}
+if "last_access_at" not in teacher_columns:
+    conn.execute("ALTER TABLE teacher ADD COLUMN last_access_at TEXT")
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS admin (
         id TEXT PRIMARY KEY NOT NULL,
@@ -2228,16 +2234,19 @@ async def AdminAccountsPage(request: Request, type: str = "student", school: str
     selected_school = school if school in schools else None
     table_name = "student" if account_type == "student" else "teacher"
 
-    query = f"SELECT rowid, id, school, name, furigana FROM {table_name}"
-    if account_type == "teacher":
-        query = "SELECT rowid, id, school, role FROM teacher"
-    params = ()
-    if selected_school:
-        query += " WHERE school = ?"
-        params = (selected_school,)
-    query += " ORDER BY id ASC, rowid ASC"
-
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        columns = {row[1] for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()}
+        last_access_column = "last_access_at" if "last_access_at" in columns else "NULL"
+        if account_type == "student":
+            query = f"SELECT rowid, id, school, name, furigana, {last_access_column} FROM student"
+        else:
+            role_column = "role" if "role" in columns else "'teacher'"
+            query = f"SELECT rowid, id, school, {role_column}, {last_access_column} FROM teacher"
+        params = ()
+        if selected_school:
+            query += " WHERE school = ?"
+            params = (selected_school,)
+        query += " ORDER BY id ASC, rowid ASC"
         accounts = db.execute(query, params).fetchall()
 
     csrf_token = request.session.get("account_csrf_token")
@@ -3735,6 +3744,9 @@ async def Login(
             )
 
         if pwdcheck:
+            with closing(sqlite3.connect(DATABASE_PATH)) as db:
+                db.execute("UPDATE student SET last_access_at = ? WHERE id = ?", (datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), id))
+                db.commit()
             chat_token = request.session.get("tekne_chat_session")
             revoke_chat_session(DATABASE_PATH, chat_token)
             await tekne_chat_service.connections.close_session(chat_token)
@@ -3764,6 +3776,9 @@ async def Login(
             )
 
         if pwdcheck:
+            with closing(sqlite3.connect(DATABASE_PATH)) as db:
+                db.execute("UPDATE teacher SET last_access_at = ? WHERE id = ?", (datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), id))
+                db.commit()
             request.session["teacher_login"] = True
             request.session["teacher_id"] = id
             request.session["teacher_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
