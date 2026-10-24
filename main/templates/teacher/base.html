@@ -19,9 +19,10 @@
                 <nav class="teacher-nav" aria-label="先生用メニュー">
                     <a class="teacher-nav-link" href="/teacher"{% if current_path == '/teacher' %} aria-current="page"{% endif %}>ダッシュボード</a>
                     <a class="teacher-nav-link" href="/teacher/studylist"{% if current_path == '/teacher/studylist' or current_path.startswith('/teacher/studylist/') %} aria-current="page"{% endif %}>自校提出物確認</a>
+                    <a class="teacher-nav-link" href="/teacher/reports"{% if current_path.startswith('/teacher/reports') %} aria-current="page"{% endif %}>グループ成果レポート</a>
                     <a class="teacher-nav-link" href="/teacher/accounts"{% if current_path == '/teacher/accounts' %} aria-current="page"{% endif %}>生徒アカウント一覧</a>
                     <a class="teacher-nav-link" href="/teacher/notifications"{% if current_path == '/teacher/notifications' or current_path.startswith('/teacher/notifications/') %} aria-current="page"{% endif %}>通知送信</a>
-                    {% if teacher_role == 'super_teacher' %}<a class="teacher-nav-link" href="/teacher/school-features"{% if current_path == '/teacher/school-features' %} aria-current="page"{% endif %}>自校の機能設定</a>{% endif %}
+                    {% if teacher_role == 'super_teacher' %}<a class="teacher-nav-link" href="/teacher/school-features"{% if current_path == '/teacher/school-features' %} aria-current="page"{% endif %}>自校の機能設定</a><a class="teacher-nav-link" href="/teacher/school-report"{% if current_path == '/teacher/school-report' %} aria-current="page"{% endif %}>成果レポート設定</a>{% endif %}
                     <a class="teacher-nav-link" href="/teacher/edit"{% if current_path == '/teacher/edit' or current_path.startswith('/teacher/edit/') %} aria-current="page"{% endif %}>マイページ</a>
                 </nav>
                 <a class="teacher-logout-link" href="/logout?role=teacher">Logout</a>

@@ -14,7 +14,10 @@ def initialize_studies(db):
     with db:
         db.execute("""CREATE TABLE IF NOT EXISTS study_template (
             id INTEGER PRIMARY KEY, seed_key TEXT UNIQUE, name TEXT NOT NULL,
-            active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)))""")
+            active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)), owner_school TEXT)""")
+        template_columns = {row[1] for row in db.execute('PRAGMA table_info(study_template)')}
+        if 'owner_school' not in template_columns:
+            db.execute('ALTER TABLE study_template ADD COLUMN owner_school TEXT')
         db.execute("""CREATE TABLE IF NOT EXISTS study_template_field (
             id INTEGER PRIMARY KEY, template_id INTEGER NOT NULL
                 REFERENCES study_template(id) ON DELETE CASCADE,
@@ -26,6 +29,10 @@ def initialize_studies(db):
             introduce TEXT NOT NULL, filename TEXT NOT NULL, pdfpath TEXT NOT NULL,
             userid TEXT NOT NULL, time TEXT NOT NULL)""")
         field_columns = {row[1] for row in db.execute('PRAGMA table_info(study_template_field)')}
+        if 'stable_key' not in field_columns:
+            db.execute('ALTER TABLE study_template_field ADD COLUMN stable_key TEXT')
+            db.execute('UPDATE study_template_field SET stable_key=lower(hex(randomblob(16))) WHERE stable_key IS NULL')
+        db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_study_template_field_stable_key ON study_template_field(template_id,stable_key)')
         for name, definition in {
             'heading_font_size': 'INTEGER NOT NULL DEFAULT 11 CHECK(heading_font_size BETWEEN 6 AND 36)',
             'body_font_size': 'INTEGER NOT NULL DEFAULT 10 CHECK(body_font_size BETWEEN 6 AND 36)',
@@ -41,6 +48,7 @@ def initialize_studies(db):
         }.items():
             if name not in field_columns:
                 db.execute(f'ALTER TABLE study_template_field ADD COLUMN {name} {definition}')
+        db.execute('UPDATE study_template_field SET stable_key=lower(hex(randomblob(16))) WHERE stable_key IS NULL OR stable_key=\'\'')
         columns = {row[1] for row in db.execute("PRAGMA table_info(study)")}
         additions = {
             "registration_type": "TEXT NOT NULL DEFAULT 'pdf' CHECK(registration_type IN ('pdf', 'template'))",
@@ -66,6 +74,27 @@ def initialize_studies(db):
             tekne_student_id TEXT NOT NULL,
             PRIMARY KEY(study_id, tekne_student_id))""")
         db.execute("CREATE INDEX IF NOT EXISTS idx_study_group_access_student ON study_group_access(tekne_student_id,study_id)")
+        db.execute("""CREATE TABLE IF NOT EXISTS school_report_template (
+            school TEXT PRIMARY KEY NOT NULL, template_id INTEGER NOT NULL REFERENCES study_template(id),
+            updated_at TEXT NOT NULL, updated_by TEXT NOT NULL)""")
+        db.execute("""CREATE TABLE IF NOT EXISTS group_report_draft (
+            group_id TEXT PRIMARY KEY NOT NULL, school_id TEXT NOT NULL, school_name TEXT NOT NULL,
+            template_id INTEGER NOT NULL, template_snapshot TEXT NOT NULL, report_data TEXT NOT NULL,
+            updated_at TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0)""")
+        db.execute("""CREATE TABLE IF NOT EXISTS group_report_version (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, group_id TEXT NOT NULL, school_id TEXT NOT NULL,
+            school_name TEXT NOT NULL, version_number INTEGER NOT NULL, template_snapshot TEXT NOT NULL,
+            report_snapshot TEXT NOT NULL, saved_by TEXT NOT NULL, saved_at TEXT NOT NULL,
+            UNIQUE(group_id,version_number))""")
+        db.execute("""CREATE TABLE IF NOT EXISTS group_report_lock (
+            group_id TEXT NOT NULL, field_key TEXT NOT NULL, student_id TEXT NOT NULL,
+            student_name TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(group_id,field_key))""")
+        db.execute("""CREATE TABLE IF NOT EXISTS group_report_asset (
+            content_hash TEXT PRIMARY KEY NOT NULL, stored_name TEXT NOT NULL UNIQUE,
+            content_type TEXT NOT NULL, file_size INTEGER NOT NULL, created_at TEXT NOT NULL)""")
+        db.execute("""CREATE TABLE IF NOT EXISTS group_report_asset_access (
+            group_id TEXT NOT NULL, content_hash TEXT NOT NULL REFERENCES group_report_asset(content_hash) ON DELETE CASCADE,
+            PRIMARY KEY(group_id,content_hash))""")
         db.execute("""CREATE TABLE IF NOT EXISTS study_field_value (
             study_id INTEGER NOT NULL REFERENCES study(id) ON DELETE CASCADE,
             field_id INTEGER NOT NULL REFERENCES study_template_field(id) ON DELETE RESTRICT,
@@ -90,17 +119,18 @@ def initialize_studies(db):
                       "考察", "結論", "参考文献", "謝辞"]
             db.executemany("""INSERT INTO study_template_field(template_id, label, position, required)
                 VALUES (?, ?, ?, 0)""", [(inserted.lastrowid, label, i) for i, label in enumerate(labels)])
+        db.execute("UPDATE study_template_field SET stable_key=lower(hex(randomblob(16))) WHERE stable_key IS NULL OR stable_key=''")
 
 
 def get_templates(db, include_inactive=False):
     return [{"id": row[0], "name": row[1], "active": bool(row[2]), "fields": [
-        {"id": field[0], "label": field[1], "required": bool(field[2]),
+        {"id": field[0], "stable_key": field[14], "label": field[1], "required": bool(field[2]),
          "heading_font_size": field[3], "body_font_size": field[4],
          "hide_heading": bool(field[5]), "max_length": field[6],
          "heading_alignment": field[7], "body_alignment": field[8],
          "heading_bold": bool(field[9]), "body_bold": bool(field[10]),
          "field_type": field[11], "image_size": field[12], "image_alignment": field[13]}
-        for field in db.execute("""SELECT id, label, required, heading_font_size, body_font_size, hide_heading, max_length, heading_alignment, body_alignment, heading_bold, body_bold, field_type, image_size, image_alignment FROM study_template_field
+        for field in db.execute("""SELECT id, label, required, heading_font_size, body_font_size, hide_heading, max_length, heading_alignment, body_alignment, heading_bold, body_bold, field_type, image_size, image_alignment, stable_key FROM study_template_field
             WHERE template_id = ? ORDER BY position, id""", (row[0],))
     ]} for row in db.execute("SELECT id, name, active FROM study_template WHERE active = 1 OR ? ORDER BY id", (include_inactive,))]
 

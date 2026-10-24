@@ -15,10 +15,16 @@
         </section>
 
         <div class="teacher-guide-grid">
+            {% if teacher_role == 'super_teacher' %}<a class="teacher-guide-card" href="/teacher/school-report"><span>設定</span><strong>成果レポートテンプレート</strong><p>自校の共同編集レポート用テンプレートを設定します。</p></a>{% endif %}
             <a class="teacher-guide-card" href="/teacher/studylist">
                 <span>提出物確認</span>
                 <strong>自校提出物確認</strong>
                 <p>生徒が登録した研究成果を一覧で確認します。</p>
+            </a>
+            <a class="teacher-guide-card" href="/teacher/reports">
+                <span>研究成果</span>
+                <strong>グループ成果レポート</strong>
+                <p>自校グループの保存履歴をPDFで確認します。</p>
             </a>
             <a class="teacher-guide-card" href="/teacher/accounts">
                 <span>アカウント</span>

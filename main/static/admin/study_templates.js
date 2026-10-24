@@ -3,6 +3,14 @@
     const root = document.querySelector('.template-manager');
     if (!root) return;
     const status = document.getElementById('template-status');
+    const createEndpoint = root.dataset.createEndpoint || '/admin/study-templates';
+    const returnUrl = root.dataset.returnUrl || '/admin/study-templates';
+    const sourceTemplateId = root.dataset.sourceTemplateId ? Number(root.dataset.sourceTemplateId) : null;
+    const initialFields = JSON.parse(document.getElementById('template-initial-fields')?.textContent || '[]');
+    function createStableKey() {
+        if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID().replaceAll('-', '');
+        return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 18)}`;
+    }
     async function post(url, payload) {
         const response = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({...payload, csrf_token: root.dataset.csrf})});
@@ -29,11 +37,12 @@
     const editor = document.getElementById('field-editor');
     if (!editor) return;
     const byId = id => document.getElementById(id);
-    const fields = [];
+    const fields = Array.isArray(initialFields) ? initialFields : [];
     let selected = null;
     let dragging = null;
     let saving = false;
     let dirty = false;
+    let newFieldStableKey = createStableKey();
     const sample = 'ここに生徒が入力した文章が表示されます。';
     function setHeadingAlignment(value) {
         byId('heading-alignment').value = value;
@@ -88,7 +97,8 @@
         byId('max-length').value = image ? '50' : (byId('max-length').value === '50' ? '0' : byId('max-length').value);
     }
     function settings() {
-        return {label: byId('field-label').value.trim(), heading_font_size: Number(byId('heading-size').value),
+        return {stable_key: selected?.stable_key || newFieldStableKey,
+            label: byId('field-label').value.trim(), heading_font_size: Number(byId('heading-size').value),
             body_font_size: Number(byId('body-size').value), hide_heading: byId('hide-heading').checked,
             max_length: Number(byId('max-length').value), required: byId('field-required').checked,
             heading_alignment: byId('heading-alignment').value, body_alignment: byId('body-alignment').value,
@@ -102,6 +112,7 @@
     }
     function resetEditor() {
         selected = null; dirty = false; editor.reset();
+        newFieldStableKey = createStableKey();
         setHeadingAlignment('left');
         setBodyAlignment('left');
         setImageAlignment('center');
@@ -232,13 +243,21 @@
         const controls = [...root.querySelectorAll('input, select, button')].map(control => [control, control.disabled]);
         controls.forEach(([control]) => { control.disabled = true; });
         try {
-            await post('/admin/study-templates', {name: name.value.trim(), fields});
-            window.location.assign('/admin/study-templates');
+            const payload = {name: name.value.trim(), fields};
+            if (sourceTemplateId) payload.source_template_id = sourceTemplateId;
+            await post(createEndpoint, payload);
+            window.location.assign(returnUrl);
         } catch (error) {
             status.textContent = error.message; saving = false;
             controls.forEach(([control, disabled]) => { control.disabled = disabled; });
         }
     });
     byId('template-name').addEventListener('input', () => byId('template-name').setCustomValidity(''));
+    const sourceForm = root.querySelector('.template-source-form');
+    sourceForm?.addEventListener('submit', event => {
+        if (byId('template-name').value.trim() || fields.length || dirty) {
+            if (!window.confirm('複製元を読み込むと、現在の入力内容は破棄されます。続けますか？')) event.preventDefault();
+        }
+    });
     render();
 })();

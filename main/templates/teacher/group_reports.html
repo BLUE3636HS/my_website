@@ -1,0 +1,3 @@
+{% extends 'teacher/base.html' %}
+{% block title %}成果レポート履歴{% endblock %}
+{% block content %}<h1>{{ school }}：成果レポート履歴</h1>{% if not groups %}<p>保存済みレポートはありません。</p>{% endif %}{% for group in groups %}<section class="report-field"><h2>{{ group.name }}</h2><ul>{% for v in group.versions %}<li>v{{ v.version_number }} · {{ v.saved_at }} · {{ v.saved_by }} · <a href="/teacher/reports/{{ group.id }}/versions/{{ v.id }}.pdf" target="_blank">PDF表示・ダウンロード</a></li>{% endfor %}</ul></section>{% endfor %}{% endblock %}

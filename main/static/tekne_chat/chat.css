@@ -43,6 +43,8 @@
 .tc-header-actions button:disabled, .tc-message-form button:disabled { opacity: .5; cursor: default; }
 .tc-header-actions .tc-icon-action { display: grid; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; padding: 7px; }
 .tc-icon-action img { display: block; width: 23px; height: 23px; object-fit: contain; }
+#tc-report-link[hidden] { display: none !important; }
+#tc-report-link svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
 .tc-icon-action:focus-visible { outline: 2px solid #528bff; outline-offset: 2px; }
 .tc-messages { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 10px; overflow-y: auto; padding: 20px clamp(14px, 4vw, 54px); background: #fbfcfe; }
 .tc-empty { margin: auto; color: #98a2b3; text-align: center; }

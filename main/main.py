@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSON
 from starlette.concurrency import run_in_threadpool
 from study_pdf import render_study_pdf
 from template_management import create_template_router
+from group_reports import build_group_report_router
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -427,6 +428,7 @@ app.include_router(create_template_router(lambda: DATABASE_PATH, templates))
 app.include_router(build_mentor_router(DATABASE_PATH, templates, MENTOR_PROFILE_UPLOADS_DIR))
 tekne_chat_router, tekne_chat_service = build_tekne_chat_router(DATABASE_PATH, templates, TEKNE_CHAT_STORAGE_DIR)
 app.include_router(tekne_chat_router)
+app.include_router(build_group_report_router(DATABASE_PATH, templates, tekne_chat_service, STUDY_IMAGE_UPLOADS_DIR))
 
 
 async def _tekne_chat_cleanup_loop():

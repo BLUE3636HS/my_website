@@ -186,6 +186,7 @@
             const refreshed = state.groups.find((group) => group.id === state.group.id);
             if (!refreshed) {
                 state.socket?.close(); state.group = null; state.selectedEntry = null; renderSelectionActions(); setEnabled(false); $("tc-current-name").textContent = "グループを選択";
+                if ($("tc-report-link")) $("tc-report-link").hidden = true;
                 messagesEl.replaceChildren();
             } else {
                 state.group = refreshed;
@@ -201,6 +202,7 @@
         state.folderId = null; state.folderTree = []; state.expandedFolders.clear(); state.selectedEntry = null;
         state.group = state.groups.find((group) => group.id === groupId) || { id: groupId, name: "読み込み中" };
         const group = state.group;
+        const reportLink = $("tc-report-link"); if (reportLink) { reportLink.href = `/tekne-chat/groups/${encodeURIComponent(groupId)}/report`; reportLink.hidden = false; }
         $("tc-current-name").textContent = group.name;
         const currentIcon = groupIcon(group); currentIcon.id = "tc-current-icon";
         $("tc-current-icon").replaceWith(currentIcon);

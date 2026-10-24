@@ -1,0 +1,44 @@
+.school-report-layout {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.school-report-controls {
+    min-width: 0;
+    padding: 20px;
+    border: 1px solid #d7e3db;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.school-report-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.school-report-actions #apply-template {
+    background: #25613e;
+    color: white;
+}
+
+.school-report-preview {
+    margin: 0;
+    min-width: 0;
+}
+
+.school-report-preview .preview-paper {
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+@media (max-width: 760px) {
+    .school-report-layout {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 16px;
+    }
+}

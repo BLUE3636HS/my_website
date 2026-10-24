@@ -1,0 +1,5 @@
+{% extends 'teacher/base.html' %}
+{% block title %}学校用成果レポートテンプレート追加{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/admin/study_templates.css">{% endblock %}
+{% block content %}{% include 'admin/_study_template_builder.html' %}{% endblock %}
+{% block script %}<script src="/static/admin/study_templates.js" defer></script>{% endblock %}

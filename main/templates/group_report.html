@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}成果レポート記入{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/group_report.css">{% endblock %}
+{% block content %}
+<section id="group-report" data-group-id="{{ group.id }}" data-csrf="{{ csrf_token }}" data-user="{{ request.session.get('user_id','') }}">
+ <header><div><h1>{{ group.name }}：成果レポート</h1>{% if state %}<p id="report-connection">接続中</p>{% endif %}</div>{% if state %}<button id="report-save-version" type="button">保存</button>{% endif %}</header>
+ {% if not state %}<p class="report-empty">学校用の成果レポートテンプレートが設定されていません。先生に設定を依頼してください。</p>{% else %}
+ <p>保存状態：<span id="report-save-state">読み込み中</span>　編集中：<span id="report-presence">1</span>人</p>
+ <div id="report-fields">{% for field in state.template.fields %}<section class="report-field" data-key="{{ field.stable_key }}" data-type="{{ field.field_type }}"><h2>{{ field.label }}</h2><p class="field-lock" aria-live="polite"></p>{% if field.field_type == 'image' %}<input class="report-image" type="file" accept="image/jpeg,image/png" multiple><div class="report-images"></div>{% else %}<textarea class="report-value" rows="5" maxlength="{{ field.max_length if field.max_length else 20000 }}"></textarea>{% endif %}<button class="field-done" type="button" hidden>編集完了</button></section>{% endfor %}</div>
+ <h2>保存履歴</h2><ol id="report-versions"></ol>
+ {% endif %}
+</section>
+{% endblock %}
+{% block script %}{% if state %}<script id="report-initial" type="application/json">{{ state|tojson }}</script><script src="/static/group_report.js" defer></script>{% endif %}{% endblock %}
