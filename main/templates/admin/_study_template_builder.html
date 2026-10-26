@@ -1,18 +1,20 @@
-<div class="template-manager" data-csrf="{{ csrf_token }}"
+<div class="template-manager"{% if manager_id %} id="{{ manager_id }}"{% endif %} data-csrf="{{ csrf_token }}"
      data-create-endpoint="{{ create_endpoint|default('/admin/study-templates') }}"
      data-return-url="{{ return_url|default('/admin/study-templates') }}"
-     data-source-template-id="{{ source_template_id or '' }}">
+     data-create-success-message="{{ create_success_message|default('') }}"
+     data-source-template-id="{{ source_template_id or '' }}"
+     data-apply-mode="{{ 'true' if apply_mode else 'false' }}">
     <div class="template-toolbar"><h1>{{ builder_title|default('テンプレート追加') }}</h1><a href="{{ return_url|default('/admin/study-templates') }}">{{ return_label|default('一覧へ戻る') }}</a></div>
     {% if study_templates is defined and study_templates %}
-    <form class="template-source-form" method="get" action="/teacher/school-report/new">
+    <form class="template-source-form" method="get" action="{{ source_action|default('/teacher/school-report/new') }}">
         <label for="source-template">複製元テンプレート（任意）</label>
-        <select id="source-template" name="source_template_id"><option value="">空のテンプレートから作成</option>{% for item in study_templates %}<option value="{{ item.id }}"{% if source_template_id == item.id %} selected{% endif %}>{{ item.name }}</option>{% endfor %}</select>
+        <select id="source-template" name="source_template_id"><option value="">共通テンプレートを選択</option>{% for item in study_templates %}<option value="{{ item.id }}"{% if source_template_id == item.id %} selected{% endif %}>{{ item.name }}</option>{% endfor %}</select>
         <button type="submit">複製元を読み込む</button>
-        {% if source_template_id %}<p>既存項目の識別キーを維持したまま内容・順番を編集できます。</p>{% else %}<p>複製元を選ぶと、項目と設定を引き継いで新しいテンプレートを作成できます。</p>{% endif %}
+        {% if source_template_id %}<p>既存項目の識別キーを維持したまま内容・順番を編集できます。</p>{% else %}<p>共通テンプレートを複製元として読み込めます。適用中の設定は下のフォームに表示されています。</p>{% endif %}
     </form>
     {% endif %}
-    <label for="template-name">テンプレート名（必須）</label>
-    <input id="template-name" type="text" maxlength="100" value="{{ initial_template_name|default('') }}" required>
+    {% if not hide_name %}<label for="template-name">テンプレート名（必須）</label>
+    <input id="template-name" type="text" maxlength="100" value="{{ initial_template_name|default('') }}" required>{% endif %}
     <p>{{ builder_description|default('保存すると全生徒に公開されます。保存後の項目編集・削除はできません。') }}</p>
     <script id="template-initial-fields" type="application/json">{{ initial_template_fields|default([])|tojson }}</script>
     <div class="template-builder">
@@ -46,7 +48,6 @@
                 </div>
                 <label class="template-check"><input id="body-bold" type="checkbox"> <span id="body-bold-label">本文を太字にする</span></label>
                 <div id="max-length-setting"><label for="max-length">文字数制限（0は無制限）</label><input id="max-length" type="number" min="0" max="9007199254740991" step="1" value="0" required></div>
-                <label class="template-check"><input id="field-required" type="checkbox"> 記入必須にする</label>
             </fieldset>
             <fieldset class="field-settings-group" id="image-settings-group" hidden>
                 <legend>画像設定</legend>

@@ -13,7 +13,7 @@ import main
 import test_studies as fixtures
 from studies import connect_studies, get_templates, initialize_studies
 from study_pdf import render_study_pdf
-from template_management import TemplateCreate, Visibility, create_template_router, require_admin
+from template_management import SchoolReportTemplate, TemplateCreate, Visibility, create_template_router, require_admin
 
 
 class TemplateManagementTests(unittest.TestCase):
@@ -39,9 +39,74 @@ class TemplateManagementTests(unittest.TestCase):
         self.assertEqual(self.create().status_code, 201)
         self.assertEqual(self.rows('SELECT seed_key,active FROM study_template WHERE id=2'), [(None, 1)])
         self.assertEqual(self.rows('SELECT label,position,heading_font_size,body_font_size,hide_heading,max_length,required FROM study_template_field WHERE template_id=2'),
-                         [('先頭', 0, 24, 16, 1, 5, 1), ('次の項目', 1, 11, 10, 0, 0, 0)])
+                         [('先頭', 0, 24, 16, 1, 5, 0), ('次の項目', 1, 11, 10, 0, 0, 0)])
         with closing(connect_studies(self.path)) as db:
             self.assertEqual(len(get_templates(db)), 2)
+
+    def test_school_report_settings_apply_inline_and_preserve_draft_values(self):
+        with closing(connect_studies(self.path)) as db, db:
+            columns = {row[1] for row in db.execute('PRAGMA table_info(teacher)')}
+            if 'role' not in columns:
+                db.execute('ALTER TABLE teacher ADD COLUMN role TEXT')
+            db.execute("UPDATE teacher SET role='super_teacher' WHERE id='teacher1'")
+            db.execute("INSERT INTO school_report_template VALUES('school1', 1, 'before', 'teacher1')")
+            fields = get_templates(db)[0]['fields']
+            snapshot = {'id': 1, 'name': '研究レポート（基本）', 'fields': fields}
+            db.execute('''INSERT INTO group_report_draft(group_id,school_id,school_name,template_id,template_snapshot,report_data,updated_at,revision)
+                VALUES('group1','school1','school1',1,?,?, 'before',2)''',
+                (json.dumps(snapshot, ensure_ascii=False), json.dumps({fields[0]['stable_key']:{'value':'下書き本文','images':[]}}, ensure_ascii=False)))
+            db.execute("INSERT INTO group_report_lock VALUES('group1', ?, 'student1', '生徒', 'now')", (fields[0]['stable_key'],))
+        router = create_template_router(lambda: self.path, main.templates)
+        endpoint = next(route.endpoint for route in router.routes
+                        if route.path == '/teacher/school-report/apply' and 'POST' in route.methods)
+        data = SchoolReportTemplate(csrf_token='token', fields=[
+            {'label': '更新後の項目', 'stable_key': fields[0]['stable_key']}, {'label': '新規項目'}])
+
+        result = asyncio.run(endpoint(
+            fixtures.request('/teacher/school-report/apply', {
+                'teacher_login': True, 'teacher_id': 'teacher1', 'school_report_template_csrf': 'token'}), data))
+
+        self.assertTrue(result['ok'])
+        new_id = result['id']
+        self.assertEqual(self.rows("SELECT template_id FROM school_report_template WHERE school='school1'"), [(new_id,)])
+        self.assertEqual(self.rows("SELECT name,active FROM study_template WHERE owner_school='school1'"), [('学校成果レポート', 1)])
+        self.assertEqual(self.rows('SELECT active FROM study_template WHERE id=1'), [(1,)])
+        draft = self.rows('SELECT template_id,report_data,revision FROM group_report_draft WHERE group_id=\'group1\'')[0]
+        self.assertEqual(draft[0], new_id)
+        self.assertEqual(json.loads(draft[1])[fields[0]['stable_key']]['value'], '下書き本文')
+        self.assertEqual(draft[2], 3)
+        self.assertEqual(self.rows("SELECT * FROM group_report_lock WHERE group_id='group1'"), [])
+
+    def test_school_report_apply_rejects_invalid_source_and_csrf_without_changes(self):
+        with closing(connect_studies(self.path)) as db, db:
+            columns = {row[1] for row in db.execute('PRAGMA table_info(teacher)')}
+            if 'role' not in columns:
+                db.execute('ALTER TABLE teacher ADD COLUMN role TEXT')
+            db.execute("UPDATE teacher SET role='super_teacher' WHERE id='teacher1'")
+            db.execute("INSERT INTO school_report_template VALUES('school1', 1, 'before', 'teacher1')")
+        endpoint = self.endpoint('/teacher/school-report/apply', 'POST')
+        data = SchoolReportTemplate(csrf_token='token', name='新設定', fields=[{'label': '項目'}], source_template_id=999)
+        with self.assertRaises(HTTPException) as error:
+            asyncio.run(endpoint(fixtures.request('/teacher/school-report/apply', {
+                'teacher_login': True, 'teacher_id': 'teacher1', 'school_report_template_csrf': 'token'}), data))
+        self.assertEqual(error.exception.status_code, 404)
+        self.assertEqual(self.rows("SELECT template_id FROM school_report_template WHERE school='school1'"), [(1,)])
+        self.assertEqual(self.rows("SELECT id FROM study_template WHERE owner_school='school1'"), [])
+        data = SchoolReportTemplate(csrf_token='wrong', name='新設定', fields=[{'label': '項目'}])
+        with self.assertRaises(HTTPException) as error:
+            asyncio.run(endpoint(fixtures.request('/teacher/school-report/apply', {
+                'teacher_login': True, 'teacher_id': 'teacher1', 'school_report_template_csrf': 'token'}), data))
+        self.assertEqual(error.exception.status_code, 403)
+        self.assertEqual(self.rows("SELECT template_id FROM school_report_template WHERE school='school1'"), [(1,)])
+        with closing(connect_studies(self.path)) as db, db:
+            db.execute("CREATE TRIGGER fail_school_report_field BEFORE INSERT ON study_template_field WHEN NEW.label='失敗項目' BEGIN SELECT RAISE(ABORT,'failure'); END")
+        data = SchoolReportTemplate(csrf_token='token', name='新設定', fields=[{'label': '失敗項目'}])
+        with self.assertLogs(level='ERROR'), self.assertRaises(HTTPException) as error:
+            asyncio.run(endpoint(fixtures.request('/teacher/school-report/apply', {
+                'teacher_login': True, 'teacher_id': 'teacher1', 'school_report_template_csrf': 'token'}), data))
+        self.assertEqual(error.exception.status_code, 500)
+        self.assertEqual(self.rows("SELECT template_id FROM school_report_template WHERE school='school1'"), [(1,)])
+        self.assertEqual(self.rows("SELECT id FROM study_template WHERE owner_school='school1'"), [])
 
     def test_independent_alignment_and_bold_saved_and_rendered(self):
         self.create([{'label': '中央見出し', 'heading_alignment': 'center',
@@ -98,7 +163,7 @@ class TemplateManagementTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(self.rows('''SELECT field_type,image_size,image_alignment,max_length,body_font_size,
             body_alignment,required FROM study_template_field WHERE template_id=2'''),
-            [('image', 'large', 'right', 50, 9, 'center', 1)])
+            [('image', 'large', 'right', 50, 9, 'center', 0)])
         for change in ({'field_type': 'video'}, {'image_size': 'medium'},
                        {'image_alignment': 'justify'}, {'field_type': 'image', 'max_length': 49}):
             with self.subTest(change=change), self.assertRaises(ValidationError):
@@ -172,7 +237,7 @@ class TemplateManagementTests(unittest.TestCase):
             initialize_studies(db)
             initialize_studies(db)
             self.assertEqual(db.execute('SELECT label,required,heading_font_size,body_font_size,hide_heading,max_length FROM study_template_field').fetchall(),
-                             [('元の項目', 1, 11, 10, 0, 0)])
+                             [('元の項目', 0, 11, 10, 0, 0)])
             self.assertEqual(db.execute('SELECT name FROM study_template').fetchall(), [('元の名前',)])
             self.assertEqual(db.execute('SELECT heading_alignment,body_alignment,heading_bold,body_bold FROM study_template_field').fetchall(),
                              [('left', 'left', 0, 0)])

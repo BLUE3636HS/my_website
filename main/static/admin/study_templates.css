@@ -1,4 +1,4 @@
-.template-manager { color: #243c30; max-width: 1600px; margin: auto; }
+.template-manager { color: #243c30; max-width: 1600px; margin: auto; padding-bottom: 48px; }
 .template-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .template-manager h1 { font-size: 26px; }
 .template-manager h2 { font-size: 19px; overflow-wrap: anywhere; }

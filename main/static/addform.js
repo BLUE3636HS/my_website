@@ -26,7 +26,6 @@ function generateFields() {
         }
         const input = document.createElement("textarea");
         input.id = input.name = `field_${field.id}`;
-        input.required = field.required;
         input.value = drafts.get(currentTemplate)?.[input.name] || "";
         if (field.max_length > 0) {
             const validateLength = () => {
@@ -38,7 +37,7 @@ function generateFields() {
         }
         const label = document.createElement("label");
         label.htmlFor = input.id;
-        label.textContent = field.label + (field.required ? "（必須）" : "（任意）");
+        label.textContent = field.label;
         if (field.max_length > 0) label.textContent += `［${field.max_length}文字以内］`;
         fields.append(label, input);
     }
@@ -52,7 +51,7 @@ function renderImageField(field) {
     const wrapper = document.createElement("fieldset");
     wrapper.className = "study-image-field";
     const legend = document.createElement("legend");
-    legend.textContent = field.label + (field.required ? "（必須）" : "（任意）");
+    legend.textContent = field.label;
     const help = document.createElement("p");
     help.textContent = "JPEG・PNGを最大4枚、各5MBまで。各画像の説明は50文字以内で必須です。";
     const picker = document.createElement("input");
@@ -61,9 +60,6 @@ function renderImageField(field) {
     const list = document.createElement("div"); list.className = "study-image-list";
     const records = templateImageDrafts().get(field.id) || [];
     templateImageDrafts().set(field.id, records);
-    function validate() {
-        picker.setCustomValidity(field.required && records.length === 0 ? `「${field.label}」の画像を1枚以上選択してください。` : "");
-    }
     function draw() {
         list.replaceChildren();
         records.forEach((record, index) => {
@@ -80,11 +76,10 @@ function renderImageField(field) {
             const action = (text, callback) => { const button = document.createElement("button"); button.type = "button"; button.textContent = text; button.addEventListener("click", callback); return button; };
             const up = action("↑ 上へ", () => { records.splice(index - 1, 0, records.splice(index, 1)[0]); draw(); }); up.disabled = index === 0;
             const down = action("↓ 下へ", () => { records.splice(index + 1, 0, records.splice(index, 1)[0]); draw(); }); down.disabled = index === records.length - 1;
-            const remove = action("削除", () => { records.splice(index, 1); draw(); validate(); });
+            const remove = action("削除", () => { records.splice(index, 1); draw(); });
             actions.append(up, down, remove); card.append(image, name, captionLabel, caption, actions); list.append(card);
         });
         picker.disabled = records.length >= 4 || form.elements.registration_type.value === "pdf";
-        validate();
     }
     picker.addEventListener("change", () => {
         const selected = [...picker.files];

@@ -321,17 +321,23 @@ class StudyTests(unittest.TestCase):
             self.assertEqual(error.exception.status_code, status)
         self.assertEqual(self.rows('SELECT id FROM study'), [])
 
-    def test_dynamic_second_template_and_required_field(self):
+    def test_dynamic_second_template_field_is_optional(self):
         with closing(connect_studies(self.path)) as db:
             db.execute("INSERT INTO study_template(id,name) VALUES (2,'別テンプレート')")
             db.execute("INSERT INTO study_template_field(id,template_id,label,position,required) VALUES (20,2,'必須項目',0,1)")
             db.commit()
-        with self.assertRaises(HTTPException):
-            self.submit(template_id='2', field_20='  ')
+        self.submit(template_id='2', field_20='  ')
         with self.assertRaises(HTTPException):
             self.submit(template_id='1', field_20='他テンプレートの項目')
         self.submit(template_id='2', field_20='入力')
-        self.assertEqual(self.rows('SELECT field_id,value FROM study_field_value'), [(20, '入力')])
+        self.assertEqual(self.rows('SELECT field_id,value FROM study_field_value ORDER BY study_id'), [(20, '  '), (20, '入力')])
+
+    def test_initialization_clears_legacy_required_template_fields(self):
+        with closing(connect_studies(self.path)) as db, db:
+            db.execute('UPDATE study_template_field SET required=1 WHERE id=1')
+            initialize_studies(db)
+            self.assertEqual(db.execute('SELECT required FROM study_template_field WHERE id=1').fetchone(), (0,))
+            self.assertFalse(get_templates(db)[0]['fields'][0]['required'])
 
     def test_pdf_save_serve_and_invalid_pdf(self):
         for filename, content in [('fake.pdf', b'not pdf'), ('broken.pdf', b'%PDF-1.4\n')]:

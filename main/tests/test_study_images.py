@@ -76,10 +76,13 @@ class StudyImageTests(unittest.TestCase):
         self.assertEqual(self.rows('SELECT id FROM study_field_image'), [])
         self.assertEqual(list(self.image_dir.iterdir()), [])
 
-    def test_required_counts_captions_and_file_validation(self):
+    def test_image_fields_are_optional_but_uploads_are_validated(self):
         template_id, field_id = self.configure_image_template()
+        empty = self.submit_images(template_id, field_id, [], [])
+        self.assertEqual(empty.status_code, 201)
+        with closing(connect_studies(self.path)) as db, db:
+            db.execute('DELETE FROM study')
         cases = [
-            ([], [], '画像を1枚以上'),
             ([('a.png', png_bytes())], [], '数が一致'),
             ([('a.png', png_bytes())], [''], '画像説明'),
             ([('a.png', png_bytes())], ['あ' * 51], '50文字以内'),

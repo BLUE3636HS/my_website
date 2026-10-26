@@ -5,6 +5,8 @@
     const status = document.getElementById('template-status');
     const createEndpoint = root.dataset.createEndpoint || '/admin/study-templates';
     const returnUrl = root.dataset.returnUrl || '/admin/study-templates';
+    const createSuccessMessage = root.dataset.createSuccessMessage || '';
+    const applyMode = root.dataset.applyMode === 'true';
     const sourceTemplateId = root.dataset.sourceTemplateId ? Number(root.dataset.sourceTemplateId) : null;
     const initialFields = JSON.parse(document.getElementById('template-initial-fields')?.textContent || '[]');
     function createStableKey() {
@@ -100,7 +102,7 @@
         return {stable_key: selected?.stable_key || newFieldStableKey,
             label: byId('field-label').value.trim(), heading_font_size: Number(byId('heading-size').value),
             body_font_size: Number(byId('body-size').value), hide_heading: byId('hide-heading').checked,
-            max_length: Number(byId('max-length').value), required: byId('field-required').checked,
+            max_length: Number(byId('max-length').value),
             heading_alignment: byId('heading-alignment').value, body_alignment: byId('body-alignment').value,
             heading_bold: byId('heading-bold').checked, body_bold: byId('body-bold').checked,
             field_type: byId('field-type').value, image_size: byId('image-size').value,
@@ -135,7 +137,6 @@
         byId('heading-bold').checked = field.heading_bold;
         byId('body-bold').checked = field.body_bold;
         byId('max-length').value = field.max_length;
-        byId('field-required').checked = field.required;
         byId('image-size').value = field.image_size;
         setImageAlignment(field.image_alignment);
         updateFieldType();
@@ -209,8 +210,8 @@
             const label = document.createElement('strong'); label.textContent = ` ${index + 1}. ${field.label}`;
             const details = document.createElement('p');
             details.textContent = field.field_type === 'image'
-                ? `画像 / ${field.required ? '必須' : '任意'} / ${field.image_size === 'small' ? '小（2列）' : '大（1列）'}`
-                : `文章 / ${field.required ? '必須' : '任意'} / ${field.max_length ? field.max_length + '文字以内' : '文字数無制限'}`;
+                ? `画像 / ${field.image_size === 'small' ? '小（2列）' : '大（1列）'}`
+                : `文章 / ${field.max_length ? field.max_length + '文字以内' : '文字数無制限'}`;
             const actions = document.createElement('div'); actions.className = 'field-actions';
             const up = action('↑', `${field.label}を上へ`, () => move(field, -1)); up.disabled = index === 0;
             const down = action('↓', `${field.label}を下へ`, () => move(field, 1)); down.disabled = index === fields.length - 1;
@@ -235,27 +236,37 @@
     byId('save-template').addEventListener('click', async () => {
         if (saving) return;
         const name = byId('template-name');
-        name.setCustomValidity(name.value.trim() ? '' : 'テンプレート名を入力してください。');
-        if (!name.reportValidity()) return;
+        if (!applyMode) {
+            name.setCustomValidity(name.value.trim() ? '' : 'テンプレート名を入力してください。');
+            if (!name.reportValidity()) return;
+        }
         if (dirty) { status.textContent = '左側の設定を「項目を追加」または「項目を更新」で反映してから保存してください。'; return; }
         if (!fields.length) { status.textContent = '項目を1つ以上追加してください。'; return; }
         saving = true; status.textContent = '保存しています…';
         const controls = [...root.querySelectorAll('input, select, button')].map(control => [control, control.disabled]);
         controls.forEach(([control]) => { control.disabled = true; });
         try {
-            const payload = {name: name.value.trim(), fields};
+            const payload = {fields};
+            if (name) payload.name = name.value.trim();
             if (sourceTemplateId) payload.source_template_id = sourceTemplateId;
             await post(createEndpoint, payload);
-            window.location.assign(returnUrl);
+            if (applyMode) {
+                status.textContent = '成果レポート設定を適用しました。';
+                saving = false;
+                controls.forEach(([control, disabled]) => { control.disabled = disabled; });
+            } else {
+                if (createSuccessMessage) window.alert(createSuccessMessage);
+                window.location.assign(returnUrl);
+            }
         } catch (error) {
             status.textContent = error.message; saving = false;
             controls.forEach(([control, disabled]) => { control.disabled = disabled; });
         }
     });
-    byId('template-name').addEventListener('input', () => byId('template-name').setCustomValidity(''));
+    byId('template-name')?.addEventListener('input', () => byId('template-name').setCustomValidity(''));
     const sourceForm = root.querySelector('.template-source-form');
     sourceForm?.addEventListener('submit', event => {
-        if (byId('template-name').value.trim() || fields.length || dirty) {
+        if (byId('template-name')?.value.trim() || fields.length || dirty) {
             if (!window.confirm('複製元を読み込むと、現在の入力内容は破棄されます。続けますか？')) event.preventDefault();
         }
     });

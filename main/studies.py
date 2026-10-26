@@ -49,6 +49,8 @@ def initialize_studies(db):
             if name not in field_columns:
                 db.execute(f'ALTER TABLE study_template_field ADD COLUMN {name} {definition}')
         db.execute('UPDATE study_template_field SET stable_key=lower(hex(randomblob(16))) WHERE stable_key IS NULL OR stable_key=\'\'')
+        # Template items are optional; normalize legacy definitions at startup.
+        db.execute('UPDATE study_template_field SET required=0 WHERE required<>0')
         columns = {row[1] for row in db.execute("PRAGMA table_info(study)")}
         additions = {
             "registration_type": "TEXT NOT NULL DEFAULT 'pdf' CHECK(registration_type IN ('pdf', 'template'))",
@@ -124,7 +126,7 @@ def initialize_studies(db):
 
 def get_templates(db, include_inactive=False):
     return [{"id": row[0], "name": row[1], "active": bool(row[2]), "fields": [
-        {"id": field[0], "stable_key": field[14], "label": field[1], "required": bool(field[2]),
+        {"id": field[0], "stable_key": field[14], "label": field[1], "required": False,
          "heading_font_size": field[3], "body_font_size": field[4],
          "hide_heading": bool(field[5]), "max_length": field[6],
          "heading_alignment": field[7], "body_alignment": field[8],

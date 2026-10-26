@@ -42,6 +42,23 @@ class GroupReportSchemaTests(unittest.TestCase):
                          [field['label'] for field in template['fields']])
         self.assertTrue(render_study_pdf(sections).startswith(b'%PDF'))
 
+    def test_pdf_sections_mark_empty_fields_and_keep_their_titles(self):
+        template = get_templates(self.db)[0]
+        template['fields'][0]['hide_heading'] = True
+        template['fields'][1]['field_type'] = 'image'
+        values = {field['stable_key']: {'value': '', 'images': []} for field in template['fields']}
+
+        sections = pdf_sections(self.db, '.', template, values, '学校：テスト')
+
+        empty_text = sections[1]
+        self.assertEqual(empty_text[0], template['fields'][0]['label'])
+        self.assertEqual(empty_text[1], '(未入力)')
+        self.assertFalse(empty_text[4])
+        empty_image = sections[2]
+        self.assertEqual(empty_image[0], template['fields'][1]['label'])
+        self.assertEqual(empty_image[1], '(未入力)')
+        self.assertTrue(render_study_pdf(sections).startswith(b'%PDF'))
+
 
 if __name__ == '__main__':
     unittest.main()

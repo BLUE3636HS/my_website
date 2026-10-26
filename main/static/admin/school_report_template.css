@@ -36,6 +36,11 @@
     margin: 0 auto;
 }
 
+#school-report-template.template-manager { padding-bottom: 64px; }
+#school-report-template #save-template { margin-top: 8px; }
+#school-report-template .template-source-form { margin: 16px 0 22px; padding: 16px; border: 1px solid #d7e3db; border-radius: 10px; background: #fff; }
+#school-report-template #template-status { min-height: 1.6em; }
+
 @media (max-width: 760px) {
     .school-report-layout {
         grid-template-columns: minmax(0, 1fr);

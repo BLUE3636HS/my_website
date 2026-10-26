@@ -3931,27 +3931,23 @@ async def Add(request: Request):
                         template = db.execute("SELECT id FROM study_template WHERE id = ? AND active = 1", (template_id,)).fetchone()
                         if not template:
                             raise HTTPException(422, "選択されたテンプレートは利用できません。")
-                        fields = db.execute("SELECT id, label, required, max_length, field_type FROM study_template_field WHERE template_id = ? ORDER BY position, id", (template_id,)).fetchall()
+                        fields = db.execute("SELECT id, label, max_length, field_type FROM study_template_field WHERE template_id = ? ORDER BY position, id", (template_id,)).fetchall()
                         allowed = set()
-                        for field_id, _label, _required, _max_length, field_type in fields:
+                        for field_id, _label, _max_length, field_type in fields:
                             allowed.add(("field_" if field_type == "text" else "image_") + str(field_id))
                             if field_type == "image":
                                 allowed.add(f"caption_{field_id}")
                         if any((key.startswith("field_") or key.startswith("image_") or key.startswith("caption_")) and key not in allowed for key in form):
                             raise HTTPException(422, "テンプレートに存在しない項目が含まれています。")
-                        for field_id, label, required, max_length, field_type in fields:
+                        for field_id, label, max_length, field_type in fields:
                             if field_type == "text":
                                 value = text_value(f"field_{field_id}").replace('\r\n', '\n').replace('\r', '\n')
-                                if required and not value.strip():
-                                    raise HTTPException(422, f"「{label}」を入力してください。")
                                 if max_length and len(value) > max_length:
                                     raise HTTPException(422, f"「{label}」は{max_length}文字以内で入力してください。")
                                 values.append((field_id, value))
                                 continue
                             uploads = form.getlist(f"image_{field_id}")
                             captions = form.getlist(f"caption_{field_id}")
-                            if required and not uploads:
-                                raise HTTPException(422, f"「{label}」の画像を1枚以上選択してください。")
                             if len(uploads) > 4:
                                 raise HTTPException(422, f"「{label}」の画像は最大4枚です。")
                             if len(uploads) != len(captions):

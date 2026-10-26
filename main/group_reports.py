@@ -36,9 +36,14 @@ def pdf_sections(database_path,image_dir,template,values,metadata):
             for item in data.get('images',[]):
                 stored=assets.get(item.get('content_hash'))
                 if stored and (Path(image_dir)/stored).is_file(): images.append((str(Path(image_dir)/stored),item.get('caption','')[:50]))
-            sections.append({'type':'image','label':field['label'],'images':images,'heading_font_size':field.get('heading_font_size',11),'body_font_size':field.get('body_font_size',10),'heading_alignment':field.get('heading_alignment','left'),'body_alignment':field.get('body_alignment','left'),'body_bold':field.get('body_bold',False),'heading_bold':field.get('heading_bold',False),'hide_heading':field.get('hide_heading',False),'image_size':field.get('image_size','small'),'image_alignment':field.get('image_alignment','center')})
+            if images:
+                sections.append({'type':'image','label':field['label'],'images':images,'heading_font_size':field.get('heading_font_size',11),'body_font_size':field.get('body_font_size',10),'heading_alignment':field.get('heading_alignment','left'),'body_alignment':field.get('body_alignment','left'),'body_bold':field.get('body_bold',False),'heading_bold':field.get('heading_bold',False),'hide_heading':field.get('hide_heading',False),'image_size':field.get('image_size','small'),'image_alignment':field.get('image_alignment','center')})
+            else:
+                sections.append((field['label'],'(未入力)',field.get('heading_font_size',11),field.get('body_font_size',10),False,field.get('heading_alignment','left'),field.get('body_alignment','left'),field.get('heading_bold',False),field.get('body_bold',False)))
         else:
-            sections.append((field['label'],data.get('value',''),field.get('heading_font_size',11),field.get('body_font_size',10),field.get('hide_heading',False),field.get('heading_alignment','left'),field.get('body_alignment','left'),field.get('heading_bold',False),field.get('body_bold',False)))
+            value=data.get('value') or ''
+            empty=not value.strip()
+            sections.append((field['label'],'(未入力)' if empty else value,field.get('heading_font_size',11),field.get('body_font_size',10),False if empty else field.get('hide_heading',False),field.get('heading_alignment','left'),field.get('body_alignment','left'),field.get('heading_bold',False),field.get('body_bold',False)))
     return sections
 
 
