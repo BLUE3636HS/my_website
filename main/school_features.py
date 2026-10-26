@@ -62,6 +62,13 @@ def initialize_school_feature_settings(db):
             PRIMARY KEY (school, feature_key)
         )
     """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS global_feature_setting (
+            feature_key TEXT PRIMARY KEY NOT NULL,
+            enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+            updated_at TEXT NOT NULL
+        )
+    """)
 
 
 def seed_school_feature_settings(database_path):
@@ -76,7 +83,7 @@ def seed_school_feature_settings(database_path):
         db.commit()
 
 
-def school_feature_flags(db, school):
+def school_feature_settings(db, school):
     flags = {key: True for key, _ in FEATURES}
     if not school:
         return flags
@@ -85,6 +92,17 @@ def school_feature_flags(db, school):
         (school,),
     ).fetchall()
     flags.update({key: bool(enabled) for key, enabled in rows if key in FEATURE_KEYS})
+    return flags
+
+
+def school_feature_flags(db, school):
+    flags = school_feature_settings(db, school)
+    global_rows = db.execute(
+        "SELECT feature_key, enabled FROM global_feature_setting"
+    ).fetchall()
+    for key, enabled in global_rows:
+        if key in FEATURE_KEYS:
+            flags[key] = flags[key] and bool(enabled)
     return flags
 
 
@@ -107,13 +125,17 @@ def build_school_feature_router(database_path, templates):
             require_super_admin(db, request)
             schools = school_names_from_database(db)
             settings = {}
+            global_settings = {row[0]: bool(row[1]) for row in db.execute(
+                "SELECT feature_key, enabled FROM global_feature_setting"
+            ).fetchall()}
             for school in schools:
-                settings[school] = school_feature_flags(db, school)
+                settings[school] = school_feature_settings(db, school)
         token = request.session.setdefault("school_features_csrf", secrets.token_urlsafe(32))
         return templates.TemplateResponse(
             request=request,
             name="admin/school_features.html",
             context={"request": request, "schools": schools, "features": FEATURES,
+                     "global_settings": global_settings,
                      "settings": settings, "csrf_token": token, "error": error,
                      "notice": request.session.pop("school_features_notice", None)},
             status_code=status_code,
@@ -136,6 +158,15 @@ def build_school_feature_router(database_path, templates):
                 raise HTTPException(403, "CSRFトークンが不正です。")
             schools = school_names_from_database(db)
             now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            for feature in FEATURE_KEYS:
+                value = form.get(f"global:{feature}")
+                if value not in (None, "1"):
+                    raise HTTPException(400, "全体設定の値が不正です。")
+                db.execute(
+                    "INSERT INTO global_feature_setting(feature_key,enabled,updated_at) VALUES(?,?,?) "
+                    "ON CONFLICT(feature_key) DO UPDATE SET enabled=excluded.enabled,updated_at=excluded.updated_at",
+                    (feature, int(value == "1"), now),
+                )
             for school in schools:
                 for feature in FEATURE_KEYS:
                     value = form.get(f"enabled:{school}:{feature}")

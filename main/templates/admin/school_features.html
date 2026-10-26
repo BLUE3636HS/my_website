@@ -1,21 +1,31 @@
 {% extends 'admin/base.html' %}
-{% block title %}学校別機能設定{% endblock %}
+{% block title %}生徒機能設定{% endblock %}
 {% block content %}
 <section class="school-features-panel">
-    <h1>学校別機能設定</h1>
-    <p>チェックを外した機能は、その学校の生徒画面に表示されず、関連ページやAPIも利用できなくなります。既存データは保持されます。</p>
+    <h1>生徒機能設定</h1>
+    <p>全体のチェックを外すと、その機能は登録済みのすべての生徒で無効になり、学校別の欄も灰色で表示されます。全体のチェックが入っている機能は、学校ごとのチェックに従います。利用できない機能の既存データは保持されます。</p>
     {% if error %}<p class="login-error" role="alert">{{ error }}</p>{% endif %}
     {% if notice %}<p class="school-features-notice" role="status">{{ notice }}</p>{% endif %}
     <form method="post" action="/admin/school-features">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="school-features-table-wrap">
             <table class="school-features-table">
-                <thead><tr><th scope="col">学校</th>{% for key, label in features %}<th scope="col">{{ label }}</th>{% endfor %}</tr></thead>
+                <thead><tr><th scope="col">適用範囲</th>{% for key, label in features %}<th scope="col">{{ label }}</th>{% endfor %}</tr></thead>
                 <tbody>
+                    <tr class="school-features-global-row"><th scope="row">全体（登録済みの全生徒）</th>
+                    {% for key, label in features %}
+                        <td><label class="school-feature-toggle"><input type="checkbox" name="global:{{ key }}" value="1"{% if global_settings.get(key, true) %} checked{% endif %}><span class="visually-hidden">全体の{{ label }}</span></label></td>
+                    {% endfor %}
+                    </tr>
                 {% for school in schools %}
                     <tr><th scope="row">{{ school }}</th>
                     {% for key, label in features %}
-                        <td><label class="school-feature-toggle"><input type="checkbox" name="enabled:{{ school }}:{{ key }}" value="1"{% if settings[school][key] %} checked{% endif %}><span class="visually-hidden">{{ school }}の{{ label }}</span></label></td>
+                        {% set global_enabled = global_settings.get(key, true) %}
+                        <td{% if not global_enabled %} class="school-feature-globally-disabled" title="全体設定で無効です"{% endif %}>
+                            {% if not global_enabled and settings[school][key] %}<input type="hidden" name="enabled:{{ school }}:{{ key }}" value="1">{% endif %}
+                            <label class="school-feature-toggle"><input type="checkbox" name="enabled:{{ school }}:{{ key }}" value="1"{% if settings[school][key] %} checked{% endif %}{% if not global_enabled %} disabled aria-label="{{ school }}の{{ label }}。全体設定で無効"{% endif %}><span class="visually-hidden">{{ school }}の{{ label }}</span></label>
+                            {% if not global_enabled %}<span class="school-feature-disabled-note">全体で無効</span>{% endif %}
+                        </td>
                     {% endfor %}
                     </tr>
                 {% endfor %}

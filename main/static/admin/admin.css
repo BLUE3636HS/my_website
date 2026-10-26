@@ -67,6 +67,10 @@ body {
 .school-features-table-wrap { overflow-x: auto; margin: 20px 0; }
 .school-features-table { width: 100%; border-collapse: collapse; }
 .school-features-table th, .school-features-table td { padding: 12px; border-bottom: 1px solid #dce8df; text-align: center; }
+.school-features-global-row { background: #f8fbf9; }
+.school-feature-globally-disabled { background: #ededed; color: #858585; }
+.school-feature-globally-disabled .school-feature-toggle input { cursor: not-allowed; accent-color: #999; }
+.school-feature-disabled-note { display: block; margin-top: 4px; color: #777; font-size: 11px; white-space: nowrap; }
 .school-features-table thead th { min-width: 120px; background: #f3f8f4; color: #19472d; }
 .school-features-table thead th:first-child, .school-features-table tbody th { min-width: 150px; text-align: left; }
 .school-features-table tbody th { white-space: nowrap; }

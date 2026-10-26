@@ -86,6 +86,27 @@ class SchoolFeatureSettingsTests(unittest.TestCase):
         self.assertTrue(enabled_for_student(self.database, "student-a", "dashboard"))
         self.assertFalse(enabled_for_student(self.database, "missing", "dashboard"))
 
+    def test_global_unchecked_disables_every_school_and_keeps_school_values(self):
+        seed_school_feature_settings(self.database)
+        with closing(sqlite3.connect(self.database)) as db:
+            db.execute("UPDATE school_feature_setting SET enabled=0 WHERE school='学校A' AND feature_key='community'")
+            db.execute("INSERT INTO global_feature_setting VALUES('community',1,'now')")
+            db.commit()
+        self.assertFalse(enabled_for_student(self.database, "student-a", "community"))
+        self.assertTrue(enabled_for_student(self.database, "student-b", "community"))
+
+        with closing(sqlite3.connect(self.database)) as db:
+            db.execute("UPDATE global_feature_setting SET enabled=0 WHERE feature_key='community'")
+            db.commit()
+        self.assertFalse(enabled_for_student(self.database, "student-a", "community"))
+        self.assertFalse(enabled_for_student(self.database, "student-b", "community"))
+
+        with closing(sqlite3.connect(self.database)) as db:
+            db.execute("DELETE FROM global_feature_setting WHERE feature_key='community'")
+            db.commit()
+        self.assertFalse(enabled_for_student(self.database, "student-a", "community"))
+        self.assertTrue(enabled_for_student(self.database, "student-b", "community"))
+
 
 if __name__ == "__main__":
     unittest.main()
