@@ -151,6 +151,31 @@ class TeacherAccountsTests(unittest.TestCase):
             from school_features import enabled_for_student
             self.assertTrue(enabled_for_student(self.db_path, "student-a", "dashboard"))
 
+            db.execute("INSERT INTO global_feature_setting(feature_key,enabled,updated_at) VALUES('community',0,'now')")
+            db.commit()
+            self.assertFalse(enabled_for_student(self.db_path, "student-a", "community"))
+
+        session["teacher_school_features_csrf"] = "global-disabled-token"
+        disabled_page_request = request(session)
+        disabled_page_request.scope["path"] = "/teacher/school-features"
+        with patch.object(main, "DATABASE_PATH", self.db_path):
+            disabled_page = run_coroutine(main.TeacherSchoolFeaturesPage(disabled_page_request))
+        disabled_html = disabled_page.body.decode()
+        self.assertIn("teacher-feature-disabled-by-admin", disabled_html)
+        self.assertIn('disabled aria-label="TEKNEコミュニティ。管理者が全体設定で無効にしています"', disabled_html)
+
+        disabled_post_request = Request(request(session).scope)
+        async def disabled_form():
+            return FormData({"csrf_token": "global-disabled-token", "enabled:community": "1"})
+        disabled_post_request.form = disabled_form
+        with patch.object(main, "DATABASE_PATH", self.db_path):
+            with self.assertRaises(main.HTTPException) as error:
+                run_coroutine(main.TeacherUpdateSchoolFeatures(disabled_post_request, "global-disabled-token"))
+        self.assertEqual(error.exception.status_code, 400)
+        with closing(sqlite3.connect(self.db_path)) as db:
+            local_community = db.execute("SELECT enabled FROM school_feature_setting WHERE school='school-1' AND feature_key='community'").fetchone()[0]
+            self.assertEqual(local_community, 1)
+
     def test_regular_teacher_cannot_open_school_feature_settings(self):
         get_request = request({"teacher_login": True, "teacher_id": "teacher-1"})
         get_request.scope["path"] = "/teacher/school-features"

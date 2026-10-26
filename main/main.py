@@ -45,6 +45,7 @@ from school_features import (
     enabled_for_student,
     feature_for_student_path,
     school_feature_flags,
+    school_feature_settings,
     seed_school_feature_settings,
 )
 from tekne_chat import (
@@ -3305,7 +3306,10 @@ async def TeacherSchoolFeaturesPage(request: Request):
         if teacher[1] != "super_teacher":
             raise HTTPException(status_code=403, detail="このページを利用する権限がありません。")
         school = teacher[0]
-        settings = school_feature_flags(db, school)
+        settings = school_feature_settings(db, school)
+        global_disabled = {row[0] for row in db.execute(
+            "SELECT feature_key FROM global_feature_setting WHERE enabled=0"
+        ).fetchall()}
 
     csrf_token = request.session.setdefault(
         "teacher_school_features_csrf", secrets.token_urlsafe(32)
@@ -3320,6 +3324,7 @@ async def TeacherSchoolFeaturesPage(request: Request):
             "school": school,
             "features": STUDENT_FEATURES,
             "settings": settings,
+            "global_disabled": global_disabled,
             "csrf_token": csrf_token,
             "notice": request.session.pop("teacher_school_features_notice", None),
         },
@@ -3362,8 +3367,18 @@ async def TeacherUpdateSchoolFeatures(request: Request, csrf_token: str = Form(.
             db.rollback()
             raise HTTPException(status_code=403, detail="この操作を行う権限がありません。")
 
+        global_disabled = {row[0] for row in db.execute(
+            "SELECT feature_key FROM global_feature_setting WHERE enabled=0"
+        ).fetchall()}
+        for feature in global_disabled:
+            if form.getlist(f"enabled:{feature}"):
+                db.rollback()
+                raise HTTPException(status_code=400, detail="管理者が全体設定で無効にした機能は変更できません。")
+
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         for feature in STUDENT_FEATURE_KEYS:
+            if feature in global_disabled:
+                continue
             value = "1" if f"enabled:{feature}" in form else None
             db.execute(
                 "INSERT INTO school_feature_setting(school,feature_key,enabled,updated_at) "

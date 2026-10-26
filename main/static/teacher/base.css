@@ -45,6 +45,11 @@ body { margin: 0; height: 100vh; overflow: hidden; font-family: "Segoe UI", "Not
 .teacher-school-features-form { margin-top: 24px; }
 .teacher-school-features-list { display: grid; gap: 10px; margin: 0 0 22px; padding: 0; list-style: none; }
 .teacher-school-features-list li { border: 1px solid #ead8cf; border-radius: 9px; background: #fdf9f6; }
+.teacher-school-features-list li.teacher-feature-disabled-by-admin { border-color: #d4d4d4; background: #ededed; color: #777; }
+.teacher-school-features-list li.teacher-feature-disabled-by-admin label { cursor: not-allowed; }
+.teacher-school-features-list li.teacher-feature-disabled-by-admin .teacher-school-feature-description { color: #858585; }
+.teacher-school-features-list li.teacher-feature-disabled-by-admin .teacher-feature-switch { background: #c7c7c7; cursor: not-allowed; }
+.teacher-global-feature-note { margin: -8px 16px 10px; color: #777; font-size: .85rem; font-weight: 700; }
 .teacher-school-features-list label { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; font-weight: 700; cursor: pointer; }
 .teacher-school-feature-description { margin: -4px 16px 14px; color: #75675f; font-size: .92rem; line-height: 1.6; }
 .teacher-school-features-list input { position: absolute; width: 1px; height: 1px; opacity: 0; }
