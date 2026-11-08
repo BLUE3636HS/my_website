@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% import "student_icons.html" as icons %}
+{% block title %}ダッシュボード{% endblock %}
+{% block css %}
+<link rel="stylesheet" href="/static/student/dashboard.css">
+{% endblock %}
+{% block content %}
+<div class="student-page dashboard-page">
+    <section class="dashboard-hero">
+        <div>
+            <p class="dashboard-date" id="dashboard-date"></p>
+            <h1>こんにちは、<span>{{ user_id }}</span> さん</h1>
+            <p>今日の予定とお知らせ、よく使う機能をここからまとめて確認できます。</p>
+        </div>
+        <img class="dashboard-hero-logo" src="/static/top.png" alt="">
+    </section>
+
+    {% if missing_required_fields %}
+    <section class="dashboard-required-fields-alert" role="alert" aria-labelledby="required-fields-title">
+        <div class="dashboard-alert-icon">{{ icons.icon("alert") }}</div>
+        <div>
+            <h2 id="required-fields-title">生徒情報の入力をお願いします</h2>
+            <p>次の必須項目が未入力です。入力後も、いつでも変更できます。</p>
+            <ul>{% for label in missing_required_fields %}<li>{{ label }}</li>{% endfor %}</ul>
+            <a class="student-primary-button" href="/mypage/edit#student-custom-fields-title">生徒情報を入力する</a>
+        </div>
+    </section>
+    {% endif %}
+
+    {% set quick_links = [] %}
+    {% if student_features.studies_add %}{% set _ = quick_links.append(('/addform', 'file-plus', '研究成果を追加', 'ファイルやテンプレートで提出', 'blue')) %}{% endif %}
+    {% if student_features.studies_list %}{% set _ = quick_links.append(('/studylist', 'list', '提出物一覧', '提出した研究成果を確認', 'indigo')) %}{% endif %}
+    {% if student_features.community %}{% set _ = quick_links.append(('/community', 'users', 'TEKNEコミュニティ', 'みんなの投稿を見る・書く', 'teal')) %}{% endif %}
+    {% set _ = quick_links.append(('/tekne-chat', 'chat', 'TEKNEチャット', 'グループで会話・ファイル共有', 'green')) %}
+    {% if student_features.workshop_reservation %}{% set _ = quick_links.append(('/reservation', 'tool', 'TEKNE工作室', '工作室の利用を予約', 'amber')) %}{% endif %}
+    {% if student_features.mentor_reservation %}{% set _ = quick_links.append(('/mentor-reservation', 'mentor', '大学生メンター', 'メンターに相談を予約', 'violet')) %}{% endif %}
+    {% if student_features.equipment_reservation %}{% set _ = quick_links.append(('/equipment-reservation', 'flask', '実験器具の貸し出し', '器具の貸出を予約', 'rose')) %}{% endif %}
+    {% set _ = quick_links.append(('/mypage', 'calendar', 'マイページ', '予約カレンダーとプロフィール', 'slate')) %}
+
+    <section class="dashboard-section" aria-labelledby="dashboard-quick-title">
+        <div class="dashboard-section-heading">
+            <h2 id="dashboard-quick-title">メニュー</h2>
+        </div>
+        <div class="dashboard-quick-grid">
+            {% for href, icon_name, label, desc, tone in quick_links %}
+            <a class="dashboard-quick-card tone-{{ tone }}" href="{{ href }}">
+                <span class="dashboard-quick-icon">{{ icons.icon(icon_name) }}</span>
+                <span class="dashboard-quick-text">
+                    <strong>{{ label }}</strong>
+                    <small>{{ desc }}</small>
+                </span>
+                <span class="dashboard-quick-arrow">{{ icons.icon("arrow-right") }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+
+    <div class="dashboard-columns">
+        <section class="dashboard-section" aria-labelledby="dashboard-schedule-title">
+            <div class="dashboard-section-heading">
+                <h2 id="dashboard-schedule-title">次の予定</h2>
+                <a href="/mypage">すべての予約を確認する {{ icons.icon("arrow-right") }}</a>
+            </div>
+            <div class="dashboard-grid">
+                {% if student_features.workshop_reservation %}<article class="student-panel dashboard-card">
+                    <header class="dashboard-card-header">
+                        <span class="dashboard-card-icon tone-amber">{{ icons.icon("tool") }}</span>
+                        <div>
+                            <p class="dashboard-card-label">TEKNE工作室</p>
+                            <h3>次の工作室予約</h3>
+                        </div>
+                    </header>
+                    {% if next_reservation %}
+                    <div class="dashboard-when">
+                        <span>{{ icons.icon("calendar") }}{{ next_reservation[0] }}</span>
+                        <span>{{ icons.icon("clock") }}{{ next_reservation[1] }} ～ {{ next_reservation[2] }}</span>
+                    </div>
+                    <dl class="dashboard-details">
+                        <div><dt>使用目的</dt><dd>{{ next_reservation[3] }}</dd></div>
+                    </dl>
+                    {% else %}
+                    <div class="dashboard-empty">
+                        <p>予定されている予約はありません。</p>
+                        <a class="student-secondary-link" href="/reservation">工作室を予約する</a>
+                    </div>
+                    {% endif %}
+                </article>{% endif %}
+
+                {% if student_features.equipment_reservation %}<article class="student-panel dashboard-card">
+                    <header class="dashboard-card-header">
+                        <span class="dashboard-card-icon tone-rose">{{ icons.icon("flask") }}</span>
+                        <div>
+                            <p class="dashboard-card-label">実験器具</p>
+                            <h3>次の器具貸し出し</h3>
+                        </div>
+                    </header>
+                    {% if next_equipment_reservation %}
+                    <div class="dashboard-when">
+                        <span>{{ icons.icon("calendar") }}{{ next_equipment_reservation[1] }} ～ {{ next_equipment_reservation[2] }}</span>
+                    </div>
+                    <dl class="dashboard-details">
+                        <div><dt>器具名</dt><dd>{{ next_equipment_reservation[0] }}</dd></div>
+                        <div><dt>数量</dt><dd>{{ next_equipment_reservation[3] }}</dd></div>
+                    </dl>
+                    {% else %}
+                    <div class="dashboard-empty">
+                        <p>予定されている貸し出しはありません。</p>
+                        <a class="student-secondary-link" href="/equipment-reservation">実験器具を予約する</a>
+                    </div>
+                    {% endif %}
+                </article>{% endif %}
+
+                {% if not student_features.workshop_reservation and not student_features.equipment_reservation %}
+                <div class="student-panel dashboard-empty-panel">
+                    <p>予約の予定はマイページのカレンダーで確認できます。</p>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="dashboard-section dashboard-notifications" aria-labelledby="dashboard-notifications-title">
+            <div class="dashboard-section-heading">
+                <h2 id="dashboard-notifications-title">未読の通知{% if unread_notifications %}<span class="dashboard-count">{{ unread_notifications|length }}</span>{% endif %}</h2>
+                <a href="/notifications">すべて見る {{ icons.icon("arrow-right") }}</a>
+            </div>
+            <div class="student-panel dashboard-notification-list">
+                {% for notification in unread_notifications %}
+                <a href="/notifications/{{ notification[0] }}">
+                    <span class="dashboard-unread-dot" aria-hidden="true"></span>
+                    <strong>{{ notification[1] }}</strong>
+                    <time>{{ notification[2] }}</time>
+                </a>
+                {% else %}
+                <div class="dashboard-notification-empty">
+                    {{ icons.icon("bell") }}
+                    <p>未読の通知はありません。</p>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}
+{% block script %}
+<script>
+    (function () {
+        var el = document.getElementById("dashboard-date");
+        if (!el) return;
+        try {
+            el.textContent = new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
+        } catch (e) { /* 表示できない環境では日付を出さない */ }
+    })();
+</script>
+{% endblock %}

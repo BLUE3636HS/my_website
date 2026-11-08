@@ -1,0 +1,129 @@
+{% extends "teacher/base.html" %}
+{% block title %}生徒アカウント一覧{% endblock %}
+{% block content %}
+<div class="teacher-page teacher-accounts-page">
+    <section class="teacher-dashboard-card">
+        <p class="teacher-eyebrow">Student Accounts</p>
+        <h1>生徒アカウント一覧</h1>
+        <p>自校に登録中の生徒アカウントを確認できます。</p>
+        {% if field_notice %}<p class="teacher-field-notice teacher-field-notice-{{ field_notice.type }}" role="status">{{ field_notice.message }}</p>{% endif %}
+        <details class="teacher-custom-fields">
+            <summary id="custom-field-title">生徒に入力してもらう追加項目</summary>
+            <div class="teacher-custom-fields-content">
+            <p>項目は自校の先生と共有されます。削除した項目の入力値は保存されたままです。</p>
+            <form method="post" action="/teacher/accounts/custom-fields" class="teacher-custom-field-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label>項目名<input name="label" maxlength="80" required></label>
+                <label>形式<select name="field_type" id="teacher-custom-field-type" required>
+                    {% for value, title in field_types.items() %}<option value="{{ value }}">{{ title }}</option>{% endfor %}
+                </select></label>
+                <label>必須設定<select name="required"><option value="0">任意</option><option value="1">必須</option></select></label>
+                <label class="teacher-field-options" id="teacher-custom-field-options" style="display: none;">選択肢（1行に1つ）<textarea name="options" rows="3" maxlength="10100"></textarea></label>
+                <button type="submit">項目を追加</button>
+            </form>
+            {% if custom_fields %}<ul class="teacher-custom-field-list">
+                {% for field in custom_fields %}<li><span><strong>{{ field.label }}</strong> — {{ field_types.get(field.field_type, field.field_type) }}（{{ '必須' if field.required else '任意' }}）</span>
+                    <form method="post" action="/teacher/accounts/custom-fields/{{ field.id }}/delete" onsubmit="return confirm('この項目と、保存済みの入力値を削除しますか？');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="teacher-custom-field-delete">削除</button>
+                    </form>
+                </li>{% endfor %}
+            </ul>{% else %}<p>カスタム項目はまだありません。</p>{% endif %}
+            </div>
+        </details>
+        <div class="teacher-table-scroll">
+            <table>
+                <thead><tr><th scope="col">生徒ID</th><th scope="col">名前</th><th scope="col">フリガナ</th>{% for field in field_columns %}<th scope="col">{% if field.sortable_numeric %}<button type="button" class="teacher-number-sort" data-column-index="{{ loop.index + 2 }}" data-direction="none" aria-label="{{ field.label }}を昇順で並べ替え" title="昇順・降順に並べ替え"><span aria-hidden="true">↕</span>{{ field.label }}</button>{% else %}{{ field.label }}{% endif %}</th>{% endfor %}<th scope="col">提出物</th></tr></thead>
+                <tbody>
+                {% for student in students %}
+                    <tr><td>{{ student["id"] }}</td><td>{{ student["name"] or '未登録' }}</td><td>{{ student["furigana"] or '未登録' }}</td>{% for value in student["values"] %}<td>{% if value is sameas true %}はい{% elif value is sameas false %}いいえ{% elif value is sequence and value is not string %}{{ value|join('、') }}{% elif value is none or value == '' %}<span class="teacher-field-empty">未入力</span>{% else %}{{ value }}{% endif %}</td>{% endfor %}<td><button type="button" class="teacher-submission-open" data-student-id="{{ student['id'] }}" data-submissions="{{ student['submissions'] | tojson | forceescape }}">提出物({{ student['submissions']|length }})</button></td></tr>
+                {% else %}
+                    <tr><td colspan="{{ field_columns|length + 4 }}">登録中の生徒はいません。</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+<dialog class="teacher-submission-dialog" aria-labelledby="teacher-submission-title">
+    <div class="teacher-submission-dialog-header"><h2 id="teacher-submission-title">提出物</h2><button type="button" class="teacher-submission-close" aria-label="閉じる">閉じる</button></div>
+    <div class="teacher-submission-dialog-body"></div>
+</dialog>
+{% endblock %}
+{% block script %}
+<script>
+    const fieldTypeSelect = document.getElementById("teacher-custom-field-type");
+    const optionsField = document.getElementById("teacher-custom-field-options");
+    const optionsInput = optionsField.querySelector("textarea");
+    const updateOptionsVisibility = () => {
+        const needsOptions = ["select", "multiselect"].includes(fieldTypeSelect.value);
+        optionsField.style.display = needsOptions ? "grid" : "none";
+    };
+    fieldTypeSelect.addEventListener("change", updateOptionsVisibility);
+    updateOptionsVisibility();
+
+    const submissionDialog = document.querySelector(".teacher-submission-dialog");
+    const submissionDialogBody = submissionDialog.querySelector(".teacher-submission-dialog-body");
+    const renderSubmissions = (button) => {
+        let submissions = [];
+        try { submissions = JSON.parse(button.dataset.submissions || "[]"); } catch (_) { submissions = []; }
+        document.getElementById("teacher-submission-title").textContent = `${button.dataset.studentId} の提出物`;
+        if (!submissions.length) {
+            const empty = document.createElement("p");
+            empty.className = "teacher-submission-empty";
+            empty.textContent = "提出物はありません。";
+            submissionDialogBody.replaceChildren(empty);
+            return;
+        }
+        const list = document.createElement("ol");
+        list.className = "teacher-submission-list";
+        submissions.forEach((submission) => {
+            const item = document.createElement("li");
+            const title = document.createElement("strong");
+            title.textContent = submission.title || "（タイトルなし）";
+            const metadata = document.createElement("p");
+            const type = submission.kind === "group" ? `グループ提出${submission.group_name ? `（${submission.group_name}）` : ""}` : "個人提出";
+            metadata.textContent = `${submission.time || "日時不明"}・${type}`;
+            item.append(title, metadata);
+            list.append(item);
+        });
+        submissionDialogBody.replaceChildren(list);
+    };
+    document.querySelectorAll(".teacher-submission-open").forEach((button) => {
+        button.addEventListener("click", () => { renderSubmissions(button); submissionDialog.showModal(); });
+    });
+    submissionDialog.querySelector(".teacher-submission-close").addEventListener("click", () => submissionDialog.close());
+    submissionDialog.addEventListener("click", (event) => { if (event.target === submissionDialog) submissionDialog.close(); });
+
+    document.querySelectorAll(".teacher-number-sort").forEach((button) => {
+        button.addEventListener("click", () => {
+            const table = button.closest("table");
+            const tbody = table.querySelector("tbody");
+            const rows = Array.from(tbody.querySelectorAll("tr")).filter((row) => row.cells.length > 1);
+            const columnIndex = Number(button.dataset.columnIndex);
+            const direction = button.dataset.direction === "asc" ? "desc" : "asc";
+            const getValue = (row) => {
+                const text = row.cells[columnIndex]?.textContent.trim() || "";
+                if (!text || text === "未入力") return null;
+                const value = Number(text);
+                return Number.isFinite(value) ? value : null;
+            };
+            rows.sort((left, right) => {
+                const a = getValue(left);
+                const b = getValue(right);
+                if (a === null || b === null) return a === b ? 0 : (a === null ? 1 : -1);
+                return direction === "asc" ? a - b : b - a;
+            });
+            rows.forEach((row) => tbody.append(row));
+            button.dataset.direction = direction;
+            button.querySelector("span").textContent = direction === "asc" ? "▲" : "▼";
+            button.setAttribute("aria-label", `${button.textContent.trim().slice(1)}を${direction === "asc" ? "降順" : "昇順"}で並べ替え`);
+        });
+    });
+
+    document.querySelectorAll(".teacher-custom-field-form input, .teacher-custom-field-form select").forEach((control) => {
+        control.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") event.preventDefault();
+        });
+    });
+</script>
+{% endblock %}

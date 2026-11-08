@@ -1,0 +1,93 @@
+{% extends "admin/base.html" %}
+{% import "student_icons.html" as icons %}
+{% block title %}ダッシュボード{% endblock %}
+{% block content %}
+<div class="admin-dashboard-page">
+    <section class="staff-hero" aria-labelledby="admin-dashboard-title">
+        <div>
+            <p class="staff-hero-date" data-today></p>
+            <h1 id="admin-dashboard-title">こんにちは、{{ admin_id }} さん</h1>
+            <p>今日の予約状況と、対応が必要な項目をまとめています。</p>
+        </div>
+    </section>
+
+    {% set labels = summary.category_labels %}
+    <div class="staff-stat-grid">
+        <div class="staff-stat-card">
+            <span class="staff-stat-label">{{ icons.icon("calendar") }}今日の予約</span>
+            <span class="staff-stat-value">{{ summary.today_total }}<small>件</small></span>
+            <ul class="staff-stat-breakdown">
+                {% for key, label in labels.items() %}<li>{{ label }} <strong>{{ summary.today_counts[key] }}</strong></li>{% endfor %}
+            </ul>
+        </div>
+        <div class="staff-stat-card">
+            <span class="staff-stat-label">{{ icons.icon("clock") }}今後7日間の予約</span>
+            <span class="staff-stat-value">{{ summary.upcoming_total }}<small>件</small></span>
+            <ul class="staff-stat-breakdown">
+                {% for key, label in labels.items() %}<li>{{ label }} <strong>{{ summary.upcoming_counts[key] }}</strong></li>{% endfor %}
+            </ul>
+            <span class="admin-dashboard-week">明日〜{{ summary.week_end }}</span>
+        </div>
+        <a class="staff-stat-card{% if summary.overdue_total %} is-alert{% endif %}" href="/admin/equipment-reservation">
+            <span class="staff-stat-label">{{ icons.icon("alert") }}未返却の実験器具</span>
+            <span class="staff-stat-value">{{ summary.overdue_total }}<small>件</small></span>
+            <ul class="staff-stat-breakdown"><li>返却予定日を過ぎた持ち出し</li></ul>
+        </a>
+    </div>
+
+    <div class="staff-columns">
+        <section class="staff-section" aria-labelledby="admin-today-title">
+            <div class="staff-section-heading">
+                <h2 id="admin-today-title">今日の予約</h2>
+                <a href="/admin/mypage">カレンダーで見る{{ icons.icon("arrow-right") }}</a>
+            </div>
+            <div class="staff-panel staff-list-panel">
+                {% if summary.today_list %}
+                <ul class="staff-list admin-today-list">
+                    {% for item in summary.today_list %}
+                    <li>
+                        <strong><span class="staff-chip is-{{ item.category }}">{{ item.category_label }}</span><a href="{{ item.url }}">{{ item.title }}</a></strong>
+                        <span class="staff-list-side">{{ item.time }}</span>
+                        <span class="staff-list-meta">予約者：{{ item.student_id }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="staff-empty">{{ icons.icon("calendar") }}<p>今日の予約はありません。</p></div>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="staff-section" aria-labelledby="admin-overdue-title">
+            <div class="staff-section-heading">
+                <h2 id="admin-overdue-title">未返却の実験器具</h2>
+                <a href="/admin/equipment-reservation">予約確認へ{{ icons.icon("arrow-right") }}</a>
+            </div>
+            <div class="staff-panel staff-list-panel">
+                {% if summary.overdue %}
+                <ul class="staff-list admin-overdue-list">
+                    {% for item in summary.overdue %}
+                    <li>
+                        <strong>{{ item.equipment }}<small>（{{ item.quantity }}個）</small></strong>
+                        <span class="staff-list-side admin-overdue-days">{% if item.days_late is not none %}{{ item.days_late }}日超過{% else %}期限超過{% endif %}</span>
+                        <span class="staff-list-meta">{{ item.student_id }}（{{ item.school }}）・返却予定 {{ item.end_day }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="staff-empty">{{ icons.icon("shield") }}<p>未返却の実験器具はありません。</p></div>
+                {% endif %}
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    (function () {
+        var target = document.querySelector("[data-today]");
+        if (!target) return;
+        target.textContent = new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
+    })();
+</script>
+{% endblock %}

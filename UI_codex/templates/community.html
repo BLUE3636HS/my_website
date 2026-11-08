@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}TEKNEコミュニティ{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/community.css">{% endblock %}
+{% block content %}
+<div class="student-page community-page" data-csrf-token="{{ csrf_token }}">
+    <section class="community-composer student-panel">
+        <h1>TEKNEコミュニティ</h1>
+        <form id="community-post-form">
+            <label for="community-content">いま何をしていますか？</label>
+            <textarea id="community-content" name="content" maxlength="200" rows="4" required></textarea>
+            <div class="community-form-footer">
+                <span class="community-counter" data-counter>残り 200文字</span>
+                <button class="student-primary-button" type="submit">投稿する</button>
+            </div>
+            <p class="community-error" role="alert" hidden></p>
+        </form>
+    </section>
+    <section aria-label="投稿一覧">
+        <div id="community-timeline" class="community-timeline"></div>
+        <p id="community-empty" class="community-status" hidden>まだ投稿はありません。</p>
+        <p id="community-loading" class="community-status">読み込み中...</p>
+        <p id="community-end" class="community-status" hidden>すべての投稿を読み込みました。</p>
+        <div id="community-sentinel" aria-hidden="true"></div>
+    </section>
+</div>
+{% endblock %}
+{% block script %}<script src="/static/community.js"></script>{% endblock %}

@@ -1,0 +1,3 @@
+/* 先生用ダッシュボード */
+.teacher-guide-grid { display: grid; gap: 10px; }
+.teacher-guide-grid .staff-quick-card { padding: 14px; }

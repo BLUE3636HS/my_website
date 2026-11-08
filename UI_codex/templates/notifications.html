@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}通知{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/notifications.css">{% endblock %}
+{% block content %}
+<div class="student-page notification-page">
+    <section class="student-page-hero">
+        <p class="student-page-eyebrow">NOTIFICATIONS</p><h1>通知</h1>
+        <p>管理者から届いたお知らせを確認できます。</p>
+    </section>
+    <div class="notification-toolbar">
+        <form method="post" action="/notifications/read-all">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="student-primary-button" type="submit">すべて既読にする</button>
+        </form>
+    </div>
+    <section class="notification-list" aria-label="通知一覧">
+        {% for item in notifications %}
+        <a class="notification-item{% if not item[4] %} is-unread{% endif %}" href="/notifications/{{ item[0] }}">
+            <div class="notification-item-head"><h2>{{ item[1] }}</h2><span>{{ "未読" if not item[4] else "既読" }}</span></div>
+            <p>{{ item[2][:140] }}{% if item[2]|length > 140 %}…{% endif %}</p>
+            <small>送信元: {{ item[3] }}　{{ item[5] }}</small>
+        </a>
+        {% else %}<div class="student-panel"><p>通知はありません。</p></div>{% endfor %}
+    </section>
+    <nav class="notification-pagination" aria-label="ページ移動">
+        {% if has_previous %}<a href="/notifications?page={{ page - 1 }}">前へ</a>{% endif %}
+        <span>{{ page }}ページ</span>
+        {% if has_next %}<a href="/notifications?page={{ page + 1 }}">次へ</a>{% endif %}
+    </nav>
+</div>
+{% endblock %}

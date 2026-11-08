@@ -1,0 +1,60 @@
+{% extends "admin/base.html" %}
+{% block title %}通知管理{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/admin/notifications.css">{% endblock %}
+{% block content %}
+<div class="notification-admin-page">
+    <section class="admin-card">
+        <h1>受信通知</h1>
+        <div class="admin-received-notifications">
+            {% for item in received_notifications %}
+            <article class="admin-received-notification{% if not item.is_read %} is-unread{% endif %}">
+                <h2>{{ item.title }}</h2><p>{{ item.body }}</p><small>{{ item.created_at }}</small>
+                {% if item.meet_url %}<p><a href="{{ item.meet_url }}" target="_blank" rel="noopener noreferrer">Google Meetを開く</a></p>{% endif %}
+            </article>
+            {% else %}<p>受信通知はありません。</p>{% endfor %}
+        </div>
+    </section>
+    <section class="admin-card">
+        <h1>通知を送信</h1>
+        {% if notice %}<p class="admin-notice admin-notice-{{ notice.type }}">{{ notice.message }}</p>{% endif %}
+        <form class="notification-form" method="post" action="/admin/notifications/send">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label>送信対象種別
+                <select name="target_type" id="target-type" required>
+                    <option value="student">特定の生徒1人</option><option value="all">全生徒</option><option value="school">学校単位</option>
+                </select>
+            </label>
+            <label id="student-target">対象生徒
+                <input
+                    type="text"
+                    name="student_id"
+                    id="student-id"
+                    list="student-options"
+                    placeholder="生徒IDを入力して検索"
+                    autocomplete="off"
+                    required
+                >
+                <datalist id="student-options">
+                    {% for student in students %}<option value="{{ student[0] }}">{{ student[1] }}</option>{% endfor %}
+                </datalist>
+                <span class="field-help">生徒IDを入力すると、登録済みの生徒候補が絞り込まれます。</span>
+            </label>
+            <label id="school-target" hidden>対象学校
+                <select name="school">{% for school in schools %}<option value="{{ school }}">{{ school }}</option>{% endfor %}</select>
+            </label>
+            <label>タイトル<input name="title" maxlength="200" required></label>
+            <label>本文<textarea name="body" maxlength="5000" rows="7" required></textarea></label>
+            <button type="submit">通知を送信</button>
+        </form>
+    </section>
+    <section class="admin-card">
+        <h2>送信履歴</h2>
+        <div class="table-container"><table class="admin-table">
+            <thead><tr><th>送信日時</th><th>送信者</th><th>タイトル・本文</th><th>送信対象</th><th>作成件数</th></tr></thead>
+            <tbody>{% for batch in batches %}<tr><td>{{ batch[1] }}</td><td>{{ "管理者" if batch[2] == "admin" else "先生" }}: {{ batch[3] or "不明" }}</td><td><strong>{{ batch[4] }}</strong><p>{{ batch[5] }}</p></td><td>{{ batch[7] }}</td><td>{{ batch[8] }}件</td></tr>{% else %}<tr><td colspan="5" class="no-data">送信履歴はありません。</td></tr>{% endfor %}</tbody>
+        </table></div>
+        <nav class="admin-pagination">{% if has_previous %}<a href="?page={{ page - 1 }}">前へ</a>{% endif %}<span>{{ page }}ページ</span>{% if has_next %}<a href="?page={{ page + 1 }}">次へ</a>{% endif %}</nav>
+    </section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/admin/notifications.js"></script>{% endblock %}

@@ -1,0 +1,30 @@
+.teacher-studylist-page { width: 100%; max-width: 1400px; }
+.teacher-studylist-card { min-width: 0; padding: 28px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow); }
+.teacher-studylist-card h1 { margin: 0 0 20px; }
+.teacher-study-search-wrap { display: grid; gap: 6px; width: min(100%, 560px); margin: 0 0 18px; color: var(--text); font-size: 14px; font-weight: 700; }
+.teacher-study-search { width: 100%; min-width: 0; min-height: 44px; padding: 10px 14px 10px 40px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2378665d' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") 13px center / 18px no-repeat; color: var(--text); font: inherit; font-weight: 400; }
+.teacher-study-search:focus-visible { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px var(--primary-ring); }
+.teacher-studylist-card table { width: 100%; min-width: 820px; border: 0; border-collapse: collapse; font-size: 14px; }
+.teacher-studylist-card th,
+.teacher-studylist-card td { padding: 13px 14px; border: 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.teacher-studylist-card tbody tr:last-child td { border-bottom: 0; }
+.teacher-studylist-card th { background: var(--surface-soft); color: var(--text-muted); font-size: 13px; text-align: left; white-space: nowrap; }
+.teacher-studylist-card td { color: var(--text); }
+.teacher-studylist-card tbody tr:hover td { background: var(--surface-soft); }
+.teacher-studylist-card th:nth-child(1),
+.teacher-studylist-card td:nth-child(1) { width: 26%; min-width: 200px; color: var(--text-strong); font-weight: 700; }
+.teacher-studylist-card th:nth-child(2),
+.teacher-studylist-card td:nth-child(2) { min-width: 280px; color: var(--text-muted); }
+.teacher-studylist-card th:nth-child(3),
+.teacher-studylist-card td:nth-child(3) { width: 160px; min-width: 150px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.teacher-study-action-column { width: 96px; min-width: 96px; text-align: center !important; }
+.teacher-studylist-card td:nth-child(2),
+.teacher-studylist-card td:nth-child(5) a { overflow-wrap: anywhere; }
+.teacher-studylist-card table a { color: var(--primary); font-weight: 700; text-decoration: none; }
+.teacher-studylist-card table a:hover { text-decoration: underline; }
+.teacher-study-delete-form { margin: 0; }
+.teacher-study-delete-button { min-height: 34px; padding: 5px 14px; border: 1px solid #fecaca; border-radius: var(--radius-sm); background: var(--surface); color: var(--danger); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.teacher-study-delete-button:hover { background: var(--danger-soft); }
+.teacher-study-empty,
+.teacher-study-no-results td { padding: 32px !important; color: var(--text-muted) !important; text-align: center; }
+@container (max-width: 640px) { .teacher-studylist-card { padding: 18px; } }

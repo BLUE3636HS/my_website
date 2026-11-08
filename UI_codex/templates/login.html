@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <title>
+            ログインページ
+        </title>
+        <meta charset="UTF-8">
+        <meta id="auth-viewport" name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="/static/base.css">
+        <link rel="icon" href="/static/icon.ico">
+        <link rel="stylesheet" href="/static/login.css">
+        <link rel="stylesheet" href="/static/student/auth.css">
+    </head>
+    <body class="student-auth student-mode">
+        <main>
+            <img src="/static/top.png" alt="TEKNE工作室" id="login_logo"><br><br>
+            <div id="tab">
+                <button id="student_form_btn" type="button" class="active" aria-pressed="true" aria-controls="student_form">生徒用</button>
+                <button id="teacher_form_btn" type="button" aria-pressed="false" aria-controls="teacher_form">先生用</button>
+            </div><br>
+            <form id="student_form">
+                <h1>生徒用ログイン</h1>
+                <p class="student-auth-intro">学校で登録したIDとパスワードを入力してください。</p>
+                <label for="student_id">ID</label>
+                <input type="text" id="student_id" autocomplete="username" required>
+                <label for="student_pwd">パスワード</label>
+                <input type="password" id="student_pwd" autocomplete="current-password" required>
+                <p id="student-login-message" class="student-login-message" role="alert"></p>
+                <button type="submit" id="student_login_btn">ログイン</button>
+            </form>
+            <div id="teacher_form">
+                <h2>先生用ログイン</h2>
+                <label for="id">ID</label><br>
+                <input type="text" id="teacher_id"><br>
+                <label for="pwd">パスワード</label><br>
+                <input type="password" id="teacher_pwd"><br>
+                <button type="button" id="teacher_login_btn">先生ログイン</button><br><br>
+            </div>
+            <a href="/registration">新規登録はこちら</a>
+        </main>
+        <script src="/static/login.js"></script>
+    </body>
+</html>

@@ -1,0 +1,275 @@
+.student-page.profile-edit-page {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: clamp(24px, 3vw, 48px);
+}
+
+.student-custom-fields { margin-top: 26px; padding: clamp(22px, 2.5vw, 34px); border: 1px solid #d6e0ea; border-radius: 16px; background: #fff; box-shadow: 0 8px 26px rgba(31, 78, 121, .08); }
+.student-custom-fields h2 { margin: 0 0 8px; color: #243447; }
+.student-custom-fields-form { display: grid; gap: 18px; margin-top: 22px; }
+.student-custom-field { display: grid; gap: 8px; }
+.student-custom-field > label { color: #243447; font-weight: 700; }
+.student-custom-field input:not([type=checkbox]), .student-custom-field textarea, .student-custom-field select { width: 100%; padding: 11px; border: 1px solid #c8d4df; border-radius: 8px; font: inherit; }
+.student-custom-field select[multiple] { min-height: 120px; }
+.student-custom-fields-form > button.student-primary-button { min-width: 0; }
+.student-custom-required, .student-custom-optional { margin-left: 9px; font-size: 12px; }
+.student-custom-required, .student-custom-missing { color: #a43d2c; }
+.student-custom-optional, .student-custom-field small { color: #6b7c8c; }
+.student-custom-checkbox { display: flex; align-items: center; gap: 8px; }
+.custom-fields-notice { padding: 11px 14px; border-radius: 8px; }
+.custom-fields-notice-success { background: #eaf6ed; color: #25613e; }
+.custom-fields-notice-error { background: #fff0ec; color: #9c3d24; }
+
+.profile-edit-header {
+    margin-bottom: 28px;
+}
+
+.profile-edit-header h1 {
+    margin: 0;
+    color: #243447;
+    font-size: clamp(28px, 3vw, 38px);
+}
+
+.profile-edit-grid {
+    display: grid;
+    grid-template-columns: minmax(280px, .8fr) minmax(0, 1.4fr);
+    align-items: start;
+    gap: 24px;
+}
+
+.profile-image-section,
+.account-settings-section {
+    min-width: 0;
+    padding: clamp(22px, 2.5vw, 34px);
+    border: 1px solid #d6e0ea;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 8px 26px rgba(31, 78, 121, .08);
+}
+
+.profile-image-section {
+    text-align: center;
+}
+
+.profile-image-section h2,
+.account-settings-section > h2 {
+    margin: 0 0 22px;
+    color: #243447;
+    font-size: 21px;
+}
+
+.profile-image-preview {
+    display: block;
+    width: clamp(140px, 16vw, 190px);
+    aspect-ratio: 1;
+    height: auto;
+    margin: 0 auto 24px;
+    border: 4px solid #e3eaf1;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.profile-image-form label,
+.current-password-section label,
+#id_form label,
+#pwd_form label {
+    display: block;
+    margin-bottom: 8px;
+    color: #334155;
+    font-weight: 700;
+    text-align: left;
+}
+
+.profile-image-form input[type="file"],
+.current-password-section input,
+#id_form input,
+#pwd_form input {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    margin: 0 0 10px;
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    color: #334155;
+    font: inherit;
+}
+
+.profile-image-form input[type="file"] {
+    padding: 10px;
+}
+
+.current-password-section input:focus,
+#id_form input:focus,
+#pwd_form input:focus,
+.profile-image-form input[type="file"]:focus {
+    outline: none;
+    border-color: #1f4e79;
+    box-shadow: 0 0 0 3px rgba(31, 78, 121, .18);
+}
+
+.profile-image-form em,
+#id_form em,
+#pwd_form em {
+    display: block;
+    margin: 0 0 18px;
+    color: #64748b;
+    font-size: 13px;
+    font-style: normal;
+    line-height: 1.6;
+    text-align: left;
+}
+
+#profile_image_save_btn,
+.profile-image-delete,
+#id_edit_btn,
+#pwd_edit_btn {
+    display: block;
+    width: 100%;
+    padding: 13px 18px;
+    border: 0;
+    border-radius: 8px;
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .2s ease;
+}
+
+#profile_image_save_btn,
+#id_edit_btn,
+#pwd_edit_btn {
+    background: #1f4e79;
+}
+
+#profile_image_save_btn:hover,
+#id_edit_btn:hover,
+#pwd_edit_btn:hover {
+    background: #163a5c;
+}
+
+.profile-image-delete {
+    margin-top: 12px;
+    background: #64748b;
+}
+
+.profile-image-delete:hover {
+    background: #475569;
+}
+
+.profile-notice,
+.profile-client-error {
+    padding: 10px 12px;
+    border-radius: 8px;
+}
+
+.profile-notice-success {
+    background: #e8f3ec;
+    color: #25613e;
+}
+
+.profile-notice-error,
+.profile-client-error {
+    background: #fdecec;
+    color: #a12622;
+}
+
+.profile-client-error {
+    text-align: left;
+}
+
+.current-password-section {
+    margin-bottom: 24px;
+    padding: 18px;
+    border: 1px solid #e1e8ef;
+    border-radius: 10px;
+    background: #f7f9fc;
+}
+
+.current-password-section input {
+    margin-bottom: 0;
+}
+
+#tab {
+    display: flex;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+#tab button {
+    flex: 1;
+    padding: 13px 10px;
+    border: 0;
+    border-bottom: 4px solid transparent;
+    background: transparent;
+    color: #64748b;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    transition: color .2s ease, border-color .2s ease;
+}
+
+#tab button:hover,
+#tab button.active {
+    border-bottom-color: #1f4e79;
+    color: #1f4e79;
+}
+
+#id_form,
+#pwd_form {
+    padding: clamp(18px, 2vw, 26px);
+    border: 1px solid #e1e8ef;
+    border-radius: 12px;
+    background: #fafbfd;
+}
+
+#id_form h3,
+#pwd_form h3 {
+    margin: 0 0 20px;
+    color: #243447;
+    font-size: 19px;
+}
+
+#pwd_form {
+    display: none;
+}
+
+.profile-edit-back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 24px;
+    padding: 12px 20px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    color: #1f4e79;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.profile-edit-back:hover {
+    background: #f1f5f9;
+}
+
+@media (max-width: 900px) {
+    .profile-edit-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 560px) {
+    .student-page.profile-edit-page {
+        padding: 22px 14px 36px;
+    }
+
+    .profile-edit-grid {
+        gap: 16px;
+    }
+
+    .profile-image-preview {
+        margin: 0 auto 20px;
+    }
+}

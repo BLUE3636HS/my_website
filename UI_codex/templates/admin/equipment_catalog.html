@@ -1,0 +1,68 @@
+{% extends "admin/base.html" %}
+{% block title %}実験器具管理{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/admin/equipment_catalog.css">{% endblock %}
+{% block content %}
+<div class="equipment-catalog-page">
+    <header class="equipment-catalog-header">
+        <div><p class="dashboard-eyebrow">Equipment Catalog</p><h1>実験器具管理</h1>
+            <p>貸出予約で利用する器具を登録・確認できます。予約記録がある器具は削除できません。</p></div>
+        <span class="equipment-catalog-count">{{ items|length }} 件</span>
+    </header>
+    {% if notice %}<p class="equipment-catalog-notice is-{{ notice.type }}" role="status">{{ notice.message }}</p>{% endif %}
+
+    <section class="equipment-catalog-panel" aria-labelledby="equipment-add-title">
+        <h2 id="equipment-add-title">器具を追加</h2>
+        <form method="post" action="/admin/equipment-catalog" enctype="multipart/form-data" class="equipment-catalog-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label>器具名<input type="text" name="name" maxlength="100" required></label>
+            <label>説明<textarea name="content" maxlength="500" rows="2"></textarea></label>
+            <div class="equipment-catalog-form-row">
+                <label>数量<input type="number" name="count" min="1" max="100000" required></label>
+                <label>利用区分<select name="usage_type" required><option value="">選択してください</option><option value="takeout">持ち出し可能</option><option value="in_room">工作室内のみ</option></select></label>
+                <label>画像（JPEG・PNG・WebP、5MB以下）<input type="file" name="image" accept="image/jpeg,image/png,image/webp" required></label>
+            </div>
+            <button type="submit" class="equipment-catalog-primary">器具を登録</button>
+        </form>
+    </section>
+
+    <section class="equipment-catalog-panel" aria-labelledby="equipment-list-title">
+        <h2 id="equipment-list-title">登録済み器具</h2>
+        {% if items %}
+        <div class="equipment-catalog-grid">
+            {% for item in items %}
+            <article class="equipment-catalog-card">
+                <img src="{{ item.image }}" alt="{{ item.name }}">
+                <div class="equipment-catalog-info"><h3>{{ item.name }}</h3><p>{{ item.content or '説明はありません。' }}</p>
+                    <dl><div><dt>数量</dt><dd>{{ item.count }}</dd></div><div><dt>利用区分</dt><dd>{{ '持ち出し可能' if item.usage_type == 'takeout' else '工作室内のみ' }}</dd></div></dl>
+                    <small>ID: {{ item.id }}</small>
+                </div>
+                <div class="equipment-catalog-actions">
+                <details class="equipment-catalog-edit">
+                    <summary>編集</summary>
+                    <form method="post" action="/admin/equipment-catalog/{{ item.id }}" enctype="multipart/form-data" class="equipment-catalog-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <label>器具名<input type="text" name="name" maxlength="100" value="{{ item.name }}" required></label>
+                        <label>説明<textarea name="content" maxlength="500" rows="2">{{ item.content }}</textarea></label>
+                        <div class="equipment-catalog-form-row">
+                            <label>数量<input type="number" name="count" min="1" max="100000" value="{{ item.count }}" required></label>
+                            <label>利用区分<select name="usage_type" required>
+                                <option value="takeout"{% if item.usage_type == 'takeout' %} selected{% endif %}>持ち出し可能</option>
+                                <option value="in_room"{% if item.usage_type == 'in_room' %} selected{% endif %}>工作室内のみ</option>
+                            </select></label>
+                            <label>画像を変更（任意、JPEG・PNG・WebP、5MB以下）<input type="file" name="image" accept="image/jpeg,image/png,image/webp"></label>
+                        </div>
+                        <button type="submit" class="equipment-catalog-primary">変更を保存</button>
+                    </form>
+                </details>
+                <form method="post" action="/admin/equipment-catalog/{{ item.id }}/delete">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="equipment-catalog-delete">削除</button>
+                </form>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}<p class="equipment-catalog-empty">器具は登録されていません。</p>{% endif %}
+    </section>
+</div>
+{% endblock %}

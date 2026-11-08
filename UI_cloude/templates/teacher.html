@@ -1,0 +1,94 @@
+{% extends "teacher/base.html" %}
+{% import "student_icons.html" as icons %}
+{% block title %}ダッシュボード{% endblock %}
+{% block css %}
+    <link rel="stylesheet" href="/static/teacher.css">
+{% endblock %}
+{% block content %}
+    <div class="teacher-page teacher-dashboard-page">
+        <section class="staff-hero teacher-dashboard-hero" aria-labelledby="teacher-dashboard-title">
+            <div>
+                <p class="staff-hero-date" data-today></p>
+                <h1 id="teacher-dashboard-title">こんにちは、{{ teacher_id }} 先生</h1>
+                <p>自校の生徒の状況と、よく使う機能をまとめています。</p>
+                <p class="staff-hero-meta"><span>在籍校：{{ teacher_school }}</span>{% if teacher_role == 'super_teacher' %}<span>管理権限あり</span>{% endif %}</p>
+            </div>
+        </section>
+
+        <div class="staff-stat-grid">
+            <a class="staff-stat-card" href="/teacher/accounts">
+                <span class="staff-stat-label">{{ icons.icon("users") }}登録中の生徒</span>
+                <span class="staff-stat-value">{{ summary.student_count }}<small>人</small></span>
+            </a>
+            <a class="staff-stat-card{% if summary.inactive_total %} is-alert{% endif %}" href="/teacher/accounts">
+                <span class="staff-stat-label">{{ icons.icon("user-x") }}未ログインの生徒</span>
+                <span class="staff-stat-value">{{ summary.inactive_total }}<small>人</small></span>
+                <ul class="staff-stat-breakdown">
+                    <li>一度もなし <strong>{{ summary.inactive_never }}</strong>人</li>
+                    <li>{{ summary.inactive_days }}日以上なし <strong>{{ summary.inactive_stale }}</strong>人</li>
+                </ul>
+            </a>
+        </div>
+
+        <div class="staff-columns">
+            <section class="staff-section" aria-labelledby="teacher-recent-title">
+                <div class="staff-section-heading">
+                    <h2 id="teacher-recent-title">最近の提出物</h2>
+                    <a href="/teacher/studylist">すべて見る{{ icons.icon("arrow-right") }}</a>
+                </div>
+                <div class="staff-panel staff-list-panel">
+                    {% if summary.recent_studies %}
+                    <ul class="staff-list teacher-recent-list">
+                        {% for study in summary.recent_studies %}
+                        <li>
+                            <strong>{% if study.group_name %}<span class="staff-chip">グループ</span>{% endif %}<a href="/uploads/{{ study.id }}.pdf" target="_blank" rel="noopener">{{ study.title }}</a></strong>
+                            <time>{{ study.time }}</time>
+                            <span class="staff-list-meta">提出者：{% if study.group_name %}「{{ study.group_name }}」{% endif %}{{ study.submitter }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="staff-empty">{{ icons.icon("inbox") }}<p>まだ提出物はありません。</p></div>
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="staff-section" aria-labelledby="teacher-menu-title">
+                <div class="staff-section-heading"><h2 id="teacher-menu-title">メニュー</h2></div>
+                <div class="teacher-guide-grid">
+                    <a class="staff-quick-card teacher-guide-card" href="/teacher/studylist">
+                        <span class="staff-quick-icon">{{ icons.icon("list") }}</span>
+                        <span class="staff-quick-text"><strong>自校提出物確認</strong><small>生徒の研究成果を一覧で確認</small></span>
+                    </a>
+                    <a class="staff-quick-card teacher-guide-card" href="/teacher/reports">
+                        <span class="staff-quick-icon">{{ icons.icon("report") }}</span>
+                        <span class="staff-quick-text"><strong>グループ成果レポート</strong><small>保存履歴をPDFで確認</small></span>
+                    </a>
+                    <a class="staff-quick-card teacher-guide-card" href="/teacher/accounts">
+                        <span class="staff-quick-icon">{{ icons.icon("users") }}</span>
+                        <span class="staff-quick-text"><strong>生徒アカウント一覧</strong><small>登録中の生徒と入力項目</small></span>
+                    </a>
+                    <a class="staff-quick-card teacher-guide-card" href="/teacher/notifications">
+                        <span class="staff-quick-icon">{{ icons.icon("send") }}</span>
+                        <span class="staff-quick-text"><strong>通知送信</strong><small>生徒個人または全員へ</small></span>
+                    </a>
+                    {% if teacher_role == 'super_teacher' %}
+                    <a class="staff-quick-card teacher-guide-card" href="/teacher/school-report">
+                        <span class="staff-quick-icon">{{ icons.icon("layout") }}</span>
+                        <span class="staff-quick-text"><strong>成果レポートテンプレート</strong><small>共同編集レポートの設定</small></span>
+                    </a>
+                    {% endif %}
+                </div>
+            </section>
+        </div>
+    </div>
+{% endblock %}
+{% block script %}
+<script>
+    (function () {
+        var target = document.querySelector("[data-today]");
+        if (!target) return;
+        target.textContent = new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
+    })();
+</script>
+{% endblock %}

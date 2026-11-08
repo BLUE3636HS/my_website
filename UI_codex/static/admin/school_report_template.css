@@ -1,0 +1,49 @@
+.school-report-layout {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.school-report-controls {
+    min-width: 0;
+    padding: 20px;
+    border: 1px solid #d7e3db;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.school-report-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.school-report-actions #apply-template {
+    background: #25613e;
+    color: white;
+}
+
+.school-report-preview {
+    margin: 0;
+    min-width: 0;
+}
+
+.school-report-preview .preview-paper {
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+#school-report-template.template-manager { padding-bottom: 64px; }
+#school-report-template #save-template { margin-top: 8px; }
+#school-report-template .template-source-form { margin: 16px 0 22px; padding: 16px; border: 1px solid #d7e3db; border-radius: 10px; background: #fff; }
+#school-report-template #template-status { min-height: 1.6em; }
+
+@media (max-width: 760px) {
+    .school-report-layout {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 16px;
+    }
+}

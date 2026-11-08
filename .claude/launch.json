@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ui-cloude",
+      "runtimeExecutable": "main/.venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "main:app", "--app-dir", "UI_cloude", "--host", "127.0.0.1", "--port", "8020", "--reload", "--reload-dir", "UI_cloude"],
+      "port": 8020
+    }
+  ]
+}

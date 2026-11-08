@@ -1,0 +1,230 @@
+@import url("./tokens.css");
+
+.student-portal {
+    color: var(--tekne-text);
+    background: var(--tekne-bg);
+    font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif;
+    line-height: 1.55;
+}
+.student-layout, .student-sidebar, .student-main { height: 100dvh; }
+.student-sidebar {
+    flex-basis: 230px;
+    padding: 22px 12px 16px;
+    overflow-y: auto;
+    background: var(--tekne-surface);
+    border-right: 1px solid var(--tekne-border);
+    box-shadow: none;
+}
+.student-brand { align-items: flex-start; flex-direction: column; gap: 6px; padding: 0 10px 18px; }
+.student-brand img { width: 142px; }
+.student-brand span { color: var(--tekne-muted); font-size: .75rem; font-weight: 700; }
+.student-nav { padding: 0; border: 0; }
+.student-nav-group + .student-nav-group { margin-top: 12px; }
+.student-nav-group p {
+    margin: 0 10px 4px;
+    color: var(--tekne-muted);
+    font-size: .75rem;
+    font-weight: 700;
+}
+.student-account-nav {
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--tekne-border);
+}
+.student-nav { margin-bottom: 14px; }
+.student-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 42px;
+    padding: 8px 10px;
+    color: var(--tekne-text);
+    font-size: .875rem;
+}
+.student-nav-icon, .student-menu-toggle svg {
+    width: 19px;
+    height: 19px;
+    flex: 0 0 19px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.student-nav-link:hover, .student-nav-link[aria-current="page"] {
+    color: var(--tekne-accent);
+    background: var(--tekne-selected);
+}
+.student-nav-link[aria-current="page"] { box-shadow: inset 3px 0 var(--tekne-accent); }
+.student-nav-link .notification-badge { margin-left: auto; background: var(--tekne-danger); }
+.student-header {
+    min-height: 60px;
+    height: auto;
+    gap: 12px;
+    padding: 12px clamp(16px, 3vw, 36px);
+    border-bottom: 1px solid var(--tekne-border);
+    box-shadow: none;
+}
+.student-header p { flex: 1; color: var(--tekne-text); overflow-wrap: anywhere; }
+.student-header > span { max-width: 30%; overflow-wrap: anywhere; color: var(--tekne-muted); }
+.student-menu-toggle { display: none; }
+.student-skip {
+    position: fixed;
+    z-index: 20;
+    top: 8px;
+    left: 8px;
+    transform: translateY(calc(-100% - 12px));
+    padding: 10px;
+    background: var(--tekne-surface);
+    color: var(--tekne-accent);
+}
+.student-skip:focus { transform: none; }
+.student-portal :is(a, button, input, select, textarea, summary, [tabindex="0"]):focus-visible {
+    outline: 2px solid var(--tekne-focus);
+    outline-offset: 2px;
+}
+.student-page { max-width: 1160px; padding: clamp(22px, 4vw, 42px) clamp(14px, 3vw, 36px) 48px; }
+.student-page-narrow { max-width: 760px; }
+.student-page-hero { margin-bottom: 22px; }
+.student-page-hero h1 { color: var(--tekne-text); font-size: clamp(1.55rem, 3vw, 2.15rem); line-height: 1.25; }
+.student-page-hero > p:last-child { color: var(--tekne-muted); }
+.student-page-eyebrow { color: var(--tekne-accent); }
+.student-portal :is(.student-panel, .addform-panel, .reservation-panel, .mentor-card, .mentor-panel, .report-field, .tekne-chat-app) {
+    border-color: var(--tekne-border);
+    border-radius: var(--tekne-radius);
+    background-color: var(--tekne-surface);
+    box-shadow: var(--tekne-shadow);
+}
+.student-portal :is(.student-panel h2, .reservation-panel h2, .mentor-card h2) { color: var(--tekne-text); }
+.student-portal :is(.student-primary-button, .reservation-submit, .mentor-button, .tc-message-form button, #report-save-version) {
+    min-height: 44px;
+    max-width: 100%;
+    background: var(--tekne-accent);
+    color: white;
+}
+.student-portal :is(.student-primary-button, .reservation-submit, .mentor-button, .tc-message-form button, #report-save-version):hover:not(:disabled) {
+    background: var(--tekne-accent-hover);
+}
+.student-portal :is(.student-primary-button, .student-secondary-link) { min-width: 0; min-height: 44px; }
+.student-portal :is(.student-primary-button, .reservation-submit):disabled {
+    color: var(--tekne-muted);
+    background: var(--tekne-selected);
+    cursor: not-allowed;
+}
+.student-portal :is(input:not([type="checkbox"], [type="radio"], [type="hidden"]), select, textarea) {
+    max-width: 100%;
+    min-width: 0;
+    border-color: var(--tekne-input);
+    font-size: 1rem;
+}
+.student-portal :is(.student-panel, .addform-panel, .reservation-panel, .mentor-card, .report-field) { overflow-wrap: anywhere; }
+.student-portal .reservation-page { min-width: 0; }
+.student-portal #group-report { padding: clamp(14px, 4vw, 36px); }
+.student-portal #group-report header { flex-wrap: wrap; }
+.student-portal #group-report h1 { margin: 0; font-size: clamp(1.3rem, 3vw, 2rem); overflow-wrap: anywhere; }
+.student-portal #report-save-version { border: 0; border-radius: 8px; font: inherit; font-weight: 700; }
+.student-portal .report-field.is-editing { border-color: var(--tekne-focus); box-shadow: 0 0 0 2px var(--tekne-selected); }
+.student-portal .mentor-page { padding: clamp(16px, 4vw, 36px); color: var(--tekne-text); }
+.student-portal .mentor-cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); }
+.student-portal .mentor-card .mentor-button { width: fit-content; }
+.student-portal .mentor-description { background: var(--tekne-bg); }
+.student-portal .mentor-hero .eyebrow { color: var(--tekne-accent); }
+.student-portal .community-form-footer { flex-wrap: wrap; }
+.student-portal .notification-item { background: var(--tekne-surface); border-color: var(--tekne-border); }
+.student-portal .notification-item.is-unread { border-left-color: var(--tekne-accent); }
+.student-portal .mypage-page .student-panel h2 { border-bottom-color: var(--tekne-border); }
+.student-portal .addform-panel { gap: 0; padding: clamp(16px, 4vw, 26px); border: 1px solid var(--tekne-border); }
+.study-form-step { display: grid; min-width: 0; gap: 8px; }
+.study-form-step + .study-form-step { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--tekne-border); }
+.study-form-step h2 { margin: 0 0 4px; font-size: 1.125rem; }
+.study-form-step fieldset { min-width: 0; margin: 0; }
+.study-form-step .addform-actions { justify-content: flex-start; margin-top: 0; }
+.study-form-step #submission-status { margin: 0; }
+.student-submissions { display: grid; gap: 12px; margin-top: 18px; }
+.student-submissions .student-panel { margin: 0; }
+.student-submission { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.student-submission h2 { margin: 0 0 6px; }
+.student-submission p { margin: 0 0 14px; white-space: pre-wrap; }
+.student-submission dl { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0; font-size: .875rem; }
+.student-submission dl > div { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.student-submission dt { color: var(--tekne-muted); font-weight: 700; }
+.student-submission dd { margin: 0; }
+.student-submission > a { max-width: 100%; }
+.student-empty { color: var(--tekne-muted); }
+.student-portal .student-content:has(.tekne-chat-app) { padding: 12px; overflow-y: auto; }
+.student-portal .tekne-chat-app { min-height: 360px; }
+.student-portal .tc-group-list { height: auto; }
+.student-portal .tc-groups { overflow-y: auto; }
+.student-portal #tc-group-toggle { display: none; }
+.student-portal .tc-message-form { min-width: 0; }
+.student-portal .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+.student-portal .tc-conversation-header { flex-wrap: wrap; padding-block: 8px; }
+.student-portal .tc-header-actions { flex-wrap: wrap; }
+.student-portal .tc-header-actions #tc-report-link { min-width: 0; }
+
+@media (max-width: 800px) {
+    .student-menu-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        min-height: 42px;
+        padding: 6px 8px;
+        border: 1px solid var(--tekne-border);
+        border-radius: 8px;
+        background: var(--tekne-surface);
+        color: var(--tekne-accent);
+        font: inherit;
+        font-size: .8rem;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .student-sidebar {
+        position: fixed;
+        z-index: 10;
+        inset: 68px auto 0 0;
+        width: min(286px, 90vw);
+        height: auto;
+        visibility: hidden;
+        box-shadow: 0 8px 30px #162b4730;
+    }
+    .student-sidebar.is-open { visibility: visible; }
+    .student-header { padding: 8px 12px; }
+    .student-header > span { max-width: 25%; font-size: .75rem; }
+    .student-panel { padding: 16px; }
+    .student-submission { align-items: flex-start; flex-direction: column; }
+    .student-portal .student-content:has(.tekne-chat-app) { padding: 6px; }
+    .student-portal #tekne-chat-app {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
+        min-height: 500px;
+    }
+    .student-portal .tc-groups { display: block; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--tekne-border); }
+    .student-portal .tc-group-heading h1 { font-size: 1rem; }
+    .student-portal #tc-group-toggle {
+        display: inline-block;
+        min-height: 38px;
+        padding: 5px 9px;
+        border: 1px solid var(--tekne-border);
+        border-radius: 7px;
+        background: var(--tekne-surface);
+        color: var(--tekne-accent);
+        font: inherit;
+        font-size: .875rem;
+    }
+    .student-portal #tc-group-toggle[aria-expanded="false"] + #tc-group-picker { display: none; }
+    .student-portal .tc-group-list { max-height: 95px; margin-top: 4px; }
+    .student-portal .tc-group-item { padding: 5px; }
+    .student-portal .tc-conversation-header { gap: 6px; padding-inline: 10px; }
+    .student-portal .tc-side-panel:not([hidden]) { inset: 0; width: auto; }
+    .student-portal .tc-file-layout { grid-template-columns: minmax(100px, 33%) minmax(0, 1fr); }
+    .student-portal :is(.tc-file-toolbar-primary, .tc-file-toolbar-actions) { flex-wrap: wrap; }
+    .student-portal .tc-message-form { padding: 8px 10px; }
+    .student-portal .tc-message-form button { padding-inline: 12px; }
+}

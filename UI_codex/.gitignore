@@ -1,0 +1,6 @@
+/.checks/
+/database/
+/uploads/
+/tmp/
+/.test-tmp/
+/.venv/
