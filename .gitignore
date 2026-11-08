@@ -14,7 +14,3 @@ main/database/*.bak
 
 # Local secrets
 .env
-neon_version/.env
-neon_version/uploads/
-neon_version/tmp/
-neon_version/database/
