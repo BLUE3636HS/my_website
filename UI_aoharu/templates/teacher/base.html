@@ -13,6 +13,7 @@
         <link rel="icon" href="/static/icon.ico">
         {% block css %}
         {% endblock %}
+        <link rel="stylesheet" href="/static/teacher/aoharu.css">
     </head>
     <body class="role-teacher">
         {% set current_path = request.url.path %}
@@ -23,7 +24,7 @@
         <div class="staff-layout" id="staff-layout">
             <aside class="staff-sidebar" id="staff-sidebar" aria-label="先生用メニュー">
                 <div class="staff-brand">
-                    <a class="teacher-brand" href="/teacher" aria-label="ダッシュボードへ"><img src="/static/top.png" alt="TEKNE工作室"></a>
+                    <a class="teacher-brand" href="/teacher" aria-label="先生の工作室テクネ ダッシュボードへ"><img class="teacher-brand-mark" src="/static/aoharu/logo-scissors.svg" alt=""><span class="teacher-brand-text">先生の工作室　テクネ</span></a>
                     <button class="staff-icon-button staff-sidebar-close" type="button" data-nav-close aria-label="メニューを閉じる">{{ icons.icon("close") }}</button>
                 </div>
                 <nav class="staff-nav teacher-nav" aria-label="先生用メニュー">
@@ -58,6 +59,14 @@
             <div class="staff-main teacher-main">
                 <header class="staff-header teacher-header">
                     <button class="staff-icon-button staff-menu-toggle" type="button" data-nav-open aria-controls="staff-sidebar" aria-expanded="false" aria-label="メニューを開く">{{ icons.icon("menu") }}</button>
+                    <ol class="teacher-breadcrumb" aria-label="現在の場所">
+                        {% if current_path == '/teacher' %}
+                        <li aria-current="page">ダッシュボード</li>
+                        {% else %}
+                        <li><a href="/teacher">ダッシュボード</a></li>
+                        <li aria-current="page">{{ self.page_title() }}</li>
+                        {% endif %}
+                    </ol>
                     <p class="staff-header-title">{% block page_title %}{{ self.title() }}{% endblock %}</p>
                     <div class="staff-header-actions">
                         <a class="staff-user-chip" href="/teacher/edit" title="マイページ">

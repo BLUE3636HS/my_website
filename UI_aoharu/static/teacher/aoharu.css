@@ -1,0 +1,362 @@
+/* =========================================================
+   先生の工作室 テクネ 先生用テーマ（UI_aoharu）
+   茶色のサイドバー・緑の選択中ピル・ひし形付きのライン・
+   セージグリーンの面に白い角丸カード。
+   teacher/base.html で各ページの CSS の後に読み込む。
+   staff/theme.css（管理者と共通）は変更せず、.role-teacher で上書きする。
+   ========================================================= */
+
+.role-teacher {
+    /* 先生用パレット */
+    --teacher-brown: #5b3d23;        /* サイドバー・ログイン下部 */
+    --teacher-brown-deep: #47301b;
+    --teacher-green: #2f6b14;        /* 選択中メニュー・強調 */
+    --teacher-green-deep: #24540f;
+    --teacher-green-text: #3d7a24;   /* ヘッダーのパンくず */
+    --teacher-sage: #c3d4bb;         /* メインの面 */
+    --teacher-sage-deep: #b1c5a8;
+    --teacher-header: #dfeadb;       /* ヘッダー */
+    --teacher-khaki: #9c8b6a;        /* ログインの入力欄 */
+    --teacher-gray-pill: #d5dce2;
+
+    /* 既存ページが参照するトークン（名前は維持） */
+    --primary: #3d7a24;
+    --primary-strong: #2b5e16;
+    --primary-soft: #e8f1e2;
+    --primary-ring: rgba(61, 122, 36, .25);
+    --primary-light: #7aa660;
+    --text: #33392f;
+    --text-strong: #1f261c;
+    --text-muted: #646f5f;
+    --text-subtle: #97a291;
+    --bg: var(--teacher-sage);
+    --surface: #ffffff;
+    --surface-soft: #f5f8f2;
+    --border: #dde6d7;
+    --border-strong: #c2d0ba;
+
+    --radius-sm: 10px;
+    --radius: 18px;
+    --radius-lg: 32px;
+    --shadow-sm: 0 1px 2px rgba(40, 60, 30, .08);
+    --shadow: 0 2px 10px rgba(40, 60, 30, .08);
+    --shadow-lg: 0 16px 40px rgba(40, 60, 30, .2);
+
+    --sidebar-width: 300px;
+    --header-height: 72px;
+
+    /* ひし形付きライン（白線・中は茶色／緑） */
+    --teacher-diamond: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M6 1.2 10.8 6 6 10.8 1.2 6Z' fill='%235b3d23' stroke='white' stroke-width='1.8'/%3E%3C/svg%3E");
+    --teacher-diamond-active: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M6 1.2 10.8 6 6 10.8 1.2 6Z' fill='%232f6b14' stroke='white' stroke-width='1.8'/%3E%3C/svg%3E");
+
+    background: var(--teacher-sage);
+    font-weight: 400;
+    letter-spacing: .02em;
+}
+
+/* ---------- サイドバー（茶色） ---------- */
+
+.role-teacher .staff-sidebar {
+    background: var(--teacher-brown);
+    border-right: 0;
+}
+
+.role-teacher .staff-brand {
+    flex: none;
+    height: var(--header-height);
+    padding: 0 10px 0 14px;
+}
+
+.role-teacher .teacher-brand {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 4px;
+    min-width: 0;
+    color: #fff;
+    text-decoration: none;
+}
+
+.role-teacher .staff-brand img.teacher-brand-mark {
+    flex: none;
+    width: 34px;
+    height: 34px;
+    filter: brightness(0) invert(1);
+}
+
+.role-teacher .teacher-brand-text {
+    position: relative;
+    padding: 0 14px 8px 4px;
+    font-size: 20px;
+    line-height: 1.2;
+    letter-spacing: .1em;
+    white-space: nowrap;
+}
+
+/* ブランド名の下の矢印ライン */
+.role-teacher .teacher-brand-text::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 8px;
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M0 0 8 4 0 8Z' fill='white'/%3E%3C/svg%3E") right center / 8px 8px no-repeat,
+        linear-gradient(#fff, #fff) left center / calc(100% - 6px) 2px no-repeat;
+}
+
+.role-teacher .staff-brand .staff-sidebar-close { color: #fff; }
+.role-teacher .staff-brand .staff-sidebar-close:hover { background: rgba(255, 255, 255, .15); color: #fff; }
+
+.role-teacher .staff-nav { padding: 26px 14px 16px; }
+.role-teacher .staff-nav-group + .staff-nav-group { margin-top: 20px; }
+
+.role-teacher .staff-nav-heading {
+    margin: 0 0 2px;
+    padding: 0 22px;
+    color: rgba(255, 255, 255, .62);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: .14em;
+}
+
+.role-teacher .staff-nav-link,
+.role-teacher .staff-sidebar-footer a {
+    justify-content: center;
+    gap: 12px;
+    min-height: 58px;
+    margin: 2px 0;
+    padding: 8px 26px 18px;
+    border-radius: 999px;
+    color: #fff;
+    font-size: 17px;
+    font-weight: 400;
+    letter-spacing: .08em;
+}
+
+/* 各項目の下のひし形ライン */
+.role-teacher .staff-nav-link::after,
+.role-teacher .staff-sidebar-footer a::after {
+    content: "";
+    position: absolute;
+    left: 18px;
+    right: 18px;
+    bottom: 5px;
+    height: 12px;
+    background:
+        var(--teacher-diamond) left center / 12px 12px no-repeat,
+        var(--teacher-diamond) right center / 12px 12px no-repeat,
+        linear-gradient(#fff, #fff) center / calc(100% - 12px) 2px no-repeat;
+}
+
+.role-teacher .staff-nav-link svg,
+.role-teacher .staff-sidebar-footer svg {
+    width: 24px;
+    height: 24px;
+    color: #fff;
+    stroke-width: 1.6;
+}
+
+.role-teacher .staff-nav-link:hover,
+.role-teacher .staff-sidebar-footer a:hover {
+    background: rgba(255, 255, 255, .1);
+    color: #fff;
+}
+
+.role-teacher .staff-nav-link:hover svg,
+.role-teacher .staff-sidebar-footer a:hover svg { color: #fff; }
+
+/* 選択中：緑のピル */
+.role-teacher .staff-nav-link[aria-current="page"],
+.role-teacher .staff-sidebar-footer a[aria-current="page"] {
+    background: var(--teacher-green);
+    color: #fff;
+}
+
+.role-teacher .staff-nav-link[aria-current="page"] svg,
+.role-teacher .staff-sidebar-footer a[aria-current="page"] svg { color: #fff; }
+
+.role-teacher .staff-nav-link[aria-current="page"]::before,
+.role-teacher .staff-sidebar-footer a[aria-current="page"]::before { content: none; }
+
+.role-teacher .staff-nav-link[aria-current="page"]::after,
+.role-teacher .staff-sidebar-footer a[aria-current="page"]::after {
+    background:
+        var(--teacher-diamond-active) left center / 12px 12px no-repeat,
+        var(--teacher-diamond-active) right center / 12px 12px no-repeat,
+        linear-gradient(#fff, #fff) center / calc(100% - 12px) 2px no-repeat;
+}
+
+.role-teacher .staff-nav-link:focus-visible,
+.role-teacher .staff-sidebar-footer a:focus-visible {
+    outline: 3px solid rgba(255, 255, 255, .7);
+    outline-offset: 0;
+}
+
+.role-teacher .staff-sidebar-footer {
+    padding: 8px 14px 14px;
+    border-top: 1px dashed rgba(255, 255, 255, .3);
+}
+
+.role-teacher .staff-sidebar-footer a {
+    min-height: 46px;
+    padding: 6px 24px 15px;
+    font-size: 15px;
+}
+
+.role-teacher .staff-sidebar-footer svg { width: 21px; height: 21px; }
+
+.role-teacher .staff-sidebar-footer .staff-logout-link { color: rgba(255, 255, 255, .78); }
+.role-teacher .staff-sidebar-footer .staff-logout-link:hover { background: rgba(255, 255, 255, .1); color: #ffd6cc; }
+.role-teacher .staff-sidebar-footer .staff-logout-link:hover svg { color: #ffd6cc; }
+
+/* ---------- メイン（セージグリーンの面） ---------- */
+
+.role-teacher .staff-main {
+    position: relative;
+    background: var(--teacher-sage);
+}
+
+/* 右下のイラスト（static/aoharu/teacher_talk.png を置くと表示される） */
+.role-teacher .staff-main::after {
+    content: "";
+    position: absolute;
+    right: 12px;
+    bottom: 0;
+    z-index: 0;
+    width: min(260px, 22%);
+    aspect-ratio: 260 / 210;
+    background: url("/static/aoharu/teacher_talk.png") right bottom / contain no-repeat;
+    pointer-events: none;
+}
+
+.role-teacher .staff-content { position: relative; z-index: 1; }
+
+/* ---------- ヘッダー（淡い緑＋パンくず） ---------- */
+
+.role-teacher .staff-header {
+    position: relative;
+    z-index: 2;
+    padding: 0 28px 0 32px;
+    border-bottom: 0;
+    background: var(--teacher-header);
+    backdrop-filter: none;
+}
+
+.role-teacher .teacher-breadcrumb + .staff-header-title { display: none; }
+
+.teacher-breadcrumb {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    overflow-x: auto;
+    list-style: none;
+    scrollbar-width: none;
+}
+
+.teacher-breadcrumb::-webkit-scrollbar { display: none; }
+
+.teacher-breadcrumb li {
+    display: flex;
+    flex: none;
+    align-items: center;
+    color: var(--teacher-green-text);
+    font-size: 21px;
+    letter-spacing: .08em;
+    white-space: nowrap;
+}
+
+.teacher-breadcrumb li + li::before {
+    content: "";
+    width: 0;
+    height: 0;
+    margin: 0 22px;
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    border-left: 12px solid var(--teacher-green);
+}
+
+.teacher-breadcrumb a { color: inherit; text-decoration: none; }
+.teacher-breadcrumb a:hover { text-decoration: underline; }
+.teacher-breadcrumb [aria-current="page"] { color: var(--teacher-green-deep); font-weight: 500; }
+
+.role-teacher .staff-user-chip {
+    border-color: rgba(61, 122, 36, .35);
+    background: rgba(255, 255, 255, .6);
+    color: var(--teacher-green-deep);
+}
+
+.role-teacher .staff-user-chip:hover { border-color: var(--teacher-green); background: #fff; }
+.role-teacher .staff-avatar { background: var(--teacher-green); }
+.role-teacher .staff-header .staff-menu-toggle { color: var(--teacher-green); }
+
+/* ---------- 白い角丸カード ---------- */
+
+.role-teacher :is(.staff-panel, .staff-stat-card, .teacher-dashboard-card, .teacher-studylist-card,
+    .teacher-mypage-card, .teacher-notification-card) {
+    border: 0;
+    box-shadow: var(--shadow);
+}
+
+.role-teacher .staff-quick-card {
+    border: 0;
+    border-radius: 24px;
+    box-shadow: var(--shadow);
+}
+
+.role-teacher .staff-quick-card:hover { box-shadow: 0 0 0 2px var(--primary), var(--shadow); }
+.role-teacher a.staff-stat-card:hover { box-shadow: 0 0 0 2px var(--primary), var(--shadow); }
+.role-teacher .staff-stat-card.is-alert { background: #fff4f1; }
+
+.role-teacher .staff-quick-icon {
+    border-radius: 50%;
+    background: var(--primary-soft);
+    color: var(--teacher-green);
+}
+
+/* 面に直接のる見出し */
+.role-teacher .staff-section-heading h2 {
+    color: var(--teacher-green-deep);
+    font-weight: 500;
+    letter-spacing: .1em;
+}
+
+.role-teacher .staff-section-heading a { color: var(--teacher-green-deep); text-decoration: underline; text-underline-offset: 3px; }
+
+/* あいさつ欄：白いカード */
+.role-teacher .staff-hero {
+    border-radius: var(--radius-lg);
+    background: #fff;
+    color: var(--text);
+    box-shadow: var(--shadow);
+    border-left: 22px solid var(--teacher-green);
+}
+
+.role-teacher .staff-hero h1 { color: var(--text-strong); font-weight: 500; letter-spacing: .06em; }
+.role-teacher .staff-hero p { color: var(--text-muted); }
+.role-teacher .staff-hero .staff-hero-date { color: var(--teacher-green-text); }
+.role-teacher .staff-hero-meta span { background: var(--teacher-gray-pill); color: var(--text-strong); font-weight: 500; }
+
+/* ページ見出しは少し細めに */
+.role-teacher .staff-content :is(h1) { font-weight: 500; letter-spacing: .06em; }
+
+/* ダイアログは角丸を控えめに */
+.role-teacher .staff-content dialog { border-radius: 24px; }
+
+/* ---------- スマホ ---------- */
+
+@media (max-width: 960px) {
+    .role-teacher .staff-header { padding: 0 12px 0 8px; }
+    .teacher-breadcrumb li { font-size: 17px; }
+    .teacher-breadcrumb li + li::before { margin: 0 12px; }
+}
+
+@media (max-width: 700px) {
+    .role-teacher .staff-main::after { display: none; }
+    .role-teacher .staff-hero { border-left-width: 12px; border-radius: 24px; }
+    .role-teacher :is(.staff-panel, .teacher-dashboard-card, .teacher-studylist-card,
+        .teacher-mypage-card, .teacher-notification-card) { border-radius: 24px; }
+}

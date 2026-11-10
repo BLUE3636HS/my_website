@@ -24,7 +24,7 @@
         <header class="auth-top">
             <a class="aoharu-brand" href="/login" aria-label="工作室テクネ">
                 <img class="aoharu-brand-mark" src="/static/aoharu/logo-scissors.svg" alt="">
-                <span class="aoharu-brand-text">工作室　テクネ</span>
+                <span class="aoharu-brand-text" data-brand-text>工作室　テクネ</span>
             </a>
         </header>
 
@@ -77,6 +77,7 @@
             </div>
 
             <div class="auth-illustration" aria-hidden="true"></div>
+            <div class="auth-illustration auth-illustration-teacher" aria-hidden="true"></div>
         </main>
 
         <nav class="auth-ground" aria-label="その他の入口">
@@ -86,6 +87,16 @@
 
         <script src="/static/login.js"></script>
         <script>
+            // 「先生」タブを選んでいる間は先生用の配色（緑×茶）に切り替える
+            (function () {
+                var brandText = document.querySelector("[data-brand-text]");
+                function setTeacherMode(on) {
+                    document.body.classList.toggle("is-teacher-mode", on);
+                    if (brandText) brandText.textContent = on ? "先生の工作室　テクネ" : "工作室　テクネ";
+                }
+                document.getElementById("student_form_btn").addEventListener("click", function () { setTeacherMode(false); });
+                document.getElementById("teacher_form_btn").addEventListener("click", function () { setTeacherMode(true); });
+            })();
             document.querySelectorAll("[data-toggle-password]").forEach(function (button) {
                 button.addEventListener("click", function () {
                     var input = document.getElementById(button.getAttribute("data-toggle-password"));

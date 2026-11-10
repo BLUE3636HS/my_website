@@ -366,3 +366,66 @@ body.auth-body {
     .auth-card-wide { padding: 26px 18px 24px; border-radius: 24px; }
     .auth-tabs button { min-width: 0; padding: 6px 16px; }
 }
+
+/* =========================================================
+   先生用ログイン（「先生」タブ選択中）：セージグリーン×茶色
+   login.html のスクリプトが body に .is-teacher-mode を付ける。
+   ========================================================= */
+
+.auth-body.is-teacher-mode {
+    --teacher-sage: #b1c5a8;
+    --teacher-brown: #5b3d23;
+    --teacher-khaki: #9c8b6a;
+    --teacher-green: #2f6b14;
+    background: var(--teacher-sage);
+}
+
+.auth-body.is-teacher-mode .auth-tabs button.active { color: var(--teacher-green); }
+
+.auth-body.is-teacher-mode .auth-form input {
+    background: var(--teacher-khaki);
+    color: #fff;
+}
+
+.auth-body.is-teacher-mode .auth-form input:focus {
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, .8), inset 0 0 0 2px var(--teacher-brown);
+}
+
+.auth-body.is-teacher-mode .auth-password-toggle svg { filter: none; }
+.auth-body.is-teacher-mode .auth-password-toggle:focus-visible { outline-color: var(--teacher-brown); }
+
+.auth-body.is-teacher-mode .auth-submit:hover { color: var(--teacher-green); }
+.auth-body.is-teacher-mode .auth-submit:focus-visible { outline-color: var(--teacher-brown); }
+
+.auth-body.is-teacher-mode .auth-ground { background: var(--teacher-brown); }
+
+.auth-body.is-teacher-mode .auth-ground-button {
+    border-color: var(--teacher-sage);
+    background: transparent;
+    color: #fff;
+}
+
+.auth-body.is-teacher-mode .auth-ground-button.is-filled {
+    background: var(--teacher-sage);
+    color: var(--teacher-brown);
+}
+
+.auth-body.is-teacher-mode .auth-ground-button:hover { border-color: #fff; color: #fff; }
+.auth-body.is-teacher-mode .auth-ground-button.is-filled:hover { background: #fff; color: var(--teacher-brown); }
+.auth-body.is-teacher-mode .auth-ground-button:focus-visible { outline-color: #fff; }
+
+/* イラストの切り替え（static/aoharu/teacher_board.png を置くと表示される） */
+.auth-illustration-teacher {
+    display: none;
+    width: min(340px, 22vw);
+    aspect-ratio: 340 / 380;
+    bottom: -12px;
+    background-image: url("/static/aoharu/teacher_board.png");
+}
+
+.auth-body.is-teacher-mode .auth-illustration { display: none; }
+.auth-body.is-teacher-mode .auth-illustration-teacher { display: block; }
+
+@media (max-width: 820px) {
+    .auth-illustration-teacher { width: 200px; }
+}
