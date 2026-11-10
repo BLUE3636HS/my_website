@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 {% block title %}管理者情報{% endblock %}
 {% block css %}<link rel="stylesheet" href="/static/mentor.css">{% endblock %}
-{% block content %}<div class="mentor-page"><header class="mentor-hero"><p class="eyebrow">ADMIN PROFILE</p><h1>管理者情報</h1><p>自分の管理者名、画像、紹介文を設定します。公開すると大学生メンター予約にも同じ情報が表示されます。</p></header>
+{% block content %}<div class="mentor-page"><header class="mentor-hero"><p class="eyebrow">アカウント・設定</p><h1>管理者情報</h1><p>自分の管理者名、画像、紹介文を設定します。公開すると大学生メンター予約にも同じ情報が表示されます。</p></header>
 {% if notice %}<p class="mentor-notice is-{{ notice.type }}">{{ notice.message }}</p>{% endif %}
 <form class="mentor-panel mentor-form" method="post" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{ csrf_token }}">
 <div class="mentor-image-editor"><img class="mentor-profile-image" id="mentor-image-preview" src="{{ mentor_image_url }}" data-saved-src="{{ mentor_image_url }}" alt="現在の管理者画像"><div><label>管理者画像<input type="file" id="mentor-image-input" name="profile_image" accept="image/jpeg,image/png,image/webp" aria-describedby="mentor-image-help"></label><p id="mentor-image-help" class="mentor-help">JPEG・PNG・WebP、最大5MB。中央を正方形に切り抜いて保存します。</p></div></div>

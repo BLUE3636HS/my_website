@@ -1,44 +1,78 @@
+{% import "student_icons.html" as icons %}
 <!DOCTYPE html>
 <html lang="ja">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>{% block title %}先生用ページ{% endblock %}</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800&display=swap">
+        <link rel="stylesheet" href="/static/staff/theme.css">
         <link rel="stylesheet" href="/static/teacher/base.css">
         <link rel="icon" href="/static/icon.ico">
         {% block css %}
         {% endblock %}
     </head>
-    <body>
+    <body class="role-teacher">
         {% set current_path = request.url.path %}
-        <div class="teacher-layout">
-            <aside class="teacher-sidebar">
-                <a class="teacher-brand" href="/teacher">
-                    <img src="/static/top.png" alt="TEKNE工作室">
-                </a>
-                <nav class="teacher-nav" aria-label="先生用メニュー">
-                    <a class="teacher-nav-link" href="/teacher"{% if current_path == '/teacher' %} aria-current="page"{% endif %}>ダッシュボード</a>
-                    <a class="teacher-nav-link" href="/teacher/studylist"{% if current_path == '/teacher/studylist' or current_path.startswith('/teacher/studylist/') %} aria-current="page"{% endif %}>自校提出物確認</a>
-                    <a class="teacher-nav-link" href="/teacher/reports"{% if current_path.startswith('/teacher/reports') %} aria-current="page"{% endif %}>グループ成果レポート</a>
-                    <a class="teacher-nav-link" href="/teacher/accounts"{% if current_path == '/teacher/accounts' %} aria-current="page"{% endif %}>生徒アカウント一覧</a>
-                    <a class="teacher-nav-link" href="/teacher/notifications"{% if current_path == '/teacher/notifications' or current_path.startswith('/teacher/notifications/') %} aria-current="page"{% endif %}>通知送信</a>
-                    {% if teacher_role == 'super_teacher' %}<a class="teacher-nav-link" href="/teacher/school-features"{% if current_path == '/teacher/school-features' %} aria-current="page"{% endif %}>自校の機能設定</a><a class="teacher-nav-link" href="/teacher/school-report"{% if current_path == '/teacher/school-report' %} aria-current="page"{% endif %}>成果レポート設定</a>{% endif %}
-                    <a class="teacher-nav-link" href="/teacher/edit"{% if current_path == '/teacher/edit' or current_path.startswith('/teacher/edit/') %} aria-current="page"{% endif %}>マイページ</a>
+        {% macro nav_link(href, label, icon_name, prefix=None, exact=False) -%}
+            {%- set p = prefix or href -%}
+            <a class="staff-nav-link teacher-nav-link" href="{{ href }}"{% if current_path == p or (not exact and current_path.startswith(p ~ '/')) %} aria-current="page"{% endif %}>{{ icons.icon(icon_name) }}<span>{{ label }}</span></a>
+        {%- endmacro %}
+        <div class="staff-layout" id="staff-layout">
+            <aside class="staff-sidebar" id="staff-sidebar" aria-label="先生用メニュー">
+                <div class="staff-brand">
+                    <a class="teacher-brand" href="/teacher" aria-label="ダッシュボードへ"><img src="/static/top.png" alt="TEKNE工作室"></a>
+                    <button class="staff-icon-button staff-sidebar-close" type="button" data-nav-close aria-label="メニューを閉じる">{{ icons.icon("close") }}</button>
+                </div>
+                <nav class="staff-nav teacher-nav" aria-label="先生用メニュー">
+                    <div class="staff-nav-group">
+                        {{ nav_link('/teacher', 'ダッシュボード', 'home', exact=True) }}
+                    </div>
+                    <div class="staff-nav-group">
+                        <p class="staff-nav-heading">研究</p>
+                        {{ nav_link('/teacher/studylist', '自校提出物確認', 'list') }}
+                        {{ nav_link('/teacher/reports', 'グループ成果レポート', 'report') }}
+                    </div>
+                    <div class="staff-nav-group">
+                        <p class="staff-nav-heading">生徒</p>
+                        {{ nav_link('/teacher/accounts', '生徒アカウント一覧', 'users') }}
+                        {{ nav_link('/teacher/notifications', '通知送信', 'send') }}
+                    </div>
+                    {% if teacher_role == 'super_teacher' %}
+                    <div class="staff-nav-group">
+                        <p class="staff-nav-heading">設定</p>
+                        {{ nav_link('/teacher/school-features', '自校の機能設定', 'settings') }}
+                        {{ nav_link('/teacher/school-report', '成果レポート設定', 'layout') }}
+                    </div>
+                    {% endif %}
                 </nav>
-                <a class="teacher-logout-link" href="/logout?role=teacher">Logout</a>
+                <div class="staff-sidebar-footer">
+                    <a class="teacher-mypage-link" href="/teacher/edit"{% if current_path == '/teacher/edit' or current_path.startswith('/teacher/edit/') %} aria-current="page"{% endif %}>{{ icons.icon("user") }}<span>マイページ</span></a>
+                    <a class="staff-logout-link teacher-logout-link" href="/logout?role=teacher">{{ icons.icon("logout") }}<span>ログアウト</span></a>
+                </div>
             </aside>
+            <div class="staff-overlay" data-nav-close></div>
 
-            <div class="teacher-main">
-                <header class="teacher-header">
-                    <p>{% block page_title %}{{ self.title() }}{% endblock %}</p>
-                    <span>{{ teacher_id }}</span>
+            <div class="staff-main teacher-main">
+                <header class="staff-header teacher-header">
+                    <button class="staff-icon-button staff-menu-toggle" type="button" data-nav-open aria-controls="staff-sidebar" aria-expanded="false" aria-label="メニューを開く">{{ icons.icon("menu") }}</button>
+                    <p class="staff-header-title">{% block page_title %}{{ self.title() }}{% endblock %}</p>
+                    <div class="staff-header-actions">
+                        <a class="staff-user-chip" href="/teacher/edit" title="マイページ">
+                            <span class="staff-avatar" aria-hidden="true">{{ (teacher_id or '?')[:1] }}</span>
+                            <span>{{ teacher_id }}</span>
+                        </a>
+                    </div>
                 </header>
-                <main class="teacher-content">
+                <main class="staff-content teacher-content">
                     {% block content %}
                     {% endblock %}
                 </main>
             </div>
         </div>
+        <script src="/static/staff/nav.js"></script>
         {% block script %}
         {% endblock %}
     </body>

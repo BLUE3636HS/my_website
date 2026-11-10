@@ -6,37 +6,40 @@
 {% block content %}
 <div class="teacher-page teacher-mypage">
     <section class="teacher-mypage-card">
-    <p class="teacher-eyebrow">My Page</p>
-    <h1>先生用マイページ</h1>
-    <dl class="teacher-profile-summary">
-        <div><dt>先生ID</dt><dd>{{ teacher_id }}</dd></div>
-        <div><dt>在籍校</dt><dd>{{ teacher_school }}</dd></div>
-    </dl>
+        <p class="teacher-eyebrow">アカウント</p>
+        <h1>先生用マイページ</h1>
+        <dl class="teacher-profile-summary">
+            <div><dt>先生ID</dt><dd>{{ teacher_id }}</dd></div>
+            <div><dt>在籍校</dt><dd>{{ teacher_school }}</dd></div>
+        </dl>
     </section>
 
     <section class="teacher-mypage-card teacher-edit-section">
-    <h2>プロフィール情報編集</h2>
-    <input type="hidden" id="old_id" value="{{ teacher_id }}">
-    <label for="pwd">現在のパスワード</label><br>
-    <input type="password" id="old_pwd"><br><br><br><br>
-    <div id="tab">
-        <button id="id_form_btn" class="active">IDの変更</button>
-        <button id="pwd_form_btn">パスワードの変更</button>
-    </div><br>
-    <div id="id_form">
-        <h2>IDの変更</h2>
-        <label for="id">変更後のID</label><br>
-        <input type="text" id="new_id"><br>
-        <em>8文字以上の半角英数字、記号も可</em><br><br>
-        <button type="button" id="id_edit_btn">変更</button><br><br>
-    </div>
-    <div id="pwd_form">
-        <h2>パスワードの変更</h2>
-        <label for="pwd">変更後のパスワード</label><br>
-        <input type="password" id="new_pwd"><br>
-        <em>8文字以上の半角英数字どちらむ含む、記号も可</em><br><br>
-        <button type="button" id="pwd_edit_btn">変更</button><br><br>
-    </div>
+        <h2>プロフィール情報編集</h2>
+        <input type="hidden" id="old_id" value="{{ teacher_id }}">
+        <div class="teacher-edit-current">
+            <label for="old_pwd">現在のパスワード</label>
+            <input type="password" id="old_pwd" autocomplete="current-password">
+            <em>ID・パスワードのどちらを変更する場合も入力してください。</em>
+        </div>
+        <div id="tab" role="group" aria-label="変更する項目">
+            <button type="button" id="id_form_btn" class="active">IDの変更</button>
+            <button type="button" id="pwd_form_btn">パスワードの変更</button>
+        </div>
+        <div id="id_form">
+            <h2>IDの変更</h2>
+            <label for="new_id">変更後のID</label>
+            <input type="text" id="new_id" autocomplete="username" autocapitalize="off" spellcheck="false">
+            <em>8文字以上の半角英数字、記号も可</em>
+            <button type="button" id="id_edit_btn">IDを変更する</button>
+        </div>
+        <div id="pwd_form">
+            <h2>パスワードの変更</h2>
+            <label for="new_pwd">変更後のパスワード</label>
+            <input type="password" id="new_pwd" autocomplete="new-password">
+            <em>8文字以上の半角英数字どちらも含む、記号も可</em>
+            <button type="button" id="pwd_edit_btn">パスワードを変更する</button>
+        </div>
     </section>
 </div>
 {% endblock %}

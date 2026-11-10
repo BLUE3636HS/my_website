@@ -43,7 +43,7 @@
 
 .equipment-admin-message.is-success {
     background: #e7f5ea;
-    color: #28633a;
+    color: var(--primary);
 }
 
 .equipment-admin-message.is-error {
@@ -57,7 +57,7 @@
 
 .equipment-reservation-section h2 {
     margin: 0 0 14px;
-    color: #354f3e;
+    color: var(--text);
     font-size: 20px;
 }
 
@@ -76,9 +76,9 @@
     gap: 8px;
     min-height: 42px;
     padding: 0 18px;
-    color: #333;
+    color: var(--text);
     background: #fff;
-    border: 1px solid #ccc;
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
     font-size: 14px;
     font-weight: 600;
@@ -102,11 +102,11 @@
 }
 
 .equipment-filter-toggle:hover {
-    background: #f7f7f7;
+    background: var(--surface-soft);
 }
 
 .equipment-filter-toggle:focus-visible {
-    outline: 2px solid #555;
+    outline: 2px solid var(--text-muted);
     outline-offset: 2px;
 }
 
@@ -119,7 +119,7 @@
     padding: 20px;
     margin-top: 12px;
 
-    background: #f7f7f7;
+    background: var(--surface-soft);
     border: 1px solid #e2e2e2;
     border-radius: 10px;
 
@@ -141,7 +141,7 @@
 .equipment-filter-group label {
     font-size: 14px;
     font-weight: 600;
-    color: #444;
+    color: var(--text);
 }
 
 .equipment-filter-group input[type="date"] {
@@ -153,10 +153,10 @@
     padding: 0 12px;
 
     font-size: 14px;
-    color: #333;
+    color: var(--text);
 
     background: #fff;
-    border: 1px solid #ccc;
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
 
     box-sizing: border-box;
@@ -164,7 +164,7 @@
 
 .equipment-filter-group input[type="date"]:focus {
     outline: none;
-    border-color: #555;
+    border-color: var(--text-muted);
     box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.08);
 }
 
@@ -174,7 +174,7 @@
     align-self: center;
     gap: 8px;
     min-height: 42px;
-    color: #444;
+    color: var(--text);
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
@@ -184,11 +184,11 @@
     width: 18px;
     height: 18px;
     margin: 0;
-    accent-color: #39784c;
+    accent-color: var(--primary);
 }
 
 .equipment-unreturned-filter input:focus-visible {
-    outline: 2px solid #39784c;
+    outline: 2px solid var(--primary);
     outline-offset: 2px;
 }
 
@@ -231,8 +231,8 @@
 /* 検索ボタン */
 .equipment-btn-search {
     color: #fff;
-    background: #333;
-    border: 1px solid #333;
+    background: var(--text);
+    border: 1px solid var(--text);
 }
 
 .equipment-btn-search:hover {
@@ -242,9 +242,9 @@
 
 /* クリアボタン */
 .equipment-btn-clear {
-    color: #444;
+    color: var(--text);
     background: #fff;
-    border: 1px solid #ccc;
+    border: 1px solid var(--border-strong);
 }
 
 .equipment-btn-clear:hover {
@@ -260,9 +260,9 @@
     width: 100%;
     overflow-x: auto;
     background: #fff;
-    border: 1px solid #dbe8df;
+    border: 1px solid var(--border);
     border-radius: 10px;
-    scrollbar-color: #adbfB2 #f2f7f3;
+    scrollbar-color: #adbfB2 var(--surface-soft);
     scrollbar-width: thin;
 }
 
@@ -287,7 +287,7 @@
 
 .equipment-admin-table thead th {
     padding: 13px 14px;
-    color: #405b49;
+    color: var(--text);
     background: #f2f8f4;
     border-bottom: 1px solid #cedfd3;
     font-size: 12px;
@@ -304,7 +304,7 @@
 
 .equipment-admin-table tbody td {
     padding: 16px 14px;
-    color: #354f3e;
+    color: var(--text);
     border-bottom: 1px solid #e5eee8;
     line-height: 1.65;
     vertical-align: top;
@@ -320,11 +320,11 @@
 }
 
 .equipment-admin-table tbody tr:nth-child(even) {
-    background: #fafcfb;
+    background: var(--surface-soft);
 }
 
 .equipment-admin-table tbody tr:hover {
-    background: #f3f9f5;
+    background: var(--surface-soft);
 }
 
 
@@ -358,7 +358,7 @@
 .equipment-admin-table th:nth-child(1),
 .equipment-admin-table td:nth-child(1) {
     width: 1%;
-    color: #748b7b;
+    color: var(--text-muted);
     white-space: nowrap;
 }
 
@@ -437,16 +437,16 @@
 }
 
 .equipment-returned-label {
-    color: #28633a;
+    color: var(--primary);
     font-weight: 700;
 }
 
 .equipment-return-button {
     min-height: 36px;
     padding: 0 14px;
-    border: 1px solid #39784c;
+    border: 1px solid var(--primary);
     border-radius: 6px;
-    background: #39784c;
+    background: var(--primary);
     color: #fff;
     font: inherit;
     font-weight: 700;
@@ -459,7 +459,7 @@
 
 .equipment-return-button:focus-visible,
 .equipment-undo-return-button:focus-visible {
-    outline: 2px solid #39784c;
+    outline: 2px solid var(--primary);
     outline-offset: 2px;
 }
 
@@ -512,8 +512,8 @@
     min-height: 180px;
 
     padding: 24px;
-    background: #fafcfb;
-    color: #748b7b;
+    background: var(--surface-soft);
+    color: var(--text-muted);
     text-align: center;
 }
 

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="#5b6b73" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 刃 -->
+  <path d="M27 36 L52 6 L54 9 L33 39" fill="#fbf7e8"/>
+  <path d="M30 40 L60 16 L61 19.5 L35 43" fill="#fbf7e8"/>
+  <!-- 支点 -->
+  <circle cx="32" cy="38" r="1.6" fill="#5b6b73"/>
+  <!-- 持ち手 -->
+  <ellipse cx="15" cy="50" rx="9.5" ry="7.5" transform="rotate(-35 15 50)" fill="#fbf7e8"/>
+  <ellipse cx="15" cy="50" rx="5.2" ry="3.8" transform="rotate(-35 15 50)" fill="#ffffff"/>
+  <ellipse cx="26" cy="56" rx="7.5" ry="6" transform="rotate(-10 26 56)" fill="#fbf7e8"/>
+  <ellipse cx="26" cy="56" rx="3.8" ry="2.8" transform="rotate(-10 26 56)" fill="#ffffff"/>
+  <path d="M22 45 L28 39 M29 50 L32 42"/>
+</svg>

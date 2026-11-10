@@ -1,0 +1,139 @@
+/* =========================================================
+   UI_aoharu ページ別の上書き
+   base.html で各ページの CSS の後に読み込み、既存ページの見出し・
+   カード・ボタンを「水色の面＋白い角丸カード」の見た目にそろえる。
+   ========================================================= */
+
+/* ---------- 水色の面に直接のる見出し ---------- */
+
+.reservation-hero h1,
+.mentor-hero h1,
+.dashboard-hero h1,
+.student-content > div > h1,
+.student-content > h1 {
+    color: #fff;
+    font-weight: 400;
+    letter-spacing: .12em;
+    text-shadow: 0 1px 2px rgba(20, 70, 90, .25);
+}
+
+.reservation-hero p,
+.reservation-hero > p:last-child,
+.mentor-hero p,
+.mentor-hero > p:last-child {
+    color: #123847;
+}
+
+.reservation-eyebrow,
+.mentor-hero .eyebrow {
+    display: inline-block;
+    margin: 0 0 8px;
+    padding: 3px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .9);
+    color: var(--aoharu-teal);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: .14em;
+}
+
+/* セクション見出し（「メニュー」「次の予定」など） */
+.dashboard-section-heading h2 {
+    color: #fff;
+    font-weight: 500;
+    letter-spacing: .12em;
+}
+
+.dashboard-section-heading > a {
+    color: #fff;
+    font-weight: 500;
+}
+
+/* ---------- ダッシュボードの見出し部分 ---------- */
+
+.dashboard-hero {
+    border-radius: var(--radius-lg);
+    background: rgba(255, 255, 255, .16);
+    border: 2px solid rgba(255, 255, 255, .55);
+    box-shadow: none;
+    color: #fff;
+}
+
+.dashboard-hero p { color: #fff; }
+.dashboard-hero .dashboard-date { color: #10394a; font-weight: 500; }
+.dashboard-hero h1 span { color: #fff; }
+
+/* 旧ロゴの代わりにハサミのマーク */
+.dashboard-hero-logo {
+    content: url("/static/aoharu/logo-scissors.svg");
+    width: 88px;
+    height: 88px;
+    padding: 10px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .9);
+    box-shadow: none;
+}
+
+/* ---------- 白い角丸カード ---------- */
+
+.reservation-panel,
+.mentor-card,
+.mentor-panel,
+.dashboard-quick-card,
+.dashboard-card,
+.equipment-reservation .student-panel {
+    border: 0;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+}
+
+.dashboard-quick-card { border-radius: 24px; }
+
+.reservation-panel { padding: 30px 32px; }
+
+.section-title h2,
+.equipment-section-title h2,
+.reservation-panel h2 {
+    font-weight: 500;
+    letter-spacing: .08em;
+}
+
+/* 番号バッジ（1・2・3）を水色に */
+.section-title > span,
+.equipment-section-title > span:first-child {
+    background: var(--aoharu-blue);
+    color: #fff;
+    font-weight: 500;
+}
+
+/* ---------- ボタン類（四角・水色） ---------- */
+
+.mentor-button,
+.reservation-form-panel button[type="submit"],
+.dashboard-empty .student-secondary-link {
+    border-radius: 0;
+    letter-spacing: .1em;
+}
+
+.mentor-button {
+    background: var(--aoharu-blue-soft);
+    color: #fff;
+}
+
+.mentor-button:hover { background: var(--aoharu-blue-deep); }
+
+/* ---------- コミュニティ・通知などの見出し ---------- */
+
+.community-composer h1 {
+    color: var(--text-strong);
+    font-weight: 400;
+    letter-spacing: .12em;
+    text-shadow: none;
+}
+
+/* ---------- スマホ ---------- */
+
+@media (max-width: 700px) {
+    .reservation-panel { padding: 22px 18px; border-radius: 24px; }
+    .dashboard-hero-logo { display: none; }
+}

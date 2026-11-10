@@ -1,39 +1,80 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
     <head>
-        <title>
-            ログインページ
-        </title>
+        <title>ログイン | 放課後KeyNote</title>
         <meta charset="UTF-8">
-        <link rel="stylesheet" href="/static/base.css">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800&display=swap">
+        <link rel="stylesheet" href="/static/student/theme.css">
+        <link rel="stylesheet" href="/static/student/auth.css">
         <link rel="icon" href="/static/icon.ico">
-        <link rel="stylesheet" href="/static/login.css">
     </head>
-    <body>
-        <main>
-            <img src="/static/top.png" alt="TEKNE工作室" id="login_logo"><br><br>
-            <div id="tab">
-                <button id="student_form_btn" class="active">生徒用</button>
-                <button id="teacher_form_btn">先生用</button>
-            </div><br>
-            <div id="student_form">
-                <h2>生徒用ログイン</h2>
-                <label for="id">ID</label><br>
-                <input type="text" id="student_id"><br>
-                <label for="pwd">パスワード</label><br>
-                <input type="password" id="student_pwd"><br>
-                <button type="button" id="student_login_btn">生徒ログイン</button><br><br>
-            </div>
-            <div id="teacher_form">
-                <h2>先生用ログイン</h2>
-                <label for="id">ID</label><br>
-                <input type="text" id="teacher_id"><br>
-                <label for="pwd">パスワード</label><br>
-                <input type="password" id="teacher_pwd"><br>
-                <button type="button" id="teacher_login_btn">先生ログイン</button><br><br>
-            </div>
-            <a href="/registration">新規登録はこちら</a>
+    <body class="auth-body">
+        <main class="auth-shell">
+            <section class="auth-brand" aria-hidden="true">
+                <img src="/static/top.png" alt="" class="auth-brand-logo">
+                <p class="auth-brand-lead">放課後の探究活動を、<br>ひとつの場所で。</p>
+                <ul class="auth-brand-points">
+                    <li>研究成果の提出と管理</li>
+                    <li>工作室・メンター・実験器具の予約</li>
+                    <li>チャットとコミュニティで仲間と共有</li>
+                </ul>
+            </section>
+
+            <section class="auth-card">
+                <img src="/static/top.png" alt="放課後KeyNote" id="login_logo" class="auth-card-logo">
+                <h1 class="auth-title">ログイン</h1>
+                <p class="auth-subtitle">IDとパスワードを入力してください。</p>
+
+                <div id="tab" class="auth-tabs" role="group" aria-label="ログインの種類">
+                    <button type="button" id="student_form_btn" class="active">生徒用</button>
+                    <button type="button" id="teacher_form_btn">先生用</button>
+                </div>
+
+                <div id="student_form" class="auth-form">
+                    <h2>生徒用ログイン</h2>
+                    <form novalidate>
+                        <label for="student_id">ID</label>
+                        <input type="text" id="student_id" autocomplete="username" autocapitalize="off" spellcheck="false">
+                        <label for="student_pwd">パスワード</label>
+                        <div class="auth-password">
+                            <input type="password" id="student_pwd" autocomplete="current-password">
+                            <button type="button" class="auth-password-toggle" data-toggle-password="student_pwd" aria-label="パスワードを表示">表示</button>
+                        </div>
+                        <button type="submit" id="student_login_btn" class="auth-submit">生徒ログイン</button>
+                    </form>
+                </div>
+
+                <div id="teacher_form" class="auth-form">
+                    <h2>先生用ログイン</h2>
+                    <form novalidate>
+                        <label for="teacher_id">ID</label>
+                        <input type="text" id="teacher_id" autocomplete="username" autocapitalize="off" spellcheck="false">
+                        <label for="teacher_pwd">パスワード</label>
+                        <div class="auth-password">
+                            <input type="password" id="teacher_pwd" autocomplete="current-password">
+                            <button type="button" class="auth-password-toggle" data-toggle-password="teacher_pwd" aria-label="パスワードを表示">表示</button>
+                        </div>
+                        <button type="submit" id="teacher_login_btn" class="auth-submit">先生ログイン</button>
+                    </form>
+                </div>
+
+                <p class="auth-footer">アカウントをお持ちでない方は <a href="/registration">新規登録はこちら</a></p>
+            </section>
         </main>
         <script src="/static/login.js"></script>
+        <script>
+            document.querySelectorAll("[data-toggle-password]").forEach(function (button) {
+                button.addEventListener("click", function () {
+                    var input = document.getElementById(button.getAttribute("data-toggle-password"));
+                    var show = input.type === "password";
+                    input.type = show ? "text" : "password";
+                    button.textContent = show ? "隠す" : "表示";
+                    button.setAttribute("aria-label", show ? "パスワードを隠す" : "パスワードを表示");
+                });
+            });
+        </script>
     </body>
 </html>

@@ -49,9 +49,9 @@
     gap: 8px;
     min-height: 42px;
     padding: 0 18px;
-    color: #333;
+    color: var(--text);
     background: #fff;
-    border: 1px solid #ccc;
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
     font-size: 14px;
     font-weight: 600;
@@ -75,11 +75,11 @@
 }
 
 .reservation-filter-toggle:hover {
-    background: #f7f7f7;
+    background: var(--surface-soft);
 }
 
 .reservation-filter-toggle:focus-visible {
-    outline: 2px solid #555;
+    outline: 2px solid var(--text-muted);
     outline-offset: 2px;
 }
 
@@ -92,7 +92,7 @@
     padding: 20px;
     margin-top: 12px;
 
-    background: #f7f7f7;
+    background: var(--surface-soft);
     border: 1px solid #e2e2e2;
     border-radius: 10px;
 
@@ -114,7 +114,7 @@
 .reservation-filter-group label {
     font-size: 14px;
     font-weight: 600;
-    color: #444;
+    color: var(--text);
 }
 
 .reservation-filter-group input[type="date"] {
@@ -126,10 +126,10 @@
     padding: 0 12px;
 
     font-size: 14px;
-    color: #333;
+    color: var(--text);
 
     background: #fff;
-    border: 1px solid #ccc;
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
 
     box-sizing: border-box;
@@ -137,7 +137,7 @@
 
 .reservation-filter-group input[type="date"]:focus {
     outline: none;
-    border-color: #555;
+    border-color: var(--text-muted);
     box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.08);
 }
 
@@ -180,8 +180,8 @@
 /* 検索 */
 .reservation-btn-search {
     color: #fff;
-    background: #333;
-    border: 1px solid #333;
+    background: var(--text);
+    border: 1px solid var(--text);
 }
 
 .reservation-btn-search:hover {
@@ -191,9 +191,9 @@
 
 /* クリア */
 .reservation-btn-clear {
-    color: #444;
+    color: var(--text);
     background: #fff;
-    border: 1px solid #ccc;
+    border: 1px solid var(--border-strong);
 }
 
 .reservation-btn-clear:hover {
@@ -209,9 +209,9 @@
     width: 100%;
     overflow-x: auto;
     background: #fff;
-    border: 1px solid #dbe8df;
+    border: 1px solid var(--border);
     border-radius: 10px;
-    scrollbar-color: #adbfB2 #f2f7f3;
+    scrollbar-color: #adbfB2 var(--surface-soft);
     scrollbar-width: thin;
 }
 
@@ -236,7 +236,7 @@
 
 .reservation-admin-table thead th {
     padding: 13px 14px;
-    color: #405b49;
+    color: var(--text);
     background: #f2f8f4;
     border-bottom: 1px solid #cedfd3;
     font-size: 12px;
@@ -253,7 +253,7 @@
 
 .reservation-admin-table tbody td {
     padding: 16px 14px;
-    color: #354f3e;
+    color: var(--text);
     border-bottom: 1px solid #e5eee8;
     line-height: 1.65;
     vertical-align: top;
@@ -269,11 +269,11 @@
 }
 
 .reservation-admin-table tbody tr:nth-child(even) {
-    background: #fafcfb;
+    background: var(--surface-soft);
 }
 
 .reservation-admin-table tbody tr:hover {
-    background: #f3f9f5;
+    background: var(--surface-soft);
 }
 
 
@@ -297,7 +297,7 @@
 .reservation-admin-table th:nth-child(1),
 .reservation-admin-table td:nth-child(1) {
     width: 1%;
-    color: #748b7b;
+    color: var(--text-muted);
     white-space: nowrap;
 }
 
@@ -341,8 +341,8 @@
     min-height: 180px;
 
     padding: 24px;
-    background: #fafcfb;
-    color: #748b7b;
+    background: var(--surface-soft);
+    color: var(--text-muted);
     text-align: center;
 }
 
@@ -396,4 +396,4 @@
 
 }
 
-.reservation-admin-notice{margin:16px 0;padding:12px 16px;border-radius:10px}.reservation-admin-notice.is-success{background:#e6f4ea;color:#19472d}.reservation-admin-notice.is-error{background:#fdecec;color:#9b2424}.reservation-state{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:700;white-space:nowrap}.reservation-state.is-active{background:#e2f2e7;color:#19472d}.reservation-state.is-cancelled{background:#eceeed;color:#5f6761}.reservation-admin-table tr.is-cancelled{color:#6b716d;background:#f5f6f5}.reservation-cancel-form button{border:0;border-radius:7px;background:#a83232;color:#fff;padding:7px 10px;font-weight:700;cursor:pointer}
+.reservation-admin-notice{margin:16px 0;padding:12px 16px;border-radius:10px}.reservation-admin-notice.is-success{background:var(--primary-soft);color:var(--primary-strong)}.reservation-admin-notice.is-error{background:#fdecec;color:#9b2424}.reservation-state{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:700;white-space:nowrap}.reservation-state.is-active{background:#e2f2e7;color:var(--primary-strong)}.reservation-state.is-cancelled{background:#eceeed;color:#5f6761}.reservation-admin-table tr.is-cancelled{color:#6b716d;background:#f5f6f5}.reservation-cancel-form button{border:0;border-radius:7px;background:#a83232;color:#fff;padding:7px 10px;font-weight:700;cursor:pointer}

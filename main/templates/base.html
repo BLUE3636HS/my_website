@@ -1,3 +1,4 @@
+{% import "student_icons.html" as icons %}
 <!DOCTYPE html>
 <html lang="ja">
     <head>
@@ -7,40 +8,79 @@
         </title>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link rel="stylesheet" href="/static/base.css">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800&display=swap">
+        <link rel="stylesheet" href="/static/student/theme.css">
         <link rel="icon" href="/static/icon.ico">
         {% block css %}
         {% endblock %}
     </head>
     <body>
         {% set current_path = request.url.path %}
-        <div class="student-layout">
-            <aside class="student-sidebar">
+        {% set display_user_id = user_id or request.session.get('user_id', '') %}
+        {% macro nav_link(href, label, icon_name, prefix=None) -%}
+            {%- set p = prefix or href -%}
+            <a class="student-nav-link" href="{{ href }}"{% if current_path == p or current_path.startswith(p ~ '/') %} aria-current="page"{% endif %}>{{ icons.icon(icon_name) }}<span>{{ label }}</span></a>
+        {%- endmacro %}
+        <div class="student-layout" id="student-layout">
+            <aside class="student-sidebar" id="student-sidebar" aria-label="生徒用メニュー">
                 <div class="student-brand">
-                    <img src="/static/top.png" alt="TEKNE工作室">
+                    <a href="/dashboard" aria-label="ダッシュボードへ"><img src="/static/top.png" alt="放課後KeyNote"></a>
+                    <button class="student-icon-button student-sidebar-close" type="button" data-nav-close aria-label="メニューを閉じる">{{ icons.icon("close") }}</button>
                 </div>
                 <nav class="student-nav" aria-label="生徒用メニュー">
-                    {% if student_features.dashboard %}<a class="student-nav-link" href="/dashboard"{% if current_path == '/dashboard' %} aria-current="page"{% endif %}>ダッシュボード</a>{% endif %}
-                    {% if student_features.studies_add %}<a class="student-nav-link" href="/addform"{% if current_path == '/addform' or current_path.startswith('/addform/') %} aria-current="page"{% endif %}>研究成果追加フォーム</a>{% endif %}
-                    {% if student_features.studies_list %}<a class="student-nav-link" href="/studylist"{% if current_path == '/studylist' or current_path.startswith('/studylist/') %} aria-current="page"{% endif %}>提出物一覧</a>{% endif %}
-                    {% if student_features.community %}<a class="student-nav-link" href="/community"{% if current_path == '/community' or current_path.startswith('/community/') %} aria-current="page"{% endif %}>TEKNEコミュニティ</a>{% endif %}
-                    <a class="student-nav-link" href="/tekne-chat"{% if current_path == '/tekne-chat' or current_path.startswith('/tekne-chat/') %} aria-current="page"{% endif %}>TEKNEチャット</a>
-                    {% if student_features.workshop_reservation %}<a class="student-nav-link" href="/reservation"{% if current_path == '/reservation' or current_path.startswith('/reservation/') %} aria-current="page"{% endif %}>TEKNE工作室予約</a>{% endif %}
-                    {% if student_features.mentor_reservation %}<a class="student-nav-link" href="/mentor-reservation"{% if current_path == '/mentor-reservation' or current_path.startswith('/mentor-reservation/') %} aria-current="page"{% endif %}>大学生メンター予約</a>{% endif %}
-                    {% if student_features.equipment_reservation %}<a class="student-nav-link" href="/equipment-reservation"{% if current_path == '/equipment-reservation' or current_path.startswith('/equipment-reservation/') %} aria-current="page"{% endif %}>実験器具の貸し出し予約</a>{% endif %}
+                    {% if student_features.dashboard %}
+                    <div class="student-nav-group">
+                        {{ nav_link('/dashboard', 'ダッシュボード', 'home') }}
+                    </div>
+                    {% endif %}
+                    {% if student_features.studies_add or student_features.studies_list %}
+                    <div class="student-nav-group">
+                        <p class="student-nav-heading">研究</p>
+                        {% if student_features.studies_add %}{{ nav_link('/addform', '研究成果を追加', 'file-plus') }}{% endif %}
+                        {% if student_features.studies_list %}{{ nav_link('/studylist', '提出物一覧', 'list') }}{% endif %}
+                    </div>
+                    {% endif %}
+                    <div class="student-nav-group">
+                        <p class="student-nav-heading">交流</p>
+                        {% if student_features.community %}{{ nav_link('/community', 'TEKNEコミュニティ', 'users') }}{% endif %}
+                        {{ nav_link('/tekne-chat', 'TEKNEチャット', 'chat') }}
+                    </div>
+                    {% if student_features.workshop_reservation or student_features.mentor_reservation or student_features.equipment_reservation %}
+                    <div class="student-nav-group">
+                        <p class="student-nav-heading">予約</p>
+                        {% if student_features.workshop_reservation %}{{ nav_link('/reservation', 'TEKNE工作室', 'tool') }}{% endif %}
+                        {% if student_features.mentor_reservation %}{{ nav_link('/mentor-reservation', '大学生メンター', 'mentor') }}{% endif %}
+                        {% if student_features.equipment_reservation %}{{ nav_link('/equipment-reservation', '実験器具の貸し出し', 'flask') }}{% endif %}
+                    </div>
+                    {% endif %}
                 </nav>
-                <a class="student-mypage-link" href="/mypage"{% if current_path == '/mypage' or current_path.startswith('/mypage/') %} aria-current="page"{% endif %}>マイページ</a>
-                <a class="student-notification-link" href="/notifications"{% if current_path == '/notifications' or current_path.startswith('/notifications/') %} aria-current="page"{% endif %}>
-                    <span aria-hidden="true">🔔</span> 通知
-                    {% if unread_notification_count %}<span class="notification-badge">{{ unread_notification_count }}</span>{% endif %}
-                </a>
-                <a class="student-logout-link" href="/logout?role=student">Logout</a>
+                <div class="student-sidebar-footer">
+                    <a class="student-mypage-link" href="/mypage"{% if current_path == '/mypage' or current_path.startswith('/mypage/') %} aria-current="page"{% endif %}>{{ icons.icon("user") }}<span>マイページ</span></a>
+                    <a class="student-notification-link" href="/notifications"{% if current_path == '/notifications' or current_path.startswith('/notifications/') %} aria-current="page"{% endif %}>
+                        {{ icons.icon("bell") }}<span>通知</span>
+                        {% if unread_notification_count %}<span class="notification-badge" aria-label="未読 {{ unread_notification_count }} 件">{{ unread_notification_count }}</span>{% endif %}
+                    </a>
+                    <a class="student-logout-link" href="/logout?role=student">{{ icons.icon("logout") }}<span>ログアウト</span></a>
+                </div>
             </aside>
+            <div class="student-overlay" data-nav-close></div>
 
             <div class="student-main">
                 <header class="student-header">
-                    <p>{% block page_title %}{{ self.title() }}{% endblock %}</p>
-                    <span>{{ user_id }}</span>
+                    <button class="student-icon-button student-menu-toggle" type="button" data-nav-open aria-controls="student-sidebar" aria-expanded="false" aria-label="メニューを開く">{{ icons.icon("menu") }}</button>
+                    <p class="student-header-title">{% block page_title %}{{ self.title() }}{% endblock %}</p>
+                    <div class="student-header-actions">
+                        <a class="student-icon-button" href="/notifications" aria-label="通知{% if unread_notification_count %}（未読 {{ unread_notification_count }} 件）{% endif %}">
+                            {{ icons.icon("bell") }}
+                            {% if unread_notification_count %}<span class="notification-dot">{{ unread_notification_count if unread_notification_count < 100 else '99+' }}</span>{% endif %}
+                        </a>
+                        <a class="student-user-chip" href="/mypage" title="マイページ">
+                            <span class="student-avatar" aria-hidden="true">{{ (display_user_id or '?')[:1] }}</span>
+                            <span>{{ display_user_id }}</span>
+                        </a>
+                    </div>
                 </header>
                 <main class="student-content">
                     {% block content %}
@@ -48,6 +88,51 @@
                 </main>
             </div>
         </div>
+        <script>
+            (function () {
+                // ページを移動してもメニューのスクロール位置が先頭に戻らないようにする
+                var nav = document.querySelector(".student-nav");
+                if (!nav) return;
+                var key = "student-nav-scroll";
+                try {
+                    var saved = sessionStorage.getItem(key);
+                    if (saved !== null) nav.scrollTop = Number(saved) || 0;
+                } catch (error) { /* ストレージが使えない環境では何もしない */ }
+                var active = nav.querySelector('[aria-current="page"]');
+                if (active) {
+                    var navBox = nav.getBoundingClientRect();
+                    var itemBox = active.getBoundingClientRect();
+                    if (itemBox.top < navBox.top) nav.scrollTop -= navBox.top - itemBox.top + 8;
+                    else if (itemBox.bottom > navBox.bottom) nav.scrollTop += itemBox.bottom - navBox.bottom + 8;
+                }
+                function save() {
+                    try { sessionStorage.setItem(key, String(nav.scrollTop)); } catch (error) { /* 無視 */ }
+                }
+                nav.addEventListener("scroll", save, { passive: true });
+                nav.addEventListener("click", save);
+                window.addEventListener("pagehide", save);
+            })();
+            (function () {
+                var layout = document.getElementById("student-layout");
+                var toggle = document.querySelector("[data-nav-open]");
+                if (!layout || !toggle) return;
+                function setOpen(open) {
+                    layout.classList.toggle("is-nav-open", open);
+                    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+                    if (open) {
+                        var first = layout.querySelector(".student-sidebar a, .student-sidebar button");
+                        if (first) first.focus();
+                    }
+                }
+                toggle.addEventListener("click", function () { setOpen(true); });
+                layout.querySelectorAll("[data-nav-close]").forEach(function (el) {
+                    el.addEventListener("click", function () { setOpen(false); toggle.focus(); });
+                });
+                document.addEventListener("keydown", function (event) {
+                    if (event.key === "Escape" && layout.classList.contains("is-nav-open")) { setOpen(false); toggle.focus(); }
+                });
+            })();
+        </script>
         {% block script %}
         {% endblock %}
     </body>

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="teacher-page teacher-accounts-page">
     <section class="teacher-dashboard-card">
-        <p class="teacher-eyebrow">Student Accounts</p>
+        <p class="teacher-eyebrow">生徒</p>
         <h1>生徒アカウント一覧</h1>
         <p>自校に登録中の生徒アカウントを確認できます。</p>
         {% if field_notice %}<p class="teacher-field-notice teacher-field-notice-{{ field_notice.type }}" role="status">{{ field_notice.message }}</p>{% endif %}
@@ -30,14 +30,25 @@
             </ul>{% else %}<p>カスタム項目はまだありません。</p>{% endif %}
             </div>
         </details>
+        {% set inactive_total = inactive_counts.never + inactive_counts.stale %}
+        <div class="teacher-login-summary{% if inactive_total %} has-inactive{% endif %}" role="status">
+            {% if inactive_total %}
+            <p><strong>ログインしていない生徒が {{ inactive_total }} 人います。</strong>
+                <span class="teacher-login-badge is-never">未ログイン {{ inactive_counts.never }}人</span>
+                <span class="teacher-login-badge is-stale">{{ inactive_days }}日以上なし {{ inactive_counts.stale }}人</span></p>
+            <label class="teacher-login-filter"><input type="checkbox" id="teacher-inactive-only" autocomplete="off"> 該当する生徒だけ表示</label>
+            {% else %}
+            <p>{% if students %}全員が{{ inactive_days }}日以内にログインしています。{% else %}登録中の生徒はいません。{% endif %}</p>
+            {% endif %}
+        </div>
         <div class="teacher-table-scroll">
             <table>
-                <thead><tr><th scope="col">生徒ID</th><th scope="col">名前</th><th scope="col">フリガナ</th>{% for field in field_columns %}<th scope="col">{% if field.sortable_numeric %}<button type="button" class="teacher-number-sort" data-column-index="{{ loop.index + 2 }}" data-direction="none" aria-label="{{ field.label }}を昇順で並べ替え" title="昇順・降順に並べ替え"><span aria-hidden="true">↕</span>{{ field.label }}</button>{% else %}{{ field.label }}{% endif %}</th>{% endfor %}<th scope="col">提出物</th></tr></thead>
+                <thead><tr><th scope="col">生徒ID</th><th scope="col">名前</th><th scope="col">フリガナ</th>{% for field in field_columns %}<th scope="col">{% if field.sortable_numeric %}<button type="button" class="teacher-number-sort" data-column-index="{{ loop.index + 2 }}" data-direction="none" aria-label="{{ field.label }}を昇順で並べ替え" title="昇順・降順に並べ替え"><span aria-hidden="true">↕</span>{{ field.label }}</button>{% else %}{{ field.label }}{% endif %}</th>{% endfor %}<th scope="col">ログイン状況</th><th scope="col">提出物</th></tr></thead>
                 <tbody>
                 {% for student in students %}
-                    <tr><td>{{ student["id"] }}</td><td>{{ student["name"] or '未登録' }}</td><td>{{ student["furigana"] or '未登録' }}</td>{% for value in student["values"] %}<td>{% if value is sameas true %}はい{% elif value is sameas false %}いいえ{% elif value is sequence and value is not string %}{{ value|join('、') }}{% elif value is none or value == '' %}<span class="teacher-field-empty">未入力</span>{% else %}{{ value }}{% endif %}</td>{% endfor %}<td><button type="button" class="teacher-submission-open" data-student-id="{{ student['id'] }}" data-submissions="{{ student['submissions'] | tojson | forceescape }}">提出物({{ student['submissions']|length }})</button></td></tr>
+                    {% set login = student["login"] %}<tr class="teacher-login-row is-login-{{ login.state }}" data-login-state="{{ login.state }}"><td>{{ student["id"] }}</td><td>{{ student["name"] or '未登録' }}</td><td>{{ student["furigana"] or '未登録' }}</td>{% for value in student["values"] %}<td>{% if value is sameas true %}はい{% elif value is sameas false %}いいえ{% elif value is sequence and value is not string %}{{ value|join('、') }}{% elif value is none or value == '' %}<span class="teacher-field-empty">未入力</span>{% else %}{{ value }}{% endif %}</td>{% endfor %}<td class="teacher-login-cell">{% if login.state == 'never' %}<span class="teacher-login-badge is-never">未ログイン</span><small>一度もログインしていません</small>{% elif login.state == 'stale' %}<span class="teacher-login-badge is-stale">{{ login.days }}日間なし</span><small>最終 {{ login.last_access_at }}</small>{% else %}<span class="teacher-login-ok">{{ login.last_access_at or '記録なし' }}</span>{% endif %}</td><td><button type="button" class="teacher-submission-open" data-student-id="{{ student['id'] }}" data-submissions="{{ student['submissions'] | tojson | forceescape }}">提出物({{ student['submissions']|length }})</button></td></tr>
                 {% else %}
-                    <tr><td colspan="{{ field_columns|length + 4 }}">登録中の生徒はいません。</td></tr>
+                    <tr><td colspan="{{ field_columns|length + 5 }}">登録中の生徒はいません。</td></tr>
                 {% endfor %}
                 </tbody>
             </table>
@@ -51,6 +62,17 @@
 {% endblock %}
 {% block script %}
 <script>
+    const inactiveOnly = document.getElementById("teacher-inactive-only");
+    if (inactiveOnly) {
+        const applyInactiveFilter = () => {
+            document.querySelectorAll(".teacher-login-row").forEach((row) => {
+                row.hidden = inactiveOnly.checked && row.dataset.loginState === "active";
+            });
+        };
+        inactiveOnly.addEventListener("change", applyInactiveFilter);
+        applyInactiveFilter();
+    }
+
     const fieldTypeSelect = document.getElementById("teacher-custom-field-type");
     const optionsField = document.getElementById("teacher-custom-field-options");
     const optionsInput = optionsField.querySelector("textarea");

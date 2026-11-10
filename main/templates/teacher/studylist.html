@@ -6,14 +6,14 @@
 {% block content %}
 <div class="teacher-page teacher-studylist-page" data-delete-succeeded="{{ 'true' if delete_succeeded else 'false' }}">
     <section class="teacher-studylist-card">
-    <p class="teacher-eyebrow">Submissions</p>
+    <p class="teacher-eyebrow">研究</p>
     <h1>自校提出物確認</h1>
     <div class="teacher-study-search-wrap">
         <label for="teacher-study-search">提出物を検索</label>
         <input type="search" id="teacher-study-search" class="teacher-study-search" placeholder="題名・要約・提出日時・提出者・ファイル名" autocomplete="off">
     </div>
     <div class="teacher-table-scroll">
-    <table border="1">
+    <table>
         <thead>
             <tr>
                 <th>題名</th>

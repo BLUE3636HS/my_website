@@ -1,20 +1,22 @@
 {% extends "base.html" %}
-{% block title %}研究成果アップロード{% endblock %}
+{% block title %}研究成果を追加{% endblock %}
 {% block css %}
-    <link rel="stylesheet" href="/static/addform.css">
+    <link rel="stylesheet" href="/static/student/addform.css">
 {% endblock %}
 {% block content %}
 <div class="student-page addform-page">
     <section class="student-page-hero">
-        <p class="student-page-eyebrow">RESEARCH SUBMISSION</p>
-        <h1>研究成果アップロード</h1>
-        <p>研究成果ファイルのアップロード、またはテンプレートへの文字入力で研究成果を登録できます。</p>
+        <p class="student-page-eyebrow">研究</p>
+        <h1>研究成果を追加</h1>
+        <p>ファイルをアップロードするか、テンプレートに入力して研究成果を登録できます。</p>
     </section>
     <form class="addform-panel" id="study-form" method="post" action="/addform" enctype="multipart/form-data">
+        <section class="student-panel addform-section">
+            <h2><span class="addform-step">1</span>だれが提出しますか？</h2>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="submission_token" value="{{ submission_token }}">
         <fieldset class="study-modes">
-            <legend>提出区分</legend>
+            <legend class="addform-visually-hidden">提出区分</legend>
             <label><input type="radio" name="submission_kind" value="individual" checked> 個人で提出</label>
             <label><input type="radio" name="submission_kind" value="group"> グループで提出</label>
         </fieldset>
@@ -29,12 +31,18 @@
             {% if not submission_groups %}<p class="addform-hint">現在参加中のTEKNEチャットグループがありません。</p>{% endif %}
             <p class="addform-hint">提出時点で参加中のメンバー全員が共同提出者として記録されます。</p>
         </div>
-        <label for="name">ファイル名 (必須)</label>
+        </section>
+        <section class="student-panel addform-section">
+            <h2><span class="addform-step">2</span>研究の情報</h2>
+        <label for="name">ファイル名 <span class="addform-required">必須</span></label>
         <input type="text" id="name" name="name" required>
-        <label for="introduce">紹介文（必須）</label>
-        <textarea id="introduce" name="introduce" required></textarea>
+        <label for="introduce">紹介文 <span class="addform-required">必須</span></label>
+        <textarea id="introduce" name="introduce" required placeholder="どんな研究か、簡単に紹介してください"></textarea>
+        </section>
+        <section class="student-panel addform-section">
+            <h2><span class="addform-step">3</span>研究成果の登録方法</h2>
         <fieldset class="study-modes">
-            <legend>登録方式</legend>
+            <legend class="addform-visually-hidden">登録方式</legend>
             <label><input type="radio" name="registration_type" value="pdf" checked> ファイルをアップロード</label>
             <label><input type="radio" name="registration_type" value="template"> テンプレートから作成</label>
         </fieldset>
@@ -52,6 +60,7 @@
             </select>
             <div id="template-fields" class="study-input-panel"></div>
         </div>
+        </section>
         <p id="submission-status" role="status" aria-live="polite"></p>
         <div class="addform-actions">
             <button type="submit" id="add_btn" class="student-primary-button">研究成果を追加</button>

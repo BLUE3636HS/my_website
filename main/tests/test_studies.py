@@ -468,8 +468,9 @@ class StudyTests(unittest.TestCase):
         main.seed_school_feature_settings(self.path)
 
         html = self.render_student_studylist().body.decode()
-        self.assertIn('<th>提出日時</th>', html)
-        self.assertIn('2026-10-03 10:00:00', html)
+        # UI_cloude: 生徒用の提出物一覧は表からカード表示に変更（提出日時は <time> で表示）
+        self.assertIn('class="student-panel study-card"', html)
+        self.assertIn('<time>2026-10-03 10:00:00</time>', html)
         self.assertLess(html.index('Newest higher id'), html.index('Newest lower id'))
         self.assertLess(html.index('Newest lower id'), html.index('Older student submission'))
         self.assertNotIn('Another student submission', html)

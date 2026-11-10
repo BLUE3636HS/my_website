@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <title>ログイン | 工作室テクネ</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@300;400;500;700&display=swap">
+        <link rel="stylesheet" href="/static/student/theme.css">
+        <link rel="stylesheet" href="/static/student/auth.css">
+        <link rel="icon" href="/static/icon.ico">
+    </head>
+    <body class="auth-body">
+        {% macro eye_icon() -%}
+        <svg viewBox="0 0 50 30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M2 15C9 5.5 17 2 25 2s16 3.5 23 13c-7 9.5-15 13-23 13S9 24.5 2 15Z"/>
+            <circle cx="25" cy="15" r="7.5"/>
+            <circle cx="25" cy="15" r="5"/>
+            <path class="eye-slash" d="M8 27 42 3"/>
+        </svg>
+        {%- endmacro %}
+
+        <header class="auth-top">
+            <a class="aoharu-brand" href="/login" aria-label="工作室テクネ">
+                <img class="aoharu-brand-mark" src="/static/aoharu/logo-scissors.svg" alt="">
+                <span class="aoharu-brand-text">工作室　テクネ</span>
+            </a>
+        </header>
+
+        <main class="auth-stage">
+            <h1 class="auth-title">ログイン</h1>
+
+            <div id="tab" class="auth-tabs" role="group" aria-label="ログインの種類">
+                <button type="button" id="student_form_btn" class="active">生徒</button>
+                <button type="button" id="teacher_form_btn">先生</button>
+            </div>
+
+            <div id="student_form" class="auth-form">
+                <h2>生徒用ログイン</h2>
+                <form novalidate>
+                    <div class="auth-row">
+                        <label for="student_id">ID</label>
+                        <span class="auth-row-colon" aria-hidden="true">：</span>
+                        <input type="text" id="student_id" autocomplete="username" autocapitalize="off" spellcheck="false">
+                    </div>
+                    <div class="auth-row">
+                        <label for="student_pwd">パスワード</label>
+                        <span class="auth-row-colon" aria-hidden="true">：</span>
+                        <div class="auth-password">
+                            <input type="password" id="student_pwd" autocomplete="current-password">
+                            <button type="button" class="auth-password-toggle" data-toggle-password="student_pwd" aria-label="パスワードを表示" aria-pressed="false">{{ eye_icon() }}</button>
+                        </div>
+                    </div>
+                    <button type="submit" id="student_login_btn" class="auth-submit">ログイン</button>
+                </form>
+            </div>
+
+            <div id="teacher_form" class="auth-form">
+                <h2>先生用ログイン</h2>
+                <form novalidate>
+                    <div class="auth-row">
+                        <label for="teacher_id">ID</label>
+                        <span class="auth-row-colon" aria-hidden="true">：</span>
+                        <input type="text" id="teacher_id" autocomplete="username" autocapitalize="off" spellcheck="false">
+                    </div>
+                    <div class="auth-row">
+                        <label for="teacher_pwd">パスワード</label>
+                        <span class="auth-row-colon" aria-hidden="true">：</span>
+                        <div class="auth-password">
+                            <input type="password" id="teacher_pwd" autocomplete="current-password">
+                            <button type="button" class="auth-password-toggle" data-toggle-password="teacher_pwd" aria-label="パスワードを表示" aria-pressed="false">{{ eye_icon() }}</button>
+                        </div>
+                    </div>
+                    <button type="submit" id="teacher_login_btn" class="auth-submit">ログイン</button>
+                </form>
+            </div>
+
+            <div class="auth-illustration" aria-hidden="true"></div>
+        </main>
+
+        <nav class="auth-ground" aria-label="その他の入口">
+            <a class="auth-ground-button is-filled" href="/registration">新規登録</a>
+            <a class="auth-ground-button" href="/admin/login">管理者用</a>
+        </nav>
+
+        <script src="/static/login.js"></script>
+        <script>
+            document.querySelectorAll("[data-toggle-password]").forEach(function (button) {
+                button.addEventListener("click", function () {
+                    var input = document.getElementById(button.getAttribute("data-toggle-password"));
+                    var show = input.type === "password";
+                    input.type = show ? "text" : "password";
+                    button.setAttribute("aria-pressed", show ? "true" : "false");
+                    button.setAttribute("aria-label", show ? "パスワードを隠す" : "パスワードを表示");
+                });
+            });
+        </script>
+    </body>
+</html>

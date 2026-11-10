@@ -297,7 +297,7 @@ def build_password_router(database_path):
                 raise HTTPException(403, '管理者としてログインしてください。')
             required = db.execute('SELECT must_change_password FROM admin WHERE id=?', (account[0],)).fetchone()[0]
         if not required:
-            return RedirectResponse('/admin/mypage', 303)
+            return RedirectResponse('/admin', 303)
         token = request.session.setdefault('admin_first_password_csrf', secrets.token_urlsafe(32))
         return templates.TemplateResponse(request=request, name='admin/first_password.html',
             context={'request': request, 'csrf_token': token})
@@ -315,7 +315,7 @@ def build_password_router(database_path):
                 raise HTTPException(403, 'CSRFトークンが不正です。')
             required = db.execute('SELECT must_change_password FROM admin WHERE id=?', (account[0],)).fetchone()[0]
             if not required:
-                return RedirectResponse('/admin/mypage', 303)
+                return RedirectResponse('/admin', 303)
             try:
                 validate_admin(account[0], '', new_password)
                 if new_password != confirm_password:

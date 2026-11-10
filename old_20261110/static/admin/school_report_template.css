@@ -1,0 +1,71 @@
+.school-report-layout {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.school-report-controls {
+    min-width: 0;
+    padding: 20px;
+    border: 1px solid #d7e3db;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.school-report-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.school-report-actions #apply-template {
+    background: #25613e;
+    color: white;
+}
+
+.school-report-preview {
+    margin: 0;
+    min-width: 0;
+}
+
+.school-report-preview .preview-paper {
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+#school-report-template.template-manager { padding-bottom: 64px; }
+#school-report-template.template-manager { color: #4a3b32; }
+#school-report-template.template-manager p { color: #78665d; }
+#school-report-template .template-card,
+#school-report-template .school-report-controls,
+#school-report-template .template-source-form { border-color: #ead8cf; }
+#school-report-template.template-manager input:not([type=checkbox]),
+#school-report-template.template-manager select { border-color: #d8c7be; }
+#school-report-template.template-manager button,
+#school-report-template .template-button { border-color: #b85c38; color: #b85c38; }
+#school-report-template.template-manager .template-button,
+#school-report-template #field-apply,
+#school-report-template .school-report-actions #apply-template { border-color: #b85c38; background: #b85c38; color: #fff; }
+#school-report-template #field-apply:hover,
+#school-report-template .school-report-actions #apply-template:hover,
+#school-report-template.template-manager .template-button:hover { background: #98482d; }
+#school-report-template.template-manager :focus-visible { outline-color: rgba(184, 92, 56, .45); }
+#school-report-template .field-row { border-color: #ead8cf; }
+#school-report-template .field-row.selected { border-color: #b85c38; background: #fdf3ed; }
+#school-report-template .field-row.drop-target { border-color: #b85c38; }
+#school-report-template .preview-image-placeholder { border-color: #d8c7be; background: #fdf9f6; color: #78665d; }
+#school-report-template .field-settings-group { border-color: #ead8cf; background: #fdf9f6; }
+#school-report-template .field-settings-group legend { color: #b85c38; }
+#school-report-template #save-template { margin-top: 8px; }
+#school-report-template .template-source-form { margin: 16px 0 22px; padding: 16px; border: 1px solid #ead8cf; border-radius: 10px; background: #fff; }
+#school-report-template #template-status { min-height: 1.6em; }
+
+@media (max-width: 760px) {
+    .school-report-layout {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 16px;
+    }
+}

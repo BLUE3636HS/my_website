@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}成果レポート記入{% endblock %}
-{% block css %}<link rel="stylesheet" href="/static/group_report.css">{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/student/group_report.css">{% endblock %}
 {% block content %}
 <section id="group-report" data-group-id="{{ group.id }}" data-csrf="{{ csrf_token }}" data-user="{{ request.session.get('user_id','') }}">
  <header><div><h1>{{ group.name }}：成果レポート</h1>{% if state %}<p id="report-connection">接続中</p>{% endif %}</div>{% if state %}<button id="report-save-version" type="button">保存</button>{% endif %}</header>

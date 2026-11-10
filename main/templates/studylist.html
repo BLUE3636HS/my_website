@@ -1,40 +1,43 @@
 {% extends "base.html" %}
 {% block title %}提出物一覧{% endblock %}
 {% block css %}
-    <link rel="stylesheet" href="/static/studylist.css">
+    <link rel="stylesheet" href="/static/student/studylist.css">
 {% endblock %}
 {% block content %}
 <div class="student-page studylist-page">
     <section class="student-page-hero">
-        <p class="student-page-eyebrow">RESEARCH ARCHIVE</p>
+        <p class="student-page-eyebrow">研究</p>
         <h1>提出物一覧</h1>
         <p>自分の提出した研究成果を確認できます。</p>
     </section>
-    <section class="student-panel studylist-panel">
-    <div class="study-table-scroll">
-    <table border="1">
-        <tr>
-            <th>題名</th>
-            <th>要約</th>
-            <th>提出日時</th>
-            <th>提出者</th>
-            <th>ダウンロード</th>
-        </tr>
-        {%for study in studies%}
-        <tr>
-            <td>{{study[1]}}</td>
-            <td>{{study[2]}}</td>
-            <td>{{study[6]}}</td>
-            <td>{% set collaboration = submission_details.get(study[0]) %}{% if collaboration %}「{{ collaboration.group_name }}」{{ collaboration.submitters | join(',') }}{% else %}{{ study[8] }}{% endif %}</td>
-            <td>{% if study[7] == "pdf" %}<a href="/uploads/{{study[0]}}.pdf">{{study[3]}}</a>{% else %}<a href="/uploads/{{ study[0] }}.pdf" target="_blank" rel="noopener">PDFを開く</a>{% endif %}</td>
-        </tr>
+    {% if studies %}
+    <p class="studylist-count">{{ studies|length }} 件の提出物</p>
+    <section class="studylist-grid" aria-label="提出物">
+        {% for study in studies %}
+        {% set collaboration = submission_details.get(study[0]) %}
+        <article class="student-panel study-card">
+            <div class="study-card-head">
+                <span class="study-card-badge{% if collaboration %} is-group{% endif %}">{% if collaboration %}グループ提出{% else %}個人提出{% endif %}</span>
+                <time>{{ study[6] }}</time>
+            </div>
+            <h2>{{ study[1] }}</h2>
+            <p class="study-card-summary">{{ study[2] }}</p>
+            <dl class="study-card-meta">
+                <div><dt>提出者</dt><dd>{% if collaboration %}「{{ collaboration.group_name }}」{{ collaboration.submitters | join(',') }}{% else %}{{ study[8] }}{% endif %}</dd></div>
+            </dl>
+            <div class="study-card-actions">
+                {% if study[7] == "pdf" %}<a class="student-secondary-link" href="/uploads/{{study[0]}}.pdf">{{study[3]}}</a>{% else %}<a class="student-secondary-link" href="/uploads/{{ study[0] }}.pdf" target="_blank" rel="noopener">PDFを開く</a>{% endif %}
+            </div>
+        </article>
         {% endfor %}
-    </table>
-    </div>
-    <div class="studylist-actions">
-        {% if student_features.dashboard %}<a href="/dashboard" class="student-secondary-link">ダッシュボードへ戻る</a>{% endif %}
-    </div>
     </section>
+    {% else %}
+    <section class="student-panel studylist-empty">
+        <p class="studylist-empty-title">まだ提出物はありません</p>
+        <p>研究成果を追加すると、ここに一覧で表示されます。</p>
+        {% if student_features.studies_add %}<a href="/addform" class="student-primary-button">研究成果を追加する</a>{% endif %}
+    </section>
+    {% endif %}
 </div>
 {% endblock %}
 {% block script %}

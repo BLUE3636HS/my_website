@@ -24,6 +24,7 @@ from notifications import (
     reservation_body
 )
 from mypage_calendar import calendar_reservations, admin_calendar_reservations
+from staff_dashboard import teacher_dashboard_summary, admin_dashboard_summary, login_status, INACTIVE_DAYS
 from mentor_reservations import (
     build_router as build_mentor_router,
     csrf_token as mentor_csrf_token,
@@ -839,7 +840,7 @@ class LoginCheckMiddleware(BaseHTTPMiddleware):
                 }:
                     return RedirectResponse("/admin/first-password", status_code=303)
                 if not getattr(request.state, "admin_must_change_password", False) and request.url.path == "/admin/first-password":
-                    return RedirectResponse("/admin/mypage", status_code=303)
+                    return RedirectResponse("/admin", status_code=303)
                 return await call_next(request)
             return RedirectResponse("/admin/login", status_code=303)
 
@@ -1296,7 +1297,7 @@ async def Login(request: Request):
 @app.get("/admin/login", response_class=HTMLResponse)
 async def AdminLoginPage(request: Request):
     if request.session.get("admin_login") == True:
-        return RedirectResponse("/admin/mypage", status_code=303)
+        return RedirectResponse("/admin", status_code=303)
     return templates.TemplateResponse(
         request=request,
         name="admin/login.html",
@@ -1337,7 +1338,7 @@ async def AdminLogin(
     request.session["admin_time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if admin[2]:
         return RedirectResponse("/admin/first-password", status_code=303)
-    return RedirectResponse("/admin/mypage", status_code=303)
+    return RedirectResponse("/admin", status_code=303)
 
 @app.get("/admin/logout")
 async def AdminLogout(request: Request):
@@ -1634,6 +1635,17 @@ async def UpdateAdminReservationSchedule(
     except (sqlite3.Error, ValueError) as error:
         request.session[notice_key] = {"type": "error", "message": str(error) or "時間帯を更新できませんでした。"}
     return RedirectResponse(redirect_url, status_code=303)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def AdminDashboard(request: Request):
+    if request.session.get("admin_login") is not True:
+        return RedirectResponse("/admin/login", status_code=303)
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        summary = admin_dashboard_summary(db)
+    return templates.TemplateResponse(request=request, name="admin/dashboard.html", context={
+        "request": request, "admin_id": request.session.get("admin_id"), "summary": summary,
+    })
 
 
 @app.get("/admin/mypage", response_class=HTMLResponse)
@@ -3175,6 +3187,8 @@ async def teacher(request: Request):
 
     teacher_row = cursor.fetchone()
     teacher_school = teacher_row[2]
+    with closing(sqlite3.connect(DATABASE_PATH)) as db:
+        summary = teacher_dashboard_summary(db, teacher_school)
 
     return templates.TemplateResponse(
         request = request,
@@ -3184,7 +3198,8 @@ async def teacher(request: Request):
             "teacher_login": request.session.get("teacher_login"),
             "teacher_id": teacher_id,
             "teacher_school": teacher_school,
-            "teacher_role": teacher_row[3]
+            "teacher_role": teacher_row[3],
+            "summary": summary
         }
     )
 
@@ -3232,7 +3247,9 @@ async def TeacherAccountsPage(request: Request):
         if teacher is None:
             return RedirectResponse("/login", status_code=303)
         fields = db.execute("SELECT * FROM student_custom_field WHERE school=? AND deleted_at IS NULL ORDER BY id", (teacher[0],)).fetchall()
-        students = db.execute("SELECT id, name, furigana FROM student WHERE school = ? ORDER BY id ASC, rowid ASC", (teacher[0],)).fetchall()
+        student_columns = {row[1] for row in db.execute("PRAGMA table_info(student)")}
+        last_access_column = "last_access_at" if "last_access_at" in student_columns else "NULL"
+        students = db.execute(f"SELECT id, name, furigana, {last_access_column} AS last_access_at FROM student WHERE school = ? ORDER BY id ASC, rowid ASC", (teacher[0],)).fetchall()
         values = db.execute("""SELECT v.student_id,v.field_id,v.value_json FROM student_custom_field_value v
             JOIN student s ON s.id=v.student_id JOIN student_custom_field f ON f.id=v.field_id
             WHERE s.school=? AND f.school=? AND f.deleted_at IS NULL""", (teacher[0], teacher[0])).fetchall()
@@ -3277,7 +3294,10 @@ async def TeacherAccountsPage(request: Request):
                               "sortable_numeric": field["field_type"] == "number" or choices_are_numeric})
     student_rows = [{"id": student["id"], "name": student["name"], "furigana": student["furigana"],
                      "values": [value_map.get((student["id"], field["id"])) for field in fields],
-                     "submissions": submissions_by_student.get(student["id"], [])} for student in students]
+                     "submissions": submissions_by_student.get(student["id"], []),
+                     "login": login_status(student["last_access_at"])} for student in students]
+    inactive_counts = {state: sum(1 for row in student_rows if row["login"]["state"] == state)
+                       for state in ("never", "stale")}
     csrf_token = request.session.setdefault("teacher_custom_fields_csrf", secrets.token_urlsafe(32))
 
     return templates.TemplateResponse(
@@ -3286,6 +3306,7 @@ async def TeacherAccountsPage(request: Request):
         context={"request": request, "teacher_id": teacher_id, "teacher_role": teacher[1], "students": student_rows,
                  "custom_fields": fields, "field_columns": field_columns,
                  "field_types": STUDENT_CUSTOM_FIELD_TYPES, "csrf_token": csrf_token,
+                 "inactive_counts": inactive_counts, "inactive_days": INACTIVE_DAYS,
                  "field_notice": request.session.pop("teacher_custom_fields_notice", None)}
     )
 

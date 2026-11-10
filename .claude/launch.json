@@ -4,8 +4,40 @@
     {
       "name": "ui-cloude",
       "runtimeExecutable": "main/.venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "uvicorn", "main:app", "--app-dir", "UI_cloude", "--host", "127.0.0.1", "--port", "8020", "--reload", "--reload-dir", "UI_cloude"],
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "main:app",
+        "--app-dir",
+        "UI_cloude",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8020",
+        "--reload",
+        "--reload-dir",
+        "UI_cloude"
+      ],
       "port": 8020
+    },
+    {
+      "name": "ui-aoharu",
+      "runtimeExecutable": "UI_aoharu/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "main:app",
+        "--app-dir",
+        "UI_aoharu",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8030",
+        "--reload",
+        "--reload-dir",
+        "UI_aoharu"
+      ],
+      "port": 8030
     }
   ]
 }

@@ -1,208 +1,179 @@
-* { box-sizing: border-box; }
+/* 管理者用の画面部品（レイアウトと配色トークンは /static/staff/theme.css） */
 
-body {
-    margin: 0;
-    height: 100vh;
-    overflow: hidden;
-    font-family: "Segoe UI", "Noto Sans JP", sans-serif;
-    background: #f3f8f4;
-    color: #263b2f;
+.admin-brand { display: flex; align-items: center; gap: 4px; min-width: 0; text-decoration: none; }
+.staff-brand .admin-brand img { width: 118px; }
+.admin-brand .staff-role-badge { margin-left: 2px; }
+.admin-super-badge { margin: 0 4px 0 0; }
+.staff-sidebar-footer .logout-link { color: var(--text-muted); }
+.staff-sidebar-footer .logout-link:hover { background: var(--danger-soft); color: var(--danger); }
+.staff-sidebar-footer .logout-link:hover svg { color: var(--danger); }
+
+.admin-content { padding: 32px 32px 72px; }
+
+/* ---------- カード・見出し ---------- */
+.dashboard-card,
+.dashboard-card-wide {
+    min-width: 0;
+    padding: 28px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow);
 }
 
-.admin-layout { display: flex; height: 100vh; overflow: hidden; }
+.dashboard-card { max-width: 720px; }
+.dashboard-card h1,
+.dashboard-card-wide h1 { margin: 0 0 8px; color: var(--text-strong); font-size: clamp(24px, 3.2vw, 30px); font-weight: 800; line-height: 1.35; }
+.dashboard-card p:last-child { margin: 0; color: var(--text-muted); }
 
-.sidebar {
-    display: flex;
-    flex: 0 0 240px;
-    flex-direction: column;
-    height: 100vh;
-    padding: 28px 16px 20px;
-    background: #25613e;
-    box-shadow: 2px 0 10px rgba(0, 0, 0, .12);
-    overflow: hidden;
+.dashboard-eyebrow,
+.login-eyebrow {
+    display: inline-block;
+    margin: 0 0 8px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary-strong);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .1em;
 }
 
-.brand, .nav-link, .logout-link { color: #fff; text-decoration: none; }
-.brand { padding: 0 12px 28px; font-size: 25px; font-weight: 700; letter-spacing: .04em; }
-.nav-menu {
-    flex: 1;
-    min-height: 0;
-    border-top: 1px solid rgba(255,255,255,.25);
-    padding-top: 16px;
-    padding-right: 4px;
-    overflow-y: auto;
-    scrollbar-color: rgba(255,255,255,.45) transparent;
-    scrollbar-width: thin;
-}
-.nav-menu::-webkit-scrollbar { width: 6px; }
-.nav-menu::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(255,255,255,.45); }
-.nav-menu::-webkit-scrollbar-track { background: transparent; }
-.nav-link, .logout-link { display: block; border-radius: 7px; padding: 12px; font-weight: 600; }
-.nav-link:hover, .logout-link:hover { background: rgba(255, 255, 255, .16); }
-.logout-link { flex: 0 0 auto; margin-top: 8px; border-radius: 0; padding-top: 20px; }
-.admin-mypage-link { flex: 0 0 auto; margin-top: 8px; border-top: 1px solid rgba(255,255,255,.25); border-radius: 0; padding-top: 20px; }
-
-.admin-main { display: flex; flex: 1; flex-direction: column; height: 100vh; min-width: 0; overflow: hidden; }
-.admin-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 70px;
-    padding: 0 36px;
-    background: #fff;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, .07);
-}
-.admin-header p { margin: 0; color: #25613e; font-weight: 700; }
-.admin-header span { color: #5c7063; font-size: 14px; }
-.admin-content { flex: 1; min-height: 0; padding: 40px; overflow-y: auto; }
-.dashboard-card { max-width: 720px; padding: 36px; border-radius: 12px; background: #fff; box-shadow: 0 5px 20px rgba(37, 97, 62, .1); }
-.dashboard-eyebrow, .login-eyebrow { margin: 0 0 8px; color: #25613e; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-.dashboard-card h1 { margin: 0 0 16px; font-size: 28px; }
-.dashboard-card p:last-child { margin: 0; color: #5c7063; }
-
-.school-features-panel { max-width: 1500px; padding: 28px; border-radius: 12px; background: #fff; box-shadow: 0 5px 20px rgba(37, 97, 62, .1); }
-.school-features-panel h1 { margin: 0 0 12px; font-size: 25px; }
-.school-features-panel > p { color: #5c7063; }
-.school-features-notice { padding: 12px 16px; border-radius: 7px; background: #e8f4eb; color: #19472d !important; }
-.school-features-table-wrap { overflow-x: auto; margin: 20px 0; }
-.school-features-table { width: 100%; border-collapse: collapse; }
-.school-features-table th, .school-features-table td { padding: 12px; border-bottom: 1px solid #dce8df; text-align: center; }
-.school-features-global-row { background: #f8fbf9; }
-.school-feature-globally-disabled { background: #ededed; color: #858585; }
+/* ---------- 生徒機能設定 ---------- */
+.school-features-panel { max-width: 1500px; padding: 28px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow); }
+.school-features-panel h1 { margin: 0 0 8px; font-size: clamp(22px, 3vw, 28px); }
+.school-features-panel > p { color: var(--text-muted); }
+.school-features-notice { padding: 12px 16px; border-radius: var(--radius-sm); background: var(--success-soft); color: #166534 !important; font-weight: 700; }
+.school-features-table-wrap { overflow-x: auto; margin: 20px 0; border: 1px solid var(--border); border-radius: var(--radius); }
+.school-features-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.school-features-table th,
+.school-features-table td { padding: 12px; border-bottom: 1px solid var(--border); text-align: center; }
+.school-features-table tbody tr:last-child > * { border-bottom: 0; }
+.school-features-table tbody tr:hover > * { background: var(--surface-soft); }
+.school-features-global-row > * { background: var(--primary-soft) !important; }
+.school-feature-globally-disabled { background: #efefef !important; color: #858585; }
 .school-feature-globally-disabled .school-feature-toggle input { cursor: not-allowed; accent-color: #999; }
 .school-feature-disabled-note { display: block; margin-top: 4px; color: #777; font-size: 11px; white-space: nowrap; }
-.school-features-table thead th { min-width: 120px; background: #f3f8f4; color: #19472d; }
-.school-features-table thead th:first-child, .school-features-table tbody th { min-width: 150px; text-align: left; }
-.school-features-table tbody th { white-space: nowrap; }
-.school-feature-toggle input { width: 20px; height: 20px; accent-color: #25613e; cursor: pointer; }
-.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-.school-features-save { padding: 11px 24px; border: 0; border-radius: 7px; background: #25613e; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
-.school-features-save:hover { background: #19472d; }
+.school-features-table thead th { min-width: 120px; background: var(--surface-soft); color: var(--text-muted); font-size: 13px; }
+.school-features-table thead th:first-child,
+.school-features-table tbody th { min-width: 150px; text-align: left; }
+.school-features-table tbody th { color: var(--text-strong); white-space: nowrap; }
+.school-feature-toggle input { width: 20px; height: 20px; accent-color: var(--primary); cursor: pointer; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.school-features-save { min-height: 44px; padding: 10px 26px; border: 0; border-radius: 10px; background: var(--primary); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.school-features-save:hover { background: var(--primary-strong); }
 
-.login-page { display: grid; min-height: 100vh; height: auto; place-items: center; padding: 24px; overflow-y: auto; }
-.login-card { width: min(100%, 430px); padding: 40px; border-radius: 14px; background: #fff; box-shadow: 0 8px 28px rgba(37, 97, 62, .16); }
-.login-card h1 { margin: 0 0 10px; font-size: 28px; }
-.login-description { margin: 0 0 28px; color: #5c7063; font-size: 14px; }
-.login-card label { display: block; margin: 18px 0 7px; font-weight: 600; }
-.login-card input { width: 100%; padding: 12px; border: 1px solid #c7d8cc; border-radius: 7px; font: inherit; }
-.login-card input:focus { outline: 2px solid rgba(37, 97, 62, .25); border-color: #25613e; }
-.login-card button { width: 100%; margin-top: 26px; padding: 13px; border: 0; border-radius: 7px; background: #25613e; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
-.login-card button:hover { background: #19472d; }
-.login-error { margin: 0; padding: 10px; border-radius: 7px; background: #fff0f0; color: #a12b2b; font-size: 14px; }
-
-@media (max-width: 700px) {
-    .sidebar { flex-basis: 184px; }
-    .admin-header { padding: 0 20px; }
-    .admin-content { padding: 24px; }
+/* ---------- ログイン・初回パスワード ---------- */
+body.login-page {
+    display: grid;
+    min-height: 100vh;
+    min-height: 100dvh;
+    height: auto;
+    place-items: center;
+    padding: 32px 16px;
+    overflow-y: auto;
+    background:
+        radial-gradient(circle at 12% 18%, rgba(79, 154, 108, .2), transparent 38%),
+        radial-gradient(circle at 88% 82%, rgba(37, 97, 62, .14), transparent 36%),
+        var(--bg);
 }
 
-/* 予約確認機能用の新規スタイル */
+.login-card { width: min(100%, 440px); padding: 40px; border: 1px solid var(--border); border-radius: 24px; background: var(--surface); box-shadow: var(--shadow-lg); }
+.login-logo { display: block; width: 160px; margin: 0 auto 18px; }
+.login-card .login-eyebrow { display: table; margin: 0 auto 10px; }
+.login-card h1 { margin: 0 0 6px; color: var(--text-strong); font-size: 26px; font-weight: 800; text-align: center; }
+.login-description { margin: 0 0 24px; color: var(--text-muted); font-size: 14px; text-align: center; }
+.login-card label { display: block; margin: 16px 0 6px; color: var(--text); font-size: 14px; font-weight: 700; }
+.login-card input { display: block; width: 100%; min-height: 46px; padding: 10px 14px; border: 1px solid var(--border-strong); border-radius: 10px; color: var(--text); font: inherit; font-size: 16px; transition: border-color .15s, box-shadow .15s; }
+.login-card input:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px var(--primary-ring); }
+.login-card form > p { margin: 8px 0 0; color: var(--text-muted); font-size: 12px; }
+.login-card button { width: 100%; min-height: 48px; margin-top: 24px; border: 0; border-radius: 10px; background: var(--primary); color: #fff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px var(--primary-ring); }
+.login-card button:hover { background: var(--primary-strong); }
+.login-error { margin: 0 0 8px; padding: 10px 14px; border-radius: var(--radius-sm); background: var(--danger-soft); color: #a12b2b; font-size: 14px; }
+.login-notice { margin: 0 0 8px; padding: 10px 14px; border-radius: var(--radius-sm); background: var(--success-soft); color: #166534; font-size: 14px; }
+
+/* ---------- 検索フォーム・表 ---------- */
 .filter-form {
     display: flex;
     flex-wrap: wrap;
     gap: 16px;
     align-items: flex-end;
-    margin-bottom: 24px;
-    background: #fff;
-    padding: 16px;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, .05);
+    margin-bottom: 20px;
+    padding: 16px 18px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
 }
-.filter-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-.filter-group label {
-    font-size: 14px;
-    font-weight: 600;
-    color: #5c7063;
-}
-.filter-group input {
-    padding: 8px 12px;
-    border: 1px solid #c7d8cc;
-    border-radius: 6px;
-    font: inherit;
-}
-.filter-btn-group {
-    display: flex;
-    gap: 10px;
-}
-.btn-search {
-    background: #25613e;
-    color: #fff;
-    border: 0;
-    padding: 9px 20px;
-    border-radius: 6px;
-    font-weight: 600;
-    cursor: pointer;
-}
-.btn-search:hover {
-    background: #19472d;
-}
+
+.filter-group { display: flex; flex-direction: column; gap: 6px; }
+.filter-group label { color: var(--text-muted); font-size: 13px; font-weight: 700; }
+.filter-group input { min-height: 40px; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text); font: inherit; }
+.filter-group input:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px var(--primary-ring); }
+.filter-btn-group { display: flex; gap: 8px; }
+
+.btn-search,
 .btn-clear {
-    background: #e2ebe5;
-    color: #4a6252;
-    border: 0;
-    padding: 9px 20px;
-    border-radius: 6px;
-    font-weight: 600;
-    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    padding: 8px 20px;
+    border-radius: 10px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 700;
     text-align: center;
+    text-decoration: none;
     cursor: pointer;
 }
-.btn-clear:hover {
-    background: #cbdccf;
-}
+
+.btn-search { border: 0; background: var(--primary); color: #fff; }
+.btn-search:hover { background: var(--primary-strong); }
+.btn-clear { border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.btn-clear:hover { border-color: var(--border-strong); background: var(--surface-soft); }
+
 .table-container {
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, .05);
     overflow-x: auto;
-    padding: 16px;
-}
-.admin-table {
-    width: 100%;
-    border-collapse: collapse;
-    text-align: left;
-    font-size: 14px;
-}
-.admin-table th, .admin-table td {
-    padding: 12px 16px;
-    border-bottom: 1px solid #edf4ef;
-}
-.admin-table th {
-    background: #f6faf7;
-    color: #4a6252;
-    font-weight: 700;
-}
-.admin-table tr:hover {
-    background: #fcfdfd;
-}
-.no-data {
-    text-align: center;
-    padding: 32px;
-    color: #9aae9f;
-}
-.dashboard-card-wide {
-    padding: 36px;
-    border-radius: 12px;
-    background: #fff;
-    box-shadow: 0 5px 20px rgba(37, 97, 62, .1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
 }
 
-/* Keep the current section visible without shifting menu text. */
-.nav-link[aria-current="page"] {
-    background: rgba(255, 255, 255, .16);
-    box-shadow: inset 4px 0 0 #fff;
-    border-radius: 7px;
-    color: #fff;
-    font-weight: 700;
+.admin-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+.admin-table th,
+.admin-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.admin-table tbody tr:last-child > * { border-bottom: 0; }
+.admin-table th { background: var(--surface-soft); color: var(--text-muted); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.admin-table tbody tr:hover { background: var(--surface-soft); }
+.no-data { padding: 32px; color: var(--text-muted); text-align: center; }
+
+/* ---------- 管理者ダッシュボード ---------- */
+.admin-dashboard-page { width: min(100%, 1120px); margin: 0 auto; }
+.admin-dashboard-week { color: var(--text-muted); font-size: 12px; font-weight: 600; }
+.admin-overdue-days { color: var(--danger); font-weight: 700; }
+
+@media (max-width: 700px) {
+    .admin-content { padding: 20px 16px 56px; }
+    .dashboard-card,
+    .dashboard-card-wide,
+    .school-features-panel { padding: 20px; border-radius: var(--radius); }
+    .login-card { padding: 28px 20px; border-radius: 18px; }
 }
 
-.nav-link:focus-visible,
-.logout-link:focus-visible,
-.brand:focus-visible {
-    outline: 2px solid #fff;
-    outline-offset: 2px;
+/* 各画面の見出しラベルを共通のピル表示にそろえる */
+.staff-content .schedule-eyebrow,
+.staff-content .mentor-hero .eyebrow,
+.staff-content .account-auth-eyebrow {
+    display: inline-block;
+    margin: 0 0 8px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary-strong);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: none;
 }

@@ -1,21 +1,26 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
     <head>
-        <title>
-            新規会員登録ページ
-        </title>
+        <title>新規会員登録 | 放課後KeyNote</title>
         <meta charset="UTF-8">
-        <link rel="stylesheet" href="/static/base.css">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800&display=swap">
+        <link rel="stylesheet" href="/static/student/theme.css">
+        <link rel="stylesheet" href="/static/student/auth.css">
         <link rel="icon" href="/static/icon.ico">
-        <link rel="stylesheet" href="/static/registration.css">
     </head>
-    <body>
-        <main class="registration-page student-mode">
-            <div id="tab">
+    <body class="auth-body">
+        <main class="registration-page student-mode auth-card auth-card-wide">
+            <a href="/login" class="auth-card-logo-link"><img src="/static/top.png" alt="放課後KeyNote" class="auth-card-logo"></a>
+            <h1 class="auth-title">新規会員登録</h1>
+            <p class="auth-subtitle">登録には学校IDが必要です。</p>
+            <div id="tab" class="auth-tabs" role="group" aria-label="登録の種類">
                 <button type="button" id="student_form_btn" class="active" aria-selected="true">生徒用</button>
                 <button type="button" id="teacher_form_btn" aria-selected="false">先生用</button>
             </div>
-            <div id="student_form">
+            <div id="student_form" class="auth-form">
                 <h2>生徒用会員登録</h2>
                 <form id="school_registration_form">
                     <label for="school_student_name">名前</label>
@@ -36,11 +41,12 @@
 
                     <label for="school_id">学校ID</label>
                     <input type="password" id="school_id" autocomplete="off" maxlength="6" minlength="6" pattern="[A-HJ-NP-Z2-9]{6}" required>
-                    <button type="submit">生徒登録</button>
+                    <em>6文字の学校IDを入力してください</em>
+                    <button type="submit" class="auth-submit">生徒登録</button>
                 </form>
                 <p id="school_registration_message" role="status" aria-live="polite"></p>
             </div>
-            <div id="teacher_form">
+            <div id="teacher_form" class="auth-form">
                 <h2>先生用会員登録</h2>
                 <form id="teacher_registration_form">
                     <label for="teacher_id">ID</label>
@@ -53,11 +59,11 @@
 
                     <label for="teacher_school_id">学校ID</label>
                     <input type="password" id="teacher_school_id" autocomplete="off" maxlength="6" minlength="6" pattern="[A-HJ-NP-Z2-9]{6}" required>
-                    <button type="submit">先生登録</button>
+                    <button type="submit" class="auth-submit">先生登録</button>
                 </form>
                 <p id="teacher_registration_message" role="status" aria-live="polite"></p>
             </div>
-            <a href="/login">ログインに戻る</a>
+            <p class="auth-footer">すでにアカウントをお持ちの方は <a href="/login">ログインに戻る</a></p>
         </main>
         <script src="/static/registration.js"></script>
         <script src="/static/school_registration.js"></script>
