@@ -59,11 +59,33 @@
             <div class="staff-main teacher-main">
                 <header class="staff-header teacher-header">
                     <button class="staff-icon-button staff-menu-toggle" type="button" data-nav-open aria-controls="staff-sidebar" aria-expanded="false" aria-label="メニューを開く">{{ icons.icon("menu") }}</button>
+                    {#- サイドバーにある項目はすべて最上位の階層。その下のURLだけ2階層目にする -#}
+                    {%- set top_pages = [
+                        ('/teacher/studylist', '自校提出物確認'),
+                        ('/teacher/reports', 'グループ成果レポート'),
+                        ('/teacher/accounts', '生徒アカウント一覧'),
+                        ('/teacher/notifications', '通知送信'),
+                        ('/teacher/school-features', '自校の機能設定'),
+                        ('/teacher/school-report', '成果レポート設定'),
+                        ('/teacher/edit', 'マイページ'),
+                    ] -%}
+                    {%- set crumb = namespace(href=None, label=None) -%}
+                    {%- if current_path == '/teacher' -%}
+                        {%- set crumb.href = '/teacher' -%}{%- set crumb.label = 'ダッシュボード' -%}
+                    {%- else -%}
+                        {%- for href, label in top_pages -%}
+                            {%- if crumb.href is none and (current_path == href or current_path.startswith(href ~ '/')) -%}
+                                {%- set crumb.href = href -%}{%- set crumb.label = label -%}
+                            {%- endif -%}
+                        {%- endfor -%}
+                    {%- endif %}
                     <ol class="teacher-breadcrumb" aria-label="現在の場所">
-                        {% if current_path == '/teacher' %}
-                        <li aria-current="page">ダッシュボード</li>
+                        {% if crumb.href is none %}
+                        <li aria-current="page">{{ self.page_title() }}</li>
+                        {% elif current_path == crumb.href %}
+                        <li aria-current="page">{{ crumb.label }}</li>
                         {% else %}
-                        <li><a href="/teacher">ダッシュボード</a></li>
+                        <li><a href="{{ crumb.href }}">{{ crumb.label }}</a></li>
                         <li aria-current="page">{{ self.page_title() }}</li>
                         {% endif %}
                     </ol>

@@ -1,6 +1,6 @@
 /* =========================================================
    放課後KeyNote 先生・管理者用 共通テーマ（UI_cloude）
-   色は body の .role-teacher（テラコッタ）/ .role-admin（緑）で切り替える。
+   色は body の .role-teacher（茶・セージ）/ .role-admin（緑）で切り替える。
    ========================================================= */
 
 :root {
@@ -522,20 +522,126 @@ a { color: var(--primary); }
    役割ごとの配色（従来のテーマ色を踏襲）
    ========================================================= */
 
+/* 先生用：茶色の背景・セージ色のサイドバー・タンのヘッダー・白いカード */
 .role-teacher {
-    --primary: #b85c38;
-    --primary-strong: #94492c;
-    --primary-soft: #fbeee7;
-    --primary-ring: rgba(184, 92, 56, .22);
-    --primary-light: #e0916f;
-    --text: #3f322b;
-    --text-strong: #2b211b;
-    --text-muted: #78665d;
-    --text-subtle: #a8968c;
-    --bg: #faf6f2;
-    --surface-soft: #fdf9f6;
-    --border: #ecdfd7;
-    --border-strong: #d8c7be;
+    --primary: #7a5c33;
+    --primary-strong: #5c4326;
+    --primary-soft: #f2e9da;
+    --primary-ring: rgba(122, 92, 51, .28);
+    --primary-light: #b08d5c;
+    --text: #3d3122;
+    --text-strong: #2a2016;
+    --text-muted: #6f604c;
+    --text-subtle: #9d8f7a;
+    --bg: #85663a;
+    --surface-soft: #faf6ee;
+    --border: #e8dfcf;
+    --border-strong: #d3c5ad;
+
+    /* 先生用の面の色 */
+    --teacher-sidebar: #b5c5a8;
+    --teacher-sidebar-ink: #33291c;
+    --teacher-sidebar-muted: #56604b;
+    --teacher-nav-active: #8a6d4a;
+    --teacher-header: #c9ae84;
+    --teacher-on-bg: #ffffff;
+    --teacher-on-bg-muted: rgba(255, 255, 255, .86);
+    --teacher-on-bg-link: #f6e6c4;
+}
+
+/* サイドバー（セージ） */
+.role-teacher .staff-sidebar {
+    background: var(--teacher-sidebar);
+    border-right-color: rgba(51, 41, 28, .12);
+}
+
+.role-teacher .staff-nav-heading { color: var(--teacher-sidebar-muted); }
+
+.role-teacher .staff-nav-link,
+.role-teacher .staff-sidebar-footer a { color: var(--teacher-sidebar-ink); }
+
+.role-teacher .staff-nav-link svg,
+.role-teacher .staff-sidebar-footer svg { color: var(--teacher-sidebar-ink); }
+
+.role-teacher .staff-nav-link:hover,
+.role-teacher .staff-sidebar-footer a:hover {
+    background: rgba(255, 255, 255, .38);
+    color: var(--text-strong);
+}
+
+.role-teacher .staff-nav-link[aria-current="page"],
+.role-teacher .staff-sidebar-footer a[aria-current="page"] {
+    background: var(--teacher-nav-active);
+    color: #fff;
+}
+
+.role-teacher .staff-nav-link[aria-current="page"] svg,
+.role-teacher .staff-sidebar-footer a[aria-current="page"] svg { color: #fff; }
+
+.role-teacher .staff-nav-link[aria-current="page"]::before,
+.role-teacher .staff-sidebar-footer a[aria-current="page"]::before { background: var(--primary-strong); }
+
+.role-teacher .staff-sidebar-footer { border-top-color: rgba(51, 41, 28, .14); }
+.role-teacher .staff-sidebar-footer .staff-logout-link { color: var(--teacher-sidebar-ink); }
+
+/* ヘッダー（タン） */
+.role-teacher .staff-header {
+    background: var(--teacher-header);
+    border-bottom-color: rgba(51, 41, 28, .12);
+    backdrop-filter: none;
+}
+
+.role-teacher .staff-header .staff-icon-button { color: var(--text-strong); }
+.role-teacher .staff-header .staff-icon-button:hover { background: rgba(255, 255, 255, .35); }
+.role-teacher .staff-user-chip { border-color: rgba(51, 41, 28, .22); color: var(--text-strong); }
+.role-teacher .staff-user-chip:hover { border-color: rgba(51, 41, 28, .38); background: rgba(255, 255, 255, .35); }
+.role-teacher .staff-avatar { background: var(--teacher-nav-active); }
+
+/* 茶色の背景に直接のる文字は白にする（カードの中は従来どおり） */
+.role-teacher .staff-content :focus-visible { outline-color: rgba(255, 255, 255, .7); }
+.role-teacher :is(.staff-panel, .staff-stat-card, .staff-quick-card, .teacher-dashboard-card, .teacher-mypage-card,
+    .teacher-notification-card, .teacher-studylist-card, .template-manager, dialog) :focus-visible { outline-color: var(--primary-ring); }
+
+.role-teacher .staff-page-hero h1 { color: var(--teacher-on-bg); }
+.role-teacher .staff-page-hero > p:last-child { color: var(--teacher-on-bg-muted); }
+
+.role-teacher .staff-section-heading h2 { color: var(--teacher-on-bg); }
+.role-teacher .staff-section-heading a { color: var(--teacher-on-bg-link); }
+
+/* あいさつ欄はタンの面＋濃い文字 */
+.role-teacher .staff-hero {
+    background:
+        radial-gradient(circle at 92% 10%, rgba(255, 255, 255, .3), transparent 36%),
+        linear-gradient(135deg, #c9ae84 0%, #d6bf98 60%, #e2d0ae 100%);
+    color: var(--text-strong);
+    box-shadow: 0 10px 30px rgba(40, 28, 14, .25);
+}
+
+.role-teacher .staff-hero h1 { color: var(--text-strong); }
+.role-teacher .staff-hero p { color: var(--text); }
+.role-teacher .staff-hero .staff-hero-date { color: var(--text-muted); }
+.role-teacher .staff-hero-meta span { background: rgba(255, 255, 255, .5); color: var(--text-strong); }
+
+/* カードの影を茶色背景に合わせる */
+.role-teacher {
+    --shadow: 0 1px 3px rgba(40, 28, 14, .12), 0 8px 24px rgba(40, 28, 14, .16);
+    --shadow-sm: 0 1px 3px rgba(40, 28, 14, .14);
+}
+
+/* 成果レポート設定（テンプレート作成）は全体を白い面にのせる */
+.role-teacher .template-manager {
+    margin: 32px;
+    padding: 24px 28px 32px;
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    color: var(--text);
+}
+
+.role-teacher .template-manager :focus-visible { outline-color: var(--primary-ring); }
+
+@media (max-width: 700px) {
+    .role-teacher .template-manager { margin: 16px; padding: 18px 16px 24px; }
 }
 
 .role-admin {
