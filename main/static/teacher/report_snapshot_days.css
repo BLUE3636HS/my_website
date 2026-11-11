@@ -1,0 +1,90 @@
+/* 定期自動保存日の設定（先生用） */
+.teacher-snapshot-days-page .snapshot-days-note { color: var(--text-muted); }
+
+.snapshot-calendar {
+    max-width: 520px;
+    margin: 20px 0;
+}
+
+.snapshot-calendar-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.snapshot-calendar-head h2 { margin: 0; font-size: 20px; }
+
+.snapshot-calendar-head button {
+    width: 40px;
+    height: 40px;
+    border: 1px solid rgba(47, 107, 20, .35);
+    border-radius: 50%;
+    background: #fff;
+    color: var(--teacher-green, #2f6b14);
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.snapshot-weekdays,
+.snapshot-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    text-align: center;
+}
+
+.snapshot-weekdays { margin: 14px 0 6px; color: var(--text-muted); font-size: 13px; }
+
+.snapshot-day {
+    aspect-ratio: 1;
+    min-width: 0;
+    border: 1px solid rgba(47, 107, 20, .2);
+    border-radius: 10px;
+    background: #fff;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.snapshot-day:not(:disabled):hover { border-color: var(--teacher-green, #2f6b14); }
+.snapshot-day:disabled { cursor: default; background: #f2f2f2; color: #9a9a9a; }
+.snapshot-day.is-blank { border: 0; background: transparent; }
+.snapshot-day.is-today { outline: 2px solid var(--teacher-green, #2f6b14); outline-offset: -2px; }
+.snapshot-day.is-selected,
+.snapshot-legend .is-selected { background: var(--teacher-green, #2f6b14); color: #fff; }
+.snapshot-day.is-done,
+.snapshot-legend .is-done { background: #8fb47c; color: #fff; }
+
+.snapshot-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 13px;
+}
+
+.snapshot-legend li { display: flex; align-items: center; gap: 6px; }
+.snapshot-legend span { display: inline-block; width: 14px; height: 14px; border-radius: 4px; }
+
+.snapshot-message { margin: 0 0 12px; color: var(--teacher-green, #2f6b14); }
+.snapshot-message.is-error { color: #b42318; }
+
+.snapshot-save {
+    padding: 10px 22px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--teacher-green, #2f6b14);
+    color: #fff;
+    font: inherit;
+    cursor: pointer;
+}
+
+.snapshot-save:disabled { opacity: .6; cursor: default; }
+.snapshot-list-title { margin-top: 28px; font-size: 18px; }
+.snapshot-list { padding-left: 1.2em; }

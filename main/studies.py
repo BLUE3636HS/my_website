@@ -88,6 +88,18 @@ def initialize_studies(db):
             school_name TEXT NOT NULL, version_number INTEGER NOT NULL, template_snapshot TEXT NOT NULL,
             report_snapshot TEXT NOT NULL, saved_by TEXT NOT NULL, saved_at TEXT NOT NULL,
             UNIQUE(group_id,version_number))""")
+        # kind: 'manual' は生徒の保存（最新件数だけ残す）、'scheduled' は定期自動保存（永久保存）
+        version_columns = {row[1] for row in db.execute("PRAGMA table_info(group_report_version)")}
+        if "kind" not in version_columns:
+            db.execute("ALTER TABLE group_report_version ADD COLUMN kind TEXT NOT NULL DEFAULT 'manual'")
+        if "scheduled_date" not in version_columns:
+            db.execute("ALTER TABLE group_report_version ADD COLUMN scheduled_date TEXT")
+        db.execute("""CREATE UNIQUE INDEX IF NOT EXISTS group_report_version_scheduled
+            ON group_report_version(group_id,scheduled_date) WHERE kind='scheduled'""")
+        db.execute("""CREATE TABLE IF NOT EXISTS group_report_snapshot_day (
+            school TEXT NOT NULL, day TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+            processed_at TEXT, PRIMARY KEY(school,day))""")
+        prune_manual_report_versions(db)
         db.execute("""CREATE TABLE IF NOT EXISTS group_report_lock (
             group_id TEXT NOT NULL, field_key TEXT NOT NULL, student_id TEXT NOT NULL,
             student_name TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(group_id,field_key))""")
@@ -122,6 +134,19 @@ def initialize_studies(db):
             db.executemany("""INSERT INTO study_template_field(template_id, label, position, required)
                 VALUES (?, ?, ?, 0)""", [(inserted.lastrowid, label, i) for i, label in enumerate(labels)])
         db.execute("UPDATE study_template_field SET stable_key=lower(hex(randomblob(16))) WHERE stable_key IS NULL OR stable_key=''")
+
+
+MANUAL_REPORT_VERSION_LIMIT = 10
+
+
+def prune_manual_report_versions(db, group_id=None, keep=MANUAL_REPORT_VERSION_LIMIT):
+    """生徒の保存（kind='manual'）をグループごとに最新 keep 件だけ残し、それより古いものを削除する。"""
+    where, params = ("AND group_id=?", (group_id,)) if group_id is not None else ("", ())
+    return db.execute(f"""DELETE FROM group_report_version WHERE id IN (
+        SELECT id FROM (
+            SELECT id, ROW_NUMBER() OVER (PARTITION BY group_id ORDER BY version_number DESC) AS rank
+            FROM group_report_version WHERE kind='manual' {where})
+        WHERE rank > ?)""", (*params, keep)).rowcount
 
 
 def get_templates(db, include_inactive=False):

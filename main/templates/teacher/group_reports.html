@@ -19,6 +19,7 @@
                 {% for v in group.versions %}
                 <li>
                     <span class="teacher-report-version">v{{ v.version_number }}</span>
+                    {% if v.kind == 'scheduled' %}<span class="teacher-report-kind is-scheduled">定期保存（{{ v.scheduled_date[5:7]|int }}/{{ v.scheduled_date[8:10]|int }}）</span>{% else %}<span class="teacher-report-kind">生徒保存</span>{% endif %}
                     <time>{{ v.saved_at }}</time>
                     <span class="teacher-report-by">保存者：{{ v.saved_by }}</span>
                     <a href="/teacher/reports/{{ group.id }}/versions/{{ v.id }}.pdf" target="_blank">PDF表示・ダウンロード</a>

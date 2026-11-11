@@ -1,4 +1,5 @@
 """Admin-only template creation and visibility controls."""
+import datetime
 import logging
 import re
 import secrets
@@ -9,7 +10,7 @@ from contextlib import closing
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator, model_validator
 
 from studies import connect_studies, get_templates
@@ -79,6 +80,24 @@ class Visibility(BaseModel):
     model_config = ConfigDict(extra='forbid')
     csrf_token: StrictStr
     active: StrictBool
+
+
+JST = datetime.timezone(datetime.timedelta(hours=9))
+
+
+def snapshot_today():
+    return datetime.datetime.now(JST).date()
+
+
+def snapshot_day_label(value):
+    day = datetime.date.fromisoformat(value)
+    return f"{day.month}/{day.day}（{'月火水木金土日'[day.weekday()]}）"
+
+
+class SnapshotDays(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    csrf_token: StrictStr
+    days: list[StrictStr] = Field(default_factory=list, max_length=400)
 
 
 class SchoolReportTemplate(BaseModel):
@@ -162,6 +181,24 @@ def create_template_router(database_path, templates):
         return affected
 
     @router.get('/teacher/school-report')
+    async def school_report_hub(request: Request, source_template_id: int | None = None):
+        school = super_teacher_school(request)
+        if source_template_id is not None:
+            # 以前のURL（入口ページで複製元を読み込む形）は編集ページへ移す
+            return RedirectResponse(f'/teacher/school-report/template?source_template_id={source_template_id}', status_code=303)
+        today = snapshot_today().isoformat()
+        with closing(connect_studies(database_path())) as db:
+            assigned = db.execute('SELECT template_id,updated_at FROM school_report_template WHERE school=?', (school,)).fetchone()
+            current = next((item for item in get_templates(db, include_inactive=True) if assigned and item['id'] == assigned[0]), None)
+            upcoming = [r[0] for r in db.execute(
+                'SELECT day FROM group_report_snapshot_day WHERE school=? AND processed_at IS NULL AND day>=? ORDER BY day', (school, today))]
+            done_count = db.execute('SELECT COUNT(*) FROM group_report_snapshot_day WHERE school=? AND processed_at IS NOT NULL', (school,)).fetchone()[0]
+        return templates.TemplateResponse(request=request, name='teacher/school_report.html', context={
+            'request': request, 'school': school, 'teacher_id': request.session.get('teacher_id'), 'teacher_role': 'super_teacher',
+            'field_count': len(current['fields']) if current else 0, 'field_labels': [f['label'] for f in current['fields']] if current else [],
+            'next_day': snapshot_day_label(upcoming[0]) if upcoming else None, 'upcoming_count': len(upcoming), 'done_count': done_count})
+
+    @router.get('/teacher/school-report/template')
     async def school_report_page(request: Request, source_template_id: int | None = None):
         school = super_teacher_school(request)
         token = request.session.setdefault('school_report_template_csrf', secrets.token_urlsafe(32))
@@ -179,9 +216,55 @@ def create_template_router(database_path, templates):
             'request':request,'school':school,'csrf_token':token,'study_templates':items,
             'teacher_id':request.session.get('teacher_id'),'teacher_role':'super_teacher',
             'apply_mode':True, 'apply_endpoint':'/teacher/school-report/apply',
-            'source_action':'/teacher/school-report', 'source_template_id':source_template_id,
+            'source_action':'/teacher/school-report/template', 'source_template_id':source_template_id,
+            'source_template_name': source['name'] if source else None,
             'initial_template_fields': [{key: value for key, value in field.items() if key not in ('id', 'required')}
                                        for field in initial['fields']] if initial else []})
+
+    @router.get('/teacher/school-report/snapshot-days')
+    async def snapshot_days_page(request: Request):
+        school = super_teacher_school(request)
+        token = request.session.setdefault('school_report_template_csrf', secrets.token_urlsafe(32))
+        with closing(connect_studies(database_path())) as db:
+            days = [{'day': r[0], 'processed': r[1] is not None} for r in db.execute(
+                'SELECT day,processed_at FROM group_report_snapshot_day WHERE school=? ORDER BY day', (school,))]
+        return templates.TemplateResponse(request=request, name='teacher/report_snapshot_days.html', context={
+            'request': request, 'school': school, 'csrf_token': token, 'days': days, 'today': snapshot_today().isoformat(),
+            'teacher_id': request.session.get('teacher_id'), 'teacher_role': 'super_teacher'})
+
+    @router.post('/teacher/school-report/snapshot-days')
+    async def snapshot_days_save(request: Request, data: SnapshotDays):
+        school = super_teacher_school(request)
+        expected = request.session.get('school_report_template_csrf', '')
+        if not expected or not secrets.compare_digest(expected, data.csrf_token):
+            raise HTTPException(403, '画面を再読み込みしてください。')
+        today = snapshot_today()
+        requested = set()
+        for value in data.days:
+            try:
+                day = datetime.date.fromisoformat(value)
+            except ValueError:
+                raise HTTPException(422, '日付の形式が正しくありません。')
+            if day.isoformat() != value:
+                raise HTTPException(422, '日付の形式が正しくありません。')
+            if day <= today:
+                raise HTTPException(422, '過去の日付と今日は変更できません。明日以降の日付を選んでください。')
+            if day > today + datetime.timedelta(days=730):
+                raise HTTPException(422, '2年以内の日付を選んでください。')
+            requested.add(value)
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+        actor = request.session.get('teacher_id') or ''
+        with closing(connect_studies(database_path())) as db, db:
+            db.execute('BEGIN IMMEDIATE')
+            # 今日以前の日付（保存済み・保存待ち）は変更しない。明日以降だけを送られた内容に置き換える。
+            current = {r[0] for r in db.execute('SELECT day FROM group_report_snapshot_day WHERE school=? AND day>?', (school, today.isoformat()))}
+            for day in current - requested:
+                db.execute('DELETE FROM group_report_snapshot_day WHERE school=? AND day=?', (school, day))
+            for day in sorted(requested - current):
+                db.execute('INSERT INTO group_report_snapshot_day(school,day,created_by,created_at) VALUES(?,?,?,?)', (school, day, actor, now))
+            days = [{'day': r[0], 'processed': r[1] is not None} for r in db.execute(
+                'SELECT day,processed_at FROM group_report_snapshot_day WHERE school=? ORDER BY day', (school,))]
+        return {'ok': True, 'days': days}
 
     @router.post('/teacher/school-report/apply')
     async def school_report_apply(request: Request,data: SchoolReportTemplate):

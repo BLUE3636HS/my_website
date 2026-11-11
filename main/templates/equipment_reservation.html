@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% block title %}実験器具の貸出予約{% endblock %}
 {% block css %}<link rel="stylesheet" href="/static/student/equipment_reservation.css?v={{ asset_version }}">{% endblock %}
-{% block header_steps %}<ol class="student-header-steps" aria-label="予約の流れ"><li>予約</li><li><a href="#step-place">場所</a></li><li><a href="#step-equipment">機材選択</a></li><li><a href="#step-schedule">日程/数量</a></li><li><a href="#purpose-fields">詳細記入</a></li></ol>{% endblock %}
 {% block content %}
 <div class="student-page equipment-reservation" data-today="{{ selected_day }}">
     <section class="student-page-hero">

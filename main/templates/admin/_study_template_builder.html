@@ -4,20 +4,30 @@
      data-create-success-message="{{ create_success_message|default('') }}"
      data-source-template-id="{{ source_template_id or '' }}"
      data-apply-mode="{{ 'true' if apply_mode else 'false' }}">
-    <div class="template-toolbar"><h1>{{ builder_title|default('テンプレート追加') }}</h1><a href="{{ return_url|default('/admin/study-templates') }}">{{ return_label|default('一覧へ戻る') }}</a></div>
-    {% if study_templates is defined and study_templates %}
-    <form class="template-source-form" method="get" action="{{ source_action|default('/teacher/school-report/new') }}">
-        <label for="source-template">複製元テンプレート（任意）</label>
-        <select id="source-template" name="source_template_id"><option value="">共通テンプレートを選択</option>{% for item in study_templates %}<option value="{{ item.id }}"{% if source_template_id == item.id %} selected{% endif %}>{{ item.name }}</option>{% endfor %}</select>
-        <button type="submit">複製元を読み込む</button>
-        {% if source_template_id %}<p>既存項目の識別キーを維持したまま内容・順番を編集できます。</p>{% else %}<p>共通テンプレートを複製元として読み込めます。適用中の設定は下のフォームに表示されています。</p>{% endif %}
-    </form>
-    {% endif %}
-    {% if not hide_name %}<label for="template-name">テンプレート名（必須）</label>
-    <input id="template-name" type="text" maxlength="100" value="{{ initial_template_name|default('') }}" required>{% endif %}
-    <p>{{ builder_description|default('保存すると全生徒に公開されます。保存後の項目編集・削除はできません。') }}</p>
+    {% set can_import = study_templates is defined and study_templates %}
+    <div class="template-toolbar">
+        <div class="template-toolbar-text">
+            <h1>{{ builder_title|default('テンプレート追加') }}</h1>
+            <p>{{ builder_description|default('保存すると全生徒に公開されます。保存後の項目編集・削除はできません。') }}</p>
+        </div>
+        <div class="template-toolbar-actions">
+            {% if can_import %}<button type="button" class="template-import-open" data-import-open>既存のテンプレートからインポート</button>{% endif %}
+            {% if not apply_mode %}<a class="template-back-link" href="{{ return_url|default('/admin/study-templates') }}">{{ return_label|default('一覧へ戻る') }}</a>{% endif %}
+            <button id="save-template" class="template-button" type="button">{{ save_label|default('テンプレートを保存') }}</button>
+        </div>
+    </div>
+    <p id="template-status" role="status" aria-live="polite"></p>
+    {% if source_template_name %}<p class="template-import-notice">「{{ source_template_name }}」を読み込みました。まだ生徒には反映されていません。内容を確認して「{{ save_label|default('テンプレートを保存') }}」を押してください。</p>{% endif %}
+    {% if not hide_name %}<div class="template-name-field"><label for="template-name">テンプレート名（必須）</label>
+    <input id="template-name" type="text" maxlength="100" value="{{ initial_template_name|default('') }}" required></div>{% endif %}
     <script id="template-initial-fields" type="application/json">{{ initial_template_fields|default([])|tojson }}</script>
     <div class="template-builder">
+        <section class="template-card template-list-card">
+            <h2>項目一覧</h2>
+            <p>「編集」で右の設定に読み込みます。⋮⋮をドラッグ、または↑↓で並び替えできます。</p>
+            <ol id="field-list"></ol>
+            <button id="field-new" class="template-add-field" type="button">＋ 項目を追加</button>
+        </section>
         <form id="field-editor" class="template-card">
             <h2 id="editor-title">項目を追加</h2>
             <label for="field-type">項目の種類</label>
@@ -62,11 +72,30 @@
                 </div>
                 <p>JPEG・PNGを最大4枚、各5MBまで追加できます。キャプションは各画像50文字以内で必須です。</p>
             </fieldset>
-            <button id="field-apply" type="button">項目を追加</button><button id="field-cancel" type="button">入力をクリア</button>
+            <div class="field-editor-actions"><button id="field-apply" type="button">項目を追加</button><button id="field-cancel" type="button">入力をクリア</button></div>
         </form>
-        <section class="template-card"><h2>項目</h2><p>⋮⋮をドラッグ、または↑↓で並び替えできます。</p><ol id="field-list"></ol></section>
         <section class="template-preview"><h2>PDF簡易プレビュー</h2><p>実際のPDFとは改ページ等が異なる場合があります。</p><div class="preview-paper" id="preview-paper"></div></section>
     </div>
-    <p id="template-status" role="status" aria-live="polite"></p>
-    <button id="save-template" class="template-button" type="button">{{ save_label|default('テンプレートを保存') }}</button>
+    {% if can_import %}
+    <dialog class="template-import-dialog" id="template-import-dialog" aria-labelledby="template-import-title">
+        <form class="template-source-form" method="get" action="{{ source_action|default('/teacher/school-report/template') }}">
+            <h2 id="template-import-title">既存のテンプレートからインポート</h2>
+            <p>読み込むと、今編集中の項目はすべて選んだテンプレートの内容に置き換わります。「{{ save_label|default('テンプレートを保存') }}」を押すまで生徒には反映されません。</p>
+            <div class="template-import-body">
+                <fieldset class="template-import-options">
+                    <legend>読み込むテンプレート</legend>
+                    {% for item in study_templates %}
+                    <label class="template-import-option"><input type="radio" name="source_template_id" value="{{ item.id }}" required{% if source_template_id == item.id or (source_template_id is none and loop.first) %} checked{% endif %}><span><strong>{{ item.name }}</strong><small>{{ item.fields|length }} 項目：{{ item.fields|map(attribute='label')|join('・') }}</small></span></label>
+                    {% endfor %}
+                </fieldset>
+                <section class="template-import-preview" aria-labelledby="template-import-preview-title">
+                    <h3 id="template-import-preview-title">レイアウトイメージ</h3>
+                    <div class="preview-paper" id="template-import-preview-paper" aria-live="polite"></div>
+                </section>
+            </div>
+            <script id="template-import-data" type="application/json">{{ study_templates|map(attribute='fields')|list|tojson }}</script>
+            <div class="template-import-actions"><button type="button" data-import-close>キャンセル</button><button type="submit" class="template-button">インポート</button></div>
+        </form>
+    </dialog>
+    {% endif %}
 </div>

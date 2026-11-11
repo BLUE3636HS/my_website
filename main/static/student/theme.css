@@ -351,8 +351,8 @@ a { color: var(--primary); }
     white-space: nowrap;
 }
 
-/* ヘッダーのステップ表示（予約 ▶ … ▶ …） */
-.student-header-steps {
+/* ヘッダーのパンくず（メニュー項目 ▶ 子ページ） */
+.student-breadcrumb {
     flex: 1;
     min-width: 0;
     margin: 0;
@@ -365,7 +365,7 @@ a { color: var(--primary); }
     scrollbar-width: none;
 }
 
-.student-header-steps li {
+.student-breadcrumb li {
     display: flex;
     flex: none;
     align-items: center;
@@ -375,7 +375,7 @@ a { color: var(--primary); }
     white-space: nowrap;
 }
 
-.student-header-steps li + li::before {
+.student-breadcrumb li + li::before {
     content: "";
     width: 0;
     height: 0;
@@ -385,12 +385,12 @@ a { color: var(--primary); }
     border-left: 13px solid var(--aoharu-teal);
 }
 
-.student-header-steps a { color: inherit; text-decoration: none; }
-.student-header-steps a:hover { text-decoration: underline; }
-.student-header-steps [aria-current="step"] { color: var(--aoharu-teal-strong); font-weight: 500; }
-.student-header-steps .is-done { color: var(--aoharu-blue-deep); }
+.student-breadcrumb a { color: inherit; text-decoration: none; }
+.student-breadcrumb a:hover { text-decoration: underline; }
+.student-breadcrumb [aria-current="page"] { color: var(--aoharu-teal-strong); font-weight: 500; }
 
-.student-header-steps + .student-header-title { display: none; }
+.student-breadcrumb::-webkit-scrollbar { display: none; }
+.student-breadcrumb + .student-header-title { display: none; }
 
 .student-header-actions {
     display: flex;
@@ -686,8 +686,8 @@ a { color: var(--primary); }
     :root { --header-height: 64px; }
     .student-header { padding: 0 12px 0 8px; }
     .student-header-title { font-size: 19px; }
-    .student-header-steps li { font-size: 16px; }
-    .student-header-steps li + li::before { margin: 0 12px; border-top-width: 6px; border-bottom-width: 6px; border-left-width: 9px; }
+    .student-breadcrumb li { font-size: 16px; }
+    .student-breadcrumb li + li::before { margin: 0 12px; border-top-width: 6px; border-bottom-width: 6px; border-left-width: 9px; }
     .student-main::after { width: 180px; opacity: .9; }
 }
 
@@ -697,8 +697,6 @@ a { color: var(--primary); }
     .student-panel { padding: 22px 18px; border-radius: 24px; }
     .student-user-chip { width: 42px; padding: 4px; border: 0; background: transparent; }
     .student-user-chip span:last-child { display: none; }
-    .student-header-steps { display: none; }
-    .student-header-steps + .student-header-title { display: block; }
     .student-main::after { width: 120px; }
 }
 

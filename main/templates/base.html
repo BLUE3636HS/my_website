@@ -71,7 +71,35 @@
             <div class="student-main">
                 <header class="student-header">
                     <button class="student-icon-button student-menu-toggle" type="button" data-nav-open aria-controls="student-sidebar" aria-expanded="false" aria-label="メニューを開く">{{ icons.icon("menu") }}</button>
-                    {% block header_steps %}{% endblock %}
+                    {#- サイドバーにある項目が最上位の階層。その下のURLは子ページとして1段ずつ増やす -#}
+                    {%- set top_pages = [
+                        ('/dashboard', 'ダッシュボード'),
+                        ('/addform', '研究成果を追加'),
+                        ('/studylist', '提出物一覧'),
+                        ('/community', 'TEKNEコミュニティ'),
+                        ('/tekne-chat', 'TEKNEチャット'),
+                        ('/reservation', 'TEKNE工作室'),
+                        ('/mentor-reservation', '大学生メンター'),
+                        ('/equipment-reservation', '実験器具の貸し出し'),
+                        ('/mypage', 'マイページ'),
+                        ('/notifications', '通知'),
+                    ] -%}
+                    {%- set crumb = namespace(href=None, label=None) -%}
+                    {%- for href, label in top_pages -%}
+                        {%- if crumb.href is none and (current_path == href or current_path.startswith(href ~ '/')) -%}
+                            {%- set crumb.href = href -%}{%- set crumb.label = label -%}
+                        {%- endif -%}
+                    {%- endfor %}
+                    <ol class="student-breadcrumb" aria-label="現在の場所">
+                        {% if crumb.href is none %}
+                        <li aria-current="page">{{ self.page_title()|trim }}</li>
+                        {% elif current_path == crumb.href %}
+                        <li aria-current="page">{{ crumb.label }}</li>
+                        {% else %}
+                        <li><a href="{{ crumb.href }}">{{ crumb.label }}</a></li>
+                        <li aria-current="page">{{ self.page_title()|trim }}</li>
+                        {% endif %}
+                    </ol>
                     <p class="student-header-title">{% block page_title %}{{ self.title() }}{% endblock %}</p>
                     <div class="student-header-actions">
                         <a class="student-icon-button" href="/notifications" aria-label="通知{% if unread_notification_count %}（未読 {{ unread_notification_count }} 件）{% endif %}">
@@ -133,32 +161,6 @@
                 document.addEventListener("keydown", function (event) {
                     if (event.key === "Escape" && layout.classList.contains("is-nav-open")) { setOpen(false); toggle.focus(); }
                 });
-            })();
-            (function () {
-                // ヘッダーのステップ表示：表示中のセクションに対応する項目を強調する
-                var steps = document.querySelector(".student-header-steps");
-                var content = document.querySelector(".student-content");
-                if (!steps || !content) return;
-                var links = Array.prototype.slice.call(steps.querySelectorAll('a[href^="#"]'));
-                if (!links.length) return;
-                function update() {
-                    var top = content.getBoundingClientRect().top + 140;
-                    var current = null;
-                    links.forEach(function (link) {
-                        var target = document.getElementById(link.getAttribute("href").slice(1));
-                        if (!target || target.offsetParent === null && target.tagName !== "SPAN") return;
-                        if (target.getBoundingClientRect().top <= top) current = link;
-                    });
-                    current = current || links[0];
-                    links.forEach(function (link) {
-                        var li = link.parentElement;
-                        if (link === current) li.setAttribute("aria-current", "step");
-                        else li.removeAttribute("aria-current");
-                    });
-                }
-                content.addEventListener("scroll", update, { passive: true });
-                window.addEventListener("resize", update);
-                update();
             })();
         </script>
         {% block script %}

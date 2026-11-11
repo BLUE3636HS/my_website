@@ -1,0 +1,32 @@
+{% extends "teacher/base.html" %}
+{% block title %}定期自動保存日{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/teacher/report_snapshot_days.css">{% endblock %}
+{% block content %}
+<div class="teacher-page teacher-snapshot-days-page" id="snapshot-days" data-today="{{ today }}" data-csrf="{{ csrf_token }}">
+    <section class="teacher-dashboard-card">
+        <p class="teacher-eyebrow">設定</p>
+        <h1>定期自動保存日</h1>
+        <p>{{ school }}の全グループについて、選んだ日の23:59時点の成果レポートの下書きを自動で保存します。自動保存した履歴は削除されずに残ります。生徒が保存ボタンで保存した履歴は、グループごとに最新10件だけ残ります。</p>
+        <p class="snapshot-days-note">日付をクリックすると、自動保存日の指定と解除が切り替わります。変更できるのは明日以降の日付だけです。最後に「設定を保存」を押してください。</p>
+        <div class="snapshot-calendar" aria-live="polite">
+            <div class="snapshot-calendar-head">
+                <button type="button" id="snapshot-prev" aria-label="前の月">‹</button>
+                <h2 id="snapshot-month"></h2>
+                <button type="button" id="snapshot-next" aria-label="次の月">›</button>
+            </div>
+            <ol class="snapshot-weekdays" aria-hidden="true"><li>日</li><li>月</li><li>火</li><li>水</li><li>木</li><li>金</li><li>土</li></ol>
+            <div class="snapshot-grid" id="snapshot-grid" role="group" aria-label="自動保存日の選択"></div>
+            <ul class="snapshot-legend">
+                <li><span class="is-selected"></span>自動保存日（予定）</li>
+                <li><span class="is-done"></span>自動保存済み</li>
+            </ul>
+        </div>
+        <p id="snapshot-message" class="snapshot-message" role="status" hidden></p>
+        <button type="button" id="snapshot-save" class="snapshot-save">設定を保存</button>
+        <h2 class="snapshot-list-title">指定中の日付</h2>
+        <ul id="snapshot-list" class="snapshot-list"></ul>
+    </section>
+</div>
+<script id="snapshot-initial" type="application/json">{{ days|tojson }}</script>
+{% endblock %}
+{% block script %}<script src="/static/teacher/report_snapshot_days.js" defer></script>{% endblock %}

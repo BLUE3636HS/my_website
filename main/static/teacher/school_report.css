@@ -1,0 +1,30 @@
+/* 成果レポート設定（入口ページ） */
+.school-report-hub-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.school-report-hub-card {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+}
+
+.school-report-hub-card h2 { margin: 0 0 8px; font-size: 20px; }
+.school-report-hub-summary { margin: 0; font-size: 17px; }
+.school-report-hub-summary strong { font-size: 24px; color: var(--teacher-green, #2f6b14); }
+.school-report-hub-detail { margin: 6px 0 0; color: var(--text-muted); font-size: 14px; overflow-wrap: anywhere; }
+.school-report-hub-help { flex: 1; margin: 14px 0 18px; color: var(--text-muted); font-size: 14px; line-height: 1.7; }
+
+.school-report-hub-button {
+    align-self: flex-start;
+    padding: 10px 22px;
+    border-radius: 999px;
+    background: var(--teacher-green, #2f6b14);
+    color: #fff;
+    text-decoration: none;
+}
+
+.school-report-hub-button:hover { background: var(--teacher-green-deep, #24540f); }

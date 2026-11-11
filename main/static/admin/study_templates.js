@@ -147,10 +147,14 @@
         render(); byId('field-label').focus();
     }
     function preview() {
-        const paper = byId('preview-paper'); paper.replaceChildren();
-        const id = document.createElement('p'); id.textContent = 'ユーザーID：sample-student'; id.style.fontSize = '11pt'; paper.append(id);
         const items = fields.map(field => field === selected ? settings() : field);
         if (!selected && byId('field-label').value.trim()) items.push(settings());
+        drawPreview(byId('preview-paper'), items);
+    }
+    // PDF簡易プレビューの描画（編集画面とインポートのダイアログで共用）
+    function drawPreview(paper, items) {
+        paper.replaceChildren();
+        const id = document.createElement('p'); id.textContent = 'ユーザーID：sample-student'; id.style.fontSize = '11pt'; paper.append(id);
         items.forEach(field => {
             if (!field.hide_heading) {
                 const title = document.createElement('h3'); title.textContent = field.label;
@@ -232,6 +236,11 @@
         resetEditor(); render(); status.textContent = '項目を反映しました。';
     });
     byId('field-cancel').addEventListener('click', () => { resetEditor(); render(); });
+    byId('field-new')?.addEventListener('click', () => {
+        if (saving) return;
+        if (dirty) { status.textContent = '編集中の項目を「項目を追加」または「項目を更新」で反映するか、「入力をクリア／編集を終了」を押してから新しい項目を追加してください。'; return; }
+        resetEditor(); render(); byId('field-label').focus();
+    });
     byId('field-type').addEventListener('change', () => { updateFieldType(); preview(); });
     byId('save-template').addEventListener('click', async () => {
         if (saving) return;
@@ -240,7 +249,7 @@
             name.setCustomValidity(name.value.trim() ? '' : 'テンプレート名を入力してください。');
             if (!name.reportValidity()) return;
         }
-        if (dirty) { status.textContent = '左側の設定を「項目を追加」または「項目を更新」で反映してから保存してください。'; return; }
+        if (dirty) { status.textContent = '項目の設定欄の内容を「項目を追加」または「項目を更新」で反映してから保存してください。'; return; }
         if (!fields.length) { status.textContent = '項目を1つ以上追加してください。'; return; }
         saving = true; status.textContent = '保存しています…';
         const controls = [...root.querySelectorAll('input, select, button')].map(control => [control, control.disabled]);
@@ -264,11 +273,25 @@
         }
     });
     byId('template-name')?.addEventListener('input', () => byId('template-name').setCustomValidity(''));
-    const sourceForm = root.querySelector('.template-source-form');
-    sourceForm?.addEventListener('submit', event => {
-        if (byId('template-name')?.value.trim() || fields.length || dirty) {
-            if (!window.confirm('複製元を読み込むと、現在の入力内容は破棄されます。続けますか？')) event.preventDefault();
-        }
+    // 既存テンプレートのインポート：ダイアログで選んで読み込む（置き換えの注意はダイアログ内に表示）
+    const importDialog = byId('template-import-dialog');
+    let importTemplates = [];
+    try { importTemplates = JSON.parse(byId('template-import-data')?.textContent || '[]'); } catch (error) { importTemplates = []; }
+    const importRadios = importDialog ? [...importDialog.querySelectorAll('input[name="source_template_id"]')] : [];
+    function previewImport() {
+        const paper = byId('template-import-preview-paper'); if (!paper) return;
+        const index = importRadios.findIndex(radio => radio.checked);
+        if (index < 0 || !Array.isArray(importTemplates[index])) { paper.replaceChildren(); return; }
+        drawPreview(paper, importTemplates[index]);
+    }
+    importRadios.forEach(radio => radio.addEventListener('change', previewImport));
+    root.querySelector('[data-import-open]')?.addEventListener('click', () => {
+        if (saving || !importDialog) return;
+        previewImport();
+        if (typeof importDialog.showModal === 'function') importDialog.showModal(); else importDialog.setAttribute('open', '');
+    });
+    importDialog?.querySelector('[data-import-close]')?.addEventListener('click', () => {
+        if (typeof importDialog.close === 'function') importDialog.close(); else importDialog.removeAttribute('open');
     });
     render();
 })();

@@ -7,10 +7,43 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.responses import Response
 
-from studies import connect_studies, get_templates
+from studies import connect_studies, get_templates, prune_manual_report_versions
 from study_pdf import render_study_pdf
 from study_images import normalize_study_image
 from tekne_chat import _same_origin
+
+JST = datetime.timezone(datetime.timedelta(hours=9))
+SCHEDULED_SAVED_BY = '自動保存'
+
+
+def run_scheduled_snapshots(database_path, now=None):
+    """終わった自動保存日（指定日の23:59を過ぎた日）について、学校の全グループの下書きを永久保存する。
+
+    何度実行しても同じグループ・同じ日の保存は1件だけになる。サーバー停止で取りこぼした日は次の実行時に保存する。
+    """
+    now = now or datetime.datetime.now(JST)
+    today = now.astimezone(JST).date().isoformat()
+    saved_at = now.astimezone(datetime.timezone.utc).isoformat(timespec='seconds')
+    created = 0
+    with closing(connect_studies(database_path)) as db, db:
+        db.execute('BEGIN IMMEDIATE')
+        days = db.execute('SELECT school,day FROM group_report_snapshot_day WHERE processed_at IS NULL AND day<? ORDER BY day,school', (today,)).fetchall()
+        for school, day in days:
+            drafts = db.execute('SELECT group_id,school_id,school_name,template_snapshot,report_data FROM group_report_draft WHERE school_name=? ORDER BY group_id', (school,)).fetchall()
+            for group_id, school_id, school_name, template_snapshot, report_data in drafts:
+                if db.execute("SELECT 1 FROM group_report_version WHERE group_id=? AND kind='scheduled' AND scheduled_date=?", (group_id, day)).fetchone():
+                    continue
+                version = db.execute('SELECT COALESCE(MAX(version_number),0)+1 FROM group_report_version WHERE group_id=?', (group_id,)).fetchone()[0]
+                db.execute("""INSERT INTO group_report_version(group_id,school_id,school_name,version_number,template_snapshot,report_snapshot,saved_by,saved_at,kind,scheduled_date)
+                    VALUES(?,?,?,?,?,?,?,?,'scheduled',?)""", (group_id, school_id, school_name, version, template_snapshot, report_data, SCHEDULED_SAVED_BY, saved_at, day))
+                created += 1
+            db.execute('UPDATE group_report_snapshot_day SET processed_at=? WHERE school=? AND day=?', (saved_at, school, day))
+    return created
+
+
+def version_rows(db, group_id):
+    return [dict(zip(('id', 'version_number', 'saved_at', 'saved_by', 'kind', 'scheduled_date'), r)) for r in db.execute(
+        'SELECT id,version_number,saved_at,saved_by,kind,scheduled_date FROM group_report_version WHERE group_id=? ORDER BY version_number DESC', (group_id,))]
 
 _SOCKETS = {}
 _SOCKET_LOCK = asyncio.Lock()
@@ -118,7 +151,7 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
         if state is None:return {'unconfigured':True}
         with closing(connect_studies(database_path)) as db:
             locks=[{'field_key':r[0],'student_id':r[1],'student_name':r[2]} for r in db.execute('SELECT field_key,student_id,student_name FROM group_report_lock WHERE group_id=?',(group_id,))]
-            versions=[{'id':r[0],'version_number':r[1],'saved_at':r[2],'saved_by':r[3]} for r in db.execute('SELECT id,version_number,saved_at,saved_by FROM group_report_version WHERE group_id=? ORDER BY version_number DESC',(group_id,))]
+            versions=version_rows(db,group_id)
         return {'state':state,'locks':locks,'versions':versions}
     @router.post('/api/group-reports/{group_id}/save')
     async def save(request:Request,group_id:str):
@@ -153,6 +186,7 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
             version=db.execute('SELECT COALESCE(MAX(version_number),0)+1 FROM group_report_version WHERE group_id=?',(group_id,)).fetchone()[0]
             saved=now(); db.execute('INSERT INTO group_report_version(group_id,school_id,school_name,version_number,template_snapshot,report_snapshot,saved_by,saved_at) VALUES(?,?,?,?,?,?,?,?)',
                 (group_id,group['school_id'],group['school_name'],version,json.dumps(state['template'],ensure_ascii=False),json.dumps(state['data'],ensure_ascii=False),user,saved))
+            prune_manual_report_versions(db,group_id)
         return {'ok':True,'version_number':version,'saved_at':saved}
     @router.post('/api/group-reports/{group_id}/assets')
     async def upload_asset(request:Request,group_id:str,file:UploadFile=File(...),csrf_token:str=Form(...),field_key:str=Form(...)):
@@ -205,8 +239,7 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
             groups=db.execute('SELECT DISTINCT v.group_id,v.school_name,g.name FROM group_report_version v LEFT JOIN tekne_chat_group g ON g.id=v.group_id WHERE v.school_name=? ORDER BY g.name,v.group_id',(teacher[0],)).fetchall()
             records=[]
             for item in groups:
-                versions=db.execute('SELECT id,version_number,saved_at,saved_by FROM group_report_version WHERE group_id=? ORDER BY version_number DESC',(item[0],)).fetchall()
-                records.append({'id':item[0],'name':item[2] or item[0],'versions':[dict(zip(('id','version_number','saved_at','saved_by'),v)) for v in versions]})
+                records.append({'id':item[0],'name':item[2] or item[0],'versions':version_rows(db,item[0])})
         return templates.TemplateResponse(request=request,name='teacher/group_reports.html',context={'request':request,'groups':records,'school':teacher[0],'teacher_id':teacher_id,'teacher_role':teacher[1]})
     @router.get('/teacher/reports/{group_id}/versions/{version_id}.pdf')
     async def teacher_version_pdf(request:Request,group_id:str,version_id:int):

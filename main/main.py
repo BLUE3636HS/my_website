@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSON
 from starlette.concurrency import run_in_threadpool
 from study_pdf import render_study_pdf
 from template_management import create_template_router
-from group_reports import build_group_report_router
+from group_reports import build_group_report_router, run_scheduled_snapshots
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -447,20 +447,35 @@ async def _tekne_chat_cleanup_loop():
         await asyncio.sleep(datetime.timedelta(days=1).total_seconds())
 
 
+GROUP_REPORT_SNAPSHOT_INTERVAL_SECONDS = 5 * 60
+
+
+async def _group_report_snapshot_loop():
+    # 先生が指定した日の終わりに成果レポートの下書きを永久保存する。停止中に過ぎた日は起動時に保存する。
+    while True:
+        try:
+            await asyncio.to_thread(run_scheduled_snapshots, DATABASE_PATH)
+        except Exception:
+            logging.exception("Scheduled group report snapshot failed")
+        await asyncio.sleep(GROUP_REPORT_SNAPSHOT_INTERVAL_SECONDS)
+
+
 @app.on_event("startup")
 async def start_tekne_chat_cleanup():
     app.state.tekne_chat_cleanup_task = asyncio.create_task(_tekne_chat_cleanup_loop())
+    app.state.group_report_snapshot_task = asyncio.create_task(_group_report_snapshot_loop())
 
 
 @app.on_event("shutdown")
 async def stop_tekne_chat_cleanup():
-    task = getattr(app.state, "tekne_chat_cleanup_task", None)
-    if task is not None:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+    for name in ("tekne_chat_cleanup_task", "group_report_snapshot_task"):
+        task = getattr(app.state, name, None)
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 COMMUNITY_PAGE_SIZE = 20
 

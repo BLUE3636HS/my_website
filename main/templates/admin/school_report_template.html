@@ -1,18 +1,17 @@
 {% extends 'teacher/base.html' %}
-{% block title %}成果レポート設定{% endblock %}
+{% block title %}レポート項目の編集{% endblock %}
 {% block css %}<link rel="stylesheet" href="/static/admin/study_templates.css"><link rel="stylesheet" href="/static/admin/school_report_template.css">{% endblock %}
 {% block content %}
 {% with %}
-{% set builder_title = school ~ '：成果レポート設定' %}
+{% set builder_title = 'レポート項目の編集' %}
 {% set manager_id = 'school-report-template' %}
 {% set hide_name = true %}
-{% set builder_description = '項目を作成・編集して「適用」を押すと、学校の成果レポートに反映されます。' %}
+{% set builder_description = school ~ 'の成果レポートの項目を編集します。「適用」を押すと、生徒の成果レポートに反映されます。' %}
 {% set create_endpoint = '/teacher/school-report/apply' %}
 {% set return_url = '/teacher/school-report' %}
-{% set return_label = '成果レポート設定' %}
 {% set save_label = '適用' %}
 {% set apply_mode = true %}
-{% set source_action = '/teacher/school-report' %}
+{% set source_action = '/teacher/school-report/template' %}
 {% include 'admin/_study_template_builder.html' %}
 {% endwith %}
 {% endblock %}
