@@ -116,7 +116,12 @@
 .teacher-submission-dialog-header h2 { margin: 0; font-size: 1.1rem; overflow-wrap: anywhere; }
 .teacher-submission-dialog-body { max-height: calc(80vh - 76px); overflow-y: auto; padding: 18px 22px; }
 .teacher-submission-list { display: grid; gap: 10px; margin: 0; padding-left: 24px; }
-.teacher-submission-list li { padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-soft); }
+.teacher-submission-list li { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-soft); }
+.teacher-submission-link { display: block; padding: 12px 14px; color: inherit; text-decoration: none; border-radius: inherit; }
+.teacher-submission-link:hover { background: var(--primary-soft); }
+.teacher-submission-link:hover strong { color: var(--primary-strong); text-decoration: underline; }
+.teacher-submission-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.teacher-study-row-highlight > td { background: var(--primary-soft); }
 .teacher-submission-list strong { overflow-wrap: anywhere; }
 .teacher-submission-list p,
 .teacher-submission-empty { margin: 6px 0 0; color: var(--text-muted); font-size: 13px; }

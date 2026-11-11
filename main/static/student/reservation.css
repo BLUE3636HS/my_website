@@ -40,7 +40,7 @@
     border: 1px solid var(--border);
     border-radius: 16px;
     background: #fff;
-    box-shadow: 0 8px 26px rgba(37, 99, 235, .08);
+    box-shadow: 0 8px 26px rgba(46, 122, 151, .08);
 }
 
 .section-title {
@@ -317,7 +317,7 @@
 }
 
 .people-count-field input:focus {
-    outline: 3px solid rgba(37, 99, 235, .18);
+    outline: 3px solid rgba(46, 122, 151, .18);
     border-color: var(--primary);
 }
 
@@ -342,7 +342,7 @@
 }
 
 .purpose-field textarea:focus {
-    outline: 3px solid rgba(37, 99, 235, .18);
+    outline: 3px solid rgba(46, 122, 151, .18);
     border-color: var(--primary);
 }
 

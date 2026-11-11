@@ -11,9 +11,9 @@
     border-radius: 20px;
     background:
         radial-gradient(circle at 92% 10%, rgba(245, 184, 46, .35), transparent 32%),
-        linear-gradient(135deg, #1d4ed8 0%, #2563eb 45%, #3b82f6 100%);
+        linear-gradient(135deg, #24637c 0%, #2e7a97 45%, #57acc9 100%);
     color: #fff;
-    box-shadow: 0 10px 30px rgba(37, 99, 235, .25);
+    box-shadow: 0 10px 30px rgba(46, 122, 151, .25);
 }
 
 .dashboard-hero h1 {
@@ -117,7 +117,7 @@
 }
 
 /* ---------- 色のトーン ---------- */
-.tone-blue   { --tone: #2563eb; --tone-soft: #eaf1ff; }
+.tone-blue   { --tone: #2e7a97; --tone-soft: #e6f3f8; }
 .tone-indigo { --tone: #4f46e5; --tone-soft: #eef0ff; }
 .tone-teal   { --tone: #0d9488; --tone-soft: #e6f7f5; }
 .tone-green  { --tone: #16a34a; --tone-soft: #eaf8ef; }

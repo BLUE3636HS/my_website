@@ -10,11 +10,12 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800&display=swap">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@300;400;500;700&display=swap">
         <link rel="stylesheet" href="/static/student/theme.css">
         <link rel="icon" href="/static/icon.ico">
         {% block css %}
         {% endblock %}
+        <link rel="stylesheet" href="/static/student/aoharu.css">
     </head>
     <body>
         {% set current_path = request.url.path %}
@@ -26,7 +27,7 @@
         <div class="student-layout" id="student-layout">
             <aside class="student-sidebar" id="student-sidebar" aria-label="生徒用メニュー">
                 <div class="student-brand">
-                    <a href="/dashboard" aria-label="ダッシュボードへ"><img src="/static/top.png" alt="放課後KeyNote"></a>
+                    <a class="aoharu-brand" href="/dashboard" aria-label="工作室テクネ ダッシュボードへ"><img class="aoharu-brand-mark" src="/static/aoharu/logo-scissors.svg" alt=""><span class="aoharu-brand-text">工作室　テクネ</span></a>
                     <button class="student-icon-button student-sidebar-close" type="button" data-nav-close aria-label="メニューを閉じる">{{ icons.icon("close") }}</button>
                 </div>
                 <nav class="student-nav" aria-label="生徒用メニュー">
@@ -70,6 +71,7 @@
             <div class="student-main">
                 <header class="student-header">
                     <button class="student-icon-button student-menu-toggle" type="button" data-nav-open aria-controls="student-sidebar" aria-expanded="false" aria-label="メニューを開く">{{ icons.icon("menu") }}</button>
+                    {% block header_steps %}{% endblock %}
                     <p class="student-header-title">{% block page_title %}{{ self.title() }}{% endblock %}</p>
                     <div class="student-header-actions">
                         <a class="student-icon-button" href="/notifications" aria-label="通知{% if unread_notification_count %}（未読 {{ unread_notification_count }} 件）{% endif %}">
@@ -131,6 +133,32 @@
                 document.addEventListener("keydown", function (event) {
                     if (event.key === "Escape" && layout.classList.contains("is-nav-open")) { setOpen(false); toggle.focus(); }
                 });
+            })();
+            (function () {
+                // ヘッダーのステップ表示：表示中のセクションに対応する項目を強調する
+                var steps = document.querySelector(".student-header-steps");
+                var content = document.querySelector(".student-content");
+                if (!steps || !content) return;
+                var links = Array.prototype.slice.call(steps.querySelectorAll('a[href^="#"]'));
+                if (!links.length) return;
+                function update() {
+                    var top = content.getBoundingClientRect().top + 140;
+                    var current = null;
+                    links.forEach(function (link) {
+                        var target = document.getElementById(link.getAttribute("href").slice(1));
+                        if (!target || target.offsetParent === null && target.tagName !== "SPAN") return;
+                        if (target.getBoundingClientRect().top <= top) current = link;
+                    });
+                    current = current || links[0];
+                    links.forEach(function (link) {
+                        var li = link.parentElement;
+                        if (link === current) li.setAttribute("aria-current", "step");
+                        else li.removeAttribute("aria-current");
+                    });
+                }
+                content.addEventListener("scroll", update, { passive: true });
+                window.addEventListener("resize", update);
+                update();
             })();
         </script>
         {% block script %}

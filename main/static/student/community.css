@@ -3,7 +3,7 @@
 .community-composer h1 { margin: 0 0 20px; color: var(--text); }
 .community-composer label { display: block; margin-bottom: 8px; color: #526477; font-weight: 700; }
 .community-composer textarea, .community-reply-form textarea { width: 100%; resize: vertical; border: 1px solid #cbd8e5; border-radius: 9px; padding: 12px; font: inherit; line-height: 1.6; }
-.community-composer textarea:focus, .community-reply-form textarea:focus { outline: 2px solid rgba(37, 99, 235,.2); border-color: var(--primary); }
+.community-composer textarea:focus, .community-reply-form textarea:focus { outline: 2px solid rgba(46, 122, 151,.2); border-color: var(--primary); }
 .community-form-footer { display: flex; align-items: center; justify-content: flex-end; gap: 18px; margin-top: 12px; }
 .community-form-footer .student-primary-button { min-width: 120px; padding: 10px 20px; }
 .community-counter, .community-status { color: var(--text-muted); font-size: 13px; }

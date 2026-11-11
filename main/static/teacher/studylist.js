@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (searchInput && tableBody) {
         const rows = Array.from(tableBody.querySelectorAll("[data-searchable-row]"));
         const noResults = tableBody.querySelector(".teacher-study-no-results");
-        searchInput.addEventListener("input", () => {
+        const applySearch = () => {
             const query = searchInput.value.trim().toLocaleLowerCase();
             let visibleCount = 0;
             rows.forEach((row) => {
@@ -32,6 +32,18 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (matches) visibleCount += 1;
             });
             if (noResults) noResults.hidden = visibleCount !== 0 || query === "";
-        });
+        };
+        searchInput.addEventListener("input", applySearch);
+        if (searchInput.value.trim()) applySearch();
+    }
+
+    const highlightId = new URLSearchParams(window.location.search).get("study");
+    if (highlightId) {
+        const target = Array.from(document.querySelectorAll("[data-study-id]"))
+            .find((row) => row.dataset.studyId === highlightId && !row.hidden);
+        if (target) {
+            target.classList.add("teacher-study-row-highlight");
+            target.scrollIntoView({ block: "center" });
+        }
     }
 });

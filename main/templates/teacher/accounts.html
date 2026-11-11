@@ -100,12 +100,21 @@
         list.className = "teacher-submission-list";
         submissions.forEach((submission) => {
             const item = document.createElement("li");
+            const link = document.createElement("a");
+            link.className = "teacher-submission-link";
+            const query = submission.kind === "group"
+                ? (submission.group_name || submission.title || "")
+                : (button.dataset.studentId || "");
+            const params = new URLSearchParams({ q: query });
+            if (submission.id !== undefined && submission.id !== null) params.set("study", String(submission.id));
+            link.href = `/teacher/studylist?${params.toString()}`;
             const title = document.createElement("strong");
             title.textContent = submission.title || "（タイトルなし）";
             const metadata = document.createElement("p");
             const type = submission.kind === "group" ? `グループ提出${submission.group_name ? `（${submission.group_name}）` : ""}` : "個人提出";
             metadata.textContent = `${submission.time || "日時不明"}・${type}`;
-            item.append(title, metadata);
+            link.append(title, metadata);
+            item.append(link);
             list.append(item);
         });
         submissionDialogBody.replaceChildren(list);

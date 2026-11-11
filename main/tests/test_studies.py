@@ -8,6 +8,7 @@ import secrets
 import sqlite3
 import tempfile
 import unittest
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from pathlib import Path
@@ -273,6 +274,22 @@ class StudyTests(unittest.TestCase):
         self.assertIn('山田太郎', html)
         self.assertIn('鈴木花子', html)
         self.assertNotIn('「共同研究」a,c', html)
+
+    def test_teacher_studylist_prefills_search_and_marks_study_rows(self):
+        with closing(connect_studies(self.path)) as db:
+            db.execute("UPDATE student SET name='山田太郎' WHERE id='a'")
+            db.commit()
+        self.submit(name='個人提出')
+        group_id = self.create_study_group()
+        self.submit(name='グループ提出', submission_kind='group', chat_group_id=group_id)
+        endpoint = next(route.endpoint for route in main.app.routes
+                        if getattr(route, 'path', '') == '/teacher/studylist' and 'GET' in route.methods)
+        req = request('/teacher/studylist', {'teacher_login': True, 'teacher_id': 'teacher1'})
+        req.scope['query_string'] = urllib.parse.urlencode({'q': '共同研究', 'study': 2}).encode()
+        html = asyncio.run(endpoint(req)).body.decode()
+        self.assertIn('value="共同研究"', html)
+        self.assertIn('id="study-1" data-searchable-row data-study-id="1">', html)
+        self.assertIn('id="study-2" data-searchable-row data-study-id="2">', html)
 
     def test_student_studylist_falls_back_to_id_when_name_is_unregistered(self):
         self.submit(name='未登録の名前')

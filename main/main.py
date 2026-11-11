@@ -3267,7 +3267,7 @@ async def TeacherAccountsPage(request: Request):
                    ))
                 ORDER BY study.time DESC, study.id DESC""", (*student_ids, *student_ids)).fetchall()
             for submission in submissions:
-                item = {"title": submission["name"], "time": submission["time"],
+                item = {"id": submission["id"], "title": submission["name"], "time": submission["time"],
                         "kind": submission["submission_kind"],
                         "group_name": submission["chat_group_name"] if submission["submission_kind"] == "group" else ""}
                 if submission["submission_kind"] == "group":
@@ -3657,7 +3657,8 @@ async def StudyList(request: Request):
             "teacher_id": teacher_id,
             "teacher_role": teacher[1] if teacher else "teacher",
             "csrf_token": csrf_token,
-            "delete_succeeded": delete_succeeded
+            "delete_succeeded": delete_succeeded,
+            "initial_search": request.query_params.get("q", "")[:100]
         }
     )
 

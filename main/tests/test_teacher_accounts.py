@@ -98,6 +98,8 @@ class TeacherAccountsTests(unittest.TestCase):
         self.assertIn("Group Alpha", html)
         self.assertNotIn("Other school report", html)
         self.assertLess(html.index("Group report"), html.index("Individual report"))
+        self.assertIn("&#34;id&#34;: 1", html.replace("&quot;", "&#34;"))
+        self.assertIn("/teacher/studylist?", html)
 
     def test_super_teacher_can_manage_only_own_school_feature_settings(self):
         with closing(sqlite3.connect(self.db_path)) as db:

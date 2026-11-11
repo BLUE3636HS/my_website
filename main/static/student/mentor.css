@@ -39,7 +39,7 @@
 .student-content .mentor-card {
     padding: 28px;
     border-color: var(--border);
-    box-shadow: 0 8px 26px rgba(37, 99, 235, .08);
+    box-shadow: 0 8px 26px rgba(46, 122, 151, .08);
 }
 
 .student-content .mentor-card {
@@ -92,7 +92,7 @@
 .student-content .mentor-form input:focus,
 .student-content .mentor-form select:focus,
 .student-content .mentor-form textarea:focus {
-    outline: 3px solid rgba(37, 99, 235, .16);
+    outline: 3px solid rgba(46, 122, 151, .16);
     border-color: var(--primary);
 }
 

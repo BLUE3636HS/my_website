@@ -10,7 +10,7 @@
     <h1>自校提出物確認</h1>
     <div class="teacher-study-search-wrap">
         <label for="teacher-study-search">提出物を検索</label>
-        <input type="search" id="teacher-study-search" class="teacher-study-search" placeholder="題名・要約・提出日時・提出者・ファイル名" autocomplete="off">
+        <input type="search" id="teacher-study-search" class="teacher-study-search" placeholder="題名・要約・提出日時・提出者・ファイル名" autocomplete="off" value="{{ initial_search }}">
     </div>
     <div class="teacher-table-scroll">
     <table>
@@ -26,7 +26,7 @@
         </thead>
         <tbody>
         {%for study in studies%}
-        <tr class="teacher-study-row" data-searchable-row>
+        <tr class="teacher-study-row" id="study-{{ study[0] }}" data-searchable-row data-study-id="{{ study[0] }}">
             <td>{{study[1]}}</td>
             <td>{{study[2]}}</td>
             <td>{{study[6]}}</td>

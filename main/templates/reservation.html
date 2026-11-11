@@ -3,6 +3,7 @@
 {% block css %}
     <link rel="stylesheet" href="/static/student/reservation.css">
 {% endblock %}
+{% block header_steps %}<ol class="student-header-steps" aria-label="予約の流れ"><li>予約</li><li><a href="#step-date">日程</a></li><li><a href="#step-time">時間</a></li><li><a href="#step-detail">詳細記入</a></li></ol>{% endblock %}
 {% block content %}
 <div
     class="reservation-page"
@@ -19,7 +20,7 @@
     </section>
 
     <div class="booking-grid">
-        <section class="reservation-panel">
+        <section id="step-date" class="reservation-panel">
             <div class="section-title">
                 <span>1</span>
                 <div>
@@ -42,7 +43,7 @@
             <p id="selected-date" class="selection">日付を選択してください</p>
         </section>
 
-        <section class="reservation-panel">
+        <section id="step-time" class="reservation-panel">
             <div class="section-title">
                 <span>2</span>
                 <div>
@@ -62,7 +63,7 @@
         </section>
     </div>
 
-    <section class="reservation-panel reservation-form-panel">
+    <section id="step-detail" class="reservation-panel reservation-form-panel">
         <div class="section-title">
             <span>3</span>
             <div>
