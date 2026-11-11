@@ -10,6 +10,29 @@ def notification_now():
     return datetime.datetime.now(JST).isoformat(timespec="seconds")
 
 
+# 生徒向け通知の受信区分。
+# office: 先生・管理者から手動送信された事務連絡（notification_type = 'manual'）
+# system: 予約受付・キャンセル・前日リマインドなどシステムが自動送信する通知
+NOTIFICATION_CATEGORIES = {
+    "office": {"label": "事務連絡", "where": "notification_type = 'manual'"},
+    "system": {"label": "システム", "where": "notification_type <> 'manual'"},
+}
+DEFAULT_NOTIFICATION_CATEGORY = "office"
+
+
+def normalize_notification_category(category):
+    return category if isinstance(category, str) and category in NOTIFICATION_CATEGORIES \
+        else DEFAULT_NOTIFICATION_CATEGORY
+
+
+def notification_category(notification_type):
+    return "office" if notification_type == "manual" else "system"
+
+
+def notification_category_label(notification_type):
+    return NOTIFICATION_CATEGORIES[notification_category(notification_type)]["label"]
+
+
 def initialize_notification_tables(db):
     db.executescript("""
         CREATE TABLE IF NOT EXISTS notification_batch (

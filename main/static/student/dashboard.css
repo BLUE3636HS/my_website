@@ -305,3 +305,8 @@
 @media (max-width: 380px) {
     .dashboard-quick-text small { display: none; }
 }
+
+.dashboard-notification-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.dashboard-notification-meta .notification-kind { margin-right: 0; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.dashboard-notification-meta .notification-kind-office { background: #fdeee0; color: #a85a12; }
+.dashboard-notification-meta .notification-kind-system { background: #e4edf5; color: var(--primary); }

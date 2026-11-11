@@ -20,6 +20,9 @@ from study_images import normalize_study_image, study_image_path
 from urllib.parse import urlencode
 from PIL import Image, ImageOps, UnidentifiedImageError
 from notifications import (
+    DEFAULT_NOTIFICATION_CATEGORY, NOTIFICATION_CATEGORIES,
+    normalize_notification_category, notification_category,
+    notification_category_label,
     create_notification, initialize_notification_tables, notification_now,
     reservation_body
 )
@@ -423,6 +426,8 @@ def student_template_context(request):
 
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"), context_processors=[student_template_context, admin_template_context])
+templates.env.filters["notification_category"] = notification_category
+templates.env.filters["notification_category_label"] = notification_category_label
 app.include_router(build_admin_router(DATABASE_PATH, templates, MENTOR_PROFILE_UPLOADS_DIR))
 app.include_router(build_school_feature_router(DATABASE_PATH, templates))
 app.include_router(build_password_router(DATABASE_PATH))
@@ -1024,7 +1029,7 @@ async def Dashboard(request: Request):
         ).fetchone()
         unread_notifications = db.execute(
             """
-            SELECT id, title, created_at
+            SELECT id, title, created_at, notification_type
             FROM notification
             WHERE recipient_user_id = ? AND is_read = 0
             ORDER BY created_at DESC, id DESC
@@ -1362,23 +1367,35 @@ def valid_notification_csrf(request, token, key="notification_csrf_token"):
 
 
 @app.get("/notifications", response_class=HTMLResponse)
-async def NotificationList(request: Request, page: int = 1):
+async def NotificationList(request: Request, page: int = 1, tab: str = DEFAULT_NOTIFICATION_CATEGORY):
     user_id = request.session.get("user_id")
     page = max(1, page)
     page_size = 20
+    tab = normalize_notification_category(tab)
+    category_where = NOTIFICATION_CATEGORIES[tab]["where"]
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
         total = db.execute(
-            "SELECT COUNT(*) FROM notification WHERE recipient_user_id = ?", (user_id,)
+            f"SELECT COUNT(*) FROM notification WHERE recipient_user_id = ? AND {category_where}",
+            (user_id,)
         ).fetchone()[0]
-        notifications = db.execute("""
+        notifications = db.execute(f"""
             SELECT id, title, body, sender_name, is_read, created_at
-            FROM notification WHERE recipient_user_id = ?
+            FROM notification WHERE recipient_user_id = ? AND {category_where}
             ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
         """, (user_id, page_size, (page - 1) * page_size)).fetchall()
+        tabs = []
+        for key, category in NOTIFICATION_CATEGORIES.items():
+            unread = db.execute(
+                f"SELECT COUNT(*) FROM notification WHERE recipient_user_id = ? AND is_read = 0 AND {category['where']}",
+                (user_id,)
+            ).fetchone()[0]
+            tabs.append({"key": key, "label": category["label"], "unread": unread})
     return templates.TemplateResponse(request=request, name="notifications.html", context={
         "request": request, "user_id": user_id, "notifications": notifications,
         "page": page, "has_previous": page > 1,
         "has_next": page * page_size < total,
+        "tab": tab, "tab_label": NOTIFICATION_CATEGORIES[tab]["label"], "tabs": tabs,
+        "tab_unread": next(item["unread"] for item in tabs if item["key"] == tab),
         "csrf_token": notification_csrf_token(request)
     })
 
@@ -1403,23 +1420,28 @@ async def NotificationDetail(request: Request, notification_id: int):
             notification = dict(notification)
             notification["is_read"] = 1
             notification["read_at"] = read_at
+    category = notification_category(notification["notification_type"])
     return templates.TemplateResponse(request=request, name="notification_detail.html", context={
-        "request": request, "user_id": user_id, "notification": notification
+        "request": request, "user_id": user_id, "notification": notification,
+        "category": category, "category_label": NOTIFICATION_CATEGORIES[category]["label"]
     })
 
 
 @app.post("/notifications/read-all")
-async def ReadAllNotifications(request: Request, csrf_token: str = Form(...)):
+async def ReadAllNotifications(request: Request, csrf_token: str = Form(...),
+                               tab: str = Form(DEFAULT_NOTIFICATION_CATEGORY)):
     if not valid_notification_csrf(request, csrf_token):
         raise HTTPException(status_code=403, detail="操作を確認できませんでした。")
     user_id = request.session.get("user_id")
+    tab = normalize_notification_category(tab)
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
-        db.execute("""
+        db.execute(f"""
             UPDATE notification SET is_read = 1, read_at = ?
             WHERE recipient_user_id = ? AND is_read = 0
+              AND {NOTIFICATION_CATEGORIES[tab]["where"]}
         """, (notification_now(), user_id))
         db.commit()
-    return RedirectResponse("/notifications", status_code=303)
+    return RedirectResponse(f"/notifications?tab={tab}", status_code=303)
 
 
 @app.get("/admin/notifications", response_class=HTMLResponse)

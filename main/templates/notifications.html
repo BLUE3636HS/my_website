@@ -5,27 +5,36 @@
 <div class="student-page notification-page">
     <section class="student-page-hero">
         <p class="student-page-eyebrow">お知らせ</p><h1>通知</h1>
-        <p>管理者から届いたお知らせを確認できます。</p>
+        <p>先生・管理者からの事務連絡と、予約受付などのシステム通知を確認できます。</p>
     </section>
+    <nav class="notification-tabs" aria-label="通知の種類">
+        {% for item in tabs %}
+        <a class="notification-tab{% if item.key == tab %} is-active{% endif %}" href="/notifications?tab={{ item.key }}"{% if item.key == tab %} aria-current="page"{% endif %}>
+            <span>{{ item.label }}</span>
+            {% if item.unread %}<span class="notification-tab-count" aria-label="未読 {{ item.unread }} 件">{{ item.unread if item.unread < 100 else '99+' }}</span>{% endif %}
+        </a>
+        {% endfor %}
+    </nav>
     <div class="notification-toolbar">
         <form method="post" action="/notifications/read-all">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="student-primary-button" type="submit">すべて既読にする</button>
+            <input type="hidden" name="tab" value="{{ tab }}">
+            <button class="student-primary-button notification-read-all" type="submit"{% if not tab_unread %} disabled{% endif %}>{{ tab_label }}をすべて既読にする</button>
         </form>
     </div>
-    <section class="notification-list" aria-label="通知一覧">
+    <section class="notification-list" aria-label="{{ tab_label }}の通知一覧">
         {% for item in notifications %}
         <a class="notification-item{% if not item[4] %} is-unread{% endif %}" href="/notifications/{{ item[0] }}">
             <div class="notification-item-head"><h2>{{ item[1] }}</h2><span>{{ "未読" if not item[4] else "既読" }}</span></div>
             <p>{{ item[2][:140] }}{% if item[2]|length > 140 %}…{% endif %}</p>
-            <small>送信元: {{ item[3] }}　{{ item[5] }}</small>
+            <small>{% if tab == 'office' %}送信元: {{ item[3] }}　{% endif %}{{ item[5] }}</small>
         </a>
-        {% else %}<div class="student-panel"><p>通知はありません。</p></div>{% endfor %}
+        {% else %}<div class="student-panel"><p>{{ tab_label }}の通知はありません。</p></div>{% endfor %}
     </section>
     <nav class="notification-pagination" aria-label="ページ移動">
-        {% if has_previous %}<a href="/notifications?page={{ page - 1 }}">前へ</a>{% endif %}
+        {% if has_previous %}<a href="/notifications?tab={{ tab }}&amp;page={{ page - 1 }}">前へ</a>{% endif %}
         <span>{{ page }}ページ</span>
-        {% if has_next %}<a href="/notifications?page={{ page + 1 }}">次へ</a>{% endif %}
+        {% if has_next %}<a href="/notifications?tab={{ tab }}&amp;page={{ page + 1 }}">次へ</a>{% endif %}
     </nav>
 </div>
 {% endblock %}

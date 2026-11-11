@@ -128,7 +128,7 @@
                 <a href="/notifications/{{ notification[0] }}">
                     <span class="dashboard-unread-dot" aria-hidden="true"></span>
                     <strong>{{ notification[1] }}</strong>
-                    <time>{{ notification[2] }}</time>
+                    <span class="dashboard-notification-meta"><span class="notification-kind notification-kind-{{ notification[3]|notification_category }}">{{ notification[3]|notification_category_label }}</span><time>{{ notification[2] }}</time></span>
                 </a>
                 {% else %}
                 <div class="dashboard-notification-empty">

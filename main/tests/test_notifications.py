@@ -168,6 +168,64 @@ class NotificationTests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT is_read FROM notification WHERE id = ?", (own_id,)).fetchone()[0], 1)
             self.assertEqual(db.execute("SELECT is_read FROM notification WHERE id = ?", (other_id,)).fetchone()[0], 0)
 
+    def test_student_notifications_are_split_into_office_and_system_tabs(self):
+        with closing(sqlite3.connect(self.db_path)) as db:
+            office_id = create_notification(db, "a", "事務連絡タイトル", "body")
+            system_id = create_notification(db, "a", "予約受付タイトル", "body",
+                                            "reservation_created", "tekne", 1)
+            create_notification(db, "a", "リマインドタイトル", "body",
+                                "reservation_reminder", "tekne", 2)
+            db.commit()
+        session = {"user_login": True, "user_id": "a"}
+
+        office_html = self.await_result(main.NotificationList(
+            request("/notifications", session), 1, "office")).body.decode("utf-8")
+        self.assertIn("事務連絡タイトル", office_html)
+        self.assertNotIn("予約受付タイトル", office_html)
+        self.assertIn('aria-label="未読 2 件"', office_html)  # システムタブの未読数
+
+        system_html = self.await_result(main.NotificationList(
+            request("/notifications", session), 1, "system")).body.decode("utf-8")
+        self.assertIn("予約受付タイトル", system_html)
+        self.assertIn("リマインドタイトル", system_html)
+        self.assertNotIn("事務連絡タイトル", system_html)
+
+        # 不正なタブは事務連絡にフォールバック
+        invalid_html = self.await_result(main.NotificationList(
+            request("/notifications", session), 1, "bogus")).body.decode("utf-8")
+        self.assertIn("事務連絡タイトル", invalid_html)
+
+        # 一括既読は表示中のタブだけ
+        session["notification_csrf_token"] = "token"
+        response = self.await_result(main.ReadAllNotifications(
+            request("/notifications/read-all", session, "POST"), "token", "system"))
+        self.assertEqual(response.headers["location"], "/notifications?tab=system")
+        with closing(sqlite3.connect(self.db_path)) as db:
+            self.assertEqual(db.execute("SELECT is_read FROM notification WHERE id=?", (office_id,)).fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT is_read FROM notification WHERE id=?", (system_id,)).fetchone()[0], 1)
+
+        # 未読ありタブはボタン有効、未読なしタブは無効（灰色）
+        office_after = self.await_result(main.NotificationList(
+            request("/notifications", session), 1, "office")).body.decode("utf-8")
+        self.assertRegex(office_after, r'notification-read-all" type="submit">')
+        system_after = self.await_result(main.NotificationList(
+            request("/notifications", session), 1, "system")).body.decode("utf-8")
+        self.assertRegex(system_after, r'notification-read-all" type="submit" disabled>')
+
+        detail_html = self.await_result(main.NotificationDetail(
+            request(f"/notifications/{system_id}", session), system_id)).body.decode("utf-8")
+        self.assertIn('href="/notifications?tab=system"', detail_html)
+
+    def test_dashboard_labels_notification_category(self):
+        with closing(sqlite3.connect(self.db_path)) as db:
+            create_notification(db, "a", "事務", "body")
+            create_notification(db, "a", "予約", "body", "reservation_created", "tekne", 1)
+            db.commit()
+        html = self.await_result(main.Dashboard(
+            request("/dashboard", {"user_login": True, "user_id": "a"}))).body.decode("utf-8")
+        self.assertIn("notification-kind-office", html)
+        self.assertIn("notification-kind-system", html)
+
     def test_dashboard_shows_only_current_students_unread_notifications(self):
         with closing(sqlite3.connect(self.db_path)) as db:
             create_notification(db, "a", "表示する未読通知", "body")
