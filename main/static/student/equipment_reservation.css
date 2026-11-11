@@ -184,3 +184,227 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* ---------- 複数選択 ---------- */
+.equipment-selection-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 16px;
+    margin: -6px 0 14px;
+}
+
+.equipment-selection-status {
+    margin: 0;
+    color: var(--primary);
+    font-weight: 700;
+}
+
+.equipment-reservation .equipment-clear-button {
+    min-height: 38px;
+    padding: 6px 16px;
+    border-width: 2px;
+    font-size: 14px;
+    letter-spacing: .06em;
+}
+
+.equipment-clear-button[hidden],
+.equipment-mode-note[hidden] { display: none; }
+
+.equipment-mode-note {
+    margin: 0 0 16px;
+    padding: 10px 13px;
+    border-left: 4px solid var(--aoharu-teal, var(--primary));
+    background: var(--surface-soft);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.equipment-card { position: relative; }
+
+.equipment-card input[type="checkbox"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.equipment-check {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1;
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--border-strong, #bdc9d5);
+    border-radius: 6px;
+    background: #fff;
+}
+
+.equipment-card:has(input:checked) .equipment-check {
+    border-color: var(--primary);
+    background: var(--primary);
+}
+
+.equipment-card:has(input:checked) .equipment-check::after {
+    content: "";
+    position: absolute;
+    left: 6px;
+    top: 1px;
+    width: 7px;
+    height: 13px;
+    border: solid #fff;
+    border-width: 0 3px 3px 0;
+    transform: rotate(45deg);
+}
+
+.equipment-card:has(input:focus-visible) {
+    outline: 3px solid rgba(46, 122, 151, .3);
+    outline-offset: 2px;
+}
+
+.equipment-card[hidden] { display: none; }
+
+
+.selected-equipment-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 14px;
+    grid-column: 1 / -1;
+}
+
+#room-items { margin-top: 16px; }
+
+.selected-equipment-list:empty { display: none; }
+
+.selected-equipment-heading {
+    grid-column: 1 / -1;
+    margin: 4px 0 0;
+    color: var(--text);
+    font-weight: 800;
+}
+
+.selected-equipment-item {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    padding: 14px;
+    border: 2px solid var(--primary);
+    border-radius: 10px;
+    background: #eef7fa;
+}
+
+.selected-equipment-image {
+    width: 100%;
+    height: 80px;
+    object-fit: contain;
+    background: #f5f7fa;
+}
+
+.selected-equipment-info {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.selected-equipment-name {
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+
+.selected-equipment-status {
+    color: var(--primary);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.selected-equipment-status.is-error { color: #9b2c2c; }
+
+.equipment-reservation .selected-equipment-quantity {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.equipment-reservation .selected-equipment-quantity select { padding: 8px; }
+
+.selected-equipment-remove {
+    justify-self: end;
+    min-height: 34px;
+    padding: 4px 14px;
+    border: 2px solid var(--border-strong, #bdc9d5);
+    border-radius: 0;
+    background: #fff;
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.selected-equipment-remove:hover {
+    border-color: var(--danger, #c0392b);
+    color: var(--danger, #c0392b);
+}
+
+/* ---------- 使用する場所 ---------- */
+.equipment-place-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.equipment-reservation .equipment-place-option {
+    position: relative;
+    display: grid;
+    gap: 6px;
+    padding: 16px 18px 16px 52px;
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+}
+
+.equipment-reservation .equipment-place-option input {
+    position: absolute;
+    top: 18px;
+    left: 18px;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    accent-color: var(--primary);
+}
+
+.equipment-place-option:has(input:checked) {
+    border-color: var(--primary);
+    background: #eef7fa;
+}
+
+.equipment-place-option:has(input:focus-visible) {
+    outline: 3px solid rgba(46, 122, 151, .3);
+    outline-offset: 2px;
+}
+
+.equipment-place-name {
+    color: var(--text);
+    font-size: 17px;
+    font-weight: 800;
+}
+
+.equipment-place-text {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.6;
+}
+
+@container (max-width: 760px) {
+    .equipment-place-options { grid-template-columns: 1fr; }
+}

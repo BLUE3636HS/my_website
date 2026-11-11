@@ -38,6 +38,22 @@
         "UI_aoharu"
       ],
       "port": 8030
+    },
+    {
+      "name": "main",
+      "runtimeExecutable": "main/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "main:app",
+        "--app-dir",
+        "main",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8040"
+      ],
+      "port": 8040
     }
   ]
 }

@@ -24,7 +24,7 @@ from notifications import (
     normalize_notification_category, notification_category,
     notification_category_label,
     create_notification, initialize_notification_tables, notification_now,
-    reservation_body
+    reservation_body, equipment_bulk_body
 )
 from mypage_calendar import calendar_reservations, admin_calendar_reservations
 from staff_dashboard import teacher_dashboard_summary, admin_dashboard_summary, login_status, INACTIVE_DAYS
@@ -672,6 +672,48 @@ def find_equipment(catalog, equipment_id=None, equipment_name=None):
     return None
 
 
+def as_form_list(value):
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return [value]
+
+
+def resolve_equipment_selection(catalog, equipment_ids, quantities, usage_type):
+    """Validate a multi-item request and return [(item, quantity), ...].
+
+    All items must belong to the same usage type (takeout or in_room) as the endpoint.
+    """
+    ids = [str(value).strip() for value in as_form_list(equipment_ids)]
+    quantities = as_form_list(quantities)
+    if not ids or any(not value for value in ids):
+        raise HTTPException(status_code=400, detail="器具を選択してください。")
+    if len(quantities) != len(ids):
+        raise HTTPException(status_code=400, detail="器具ごとに数量を選択してください。")
+    if len(set(ids)) != len(ids):
+        raise HTTPException(status_code=400, detail="同じ器具が重複して選択されています。")
+    items = [find_equipment(catalog, equipment_id=value) for value in ids]
+    if any(item is None for item in items):
+        raise HTTPException(status_code=400, detail="選択した器具は利用できません。")
+    # 工作室内ではすべての器具を使える。持ち出しは「持ち出し可能」の器具だけ。
+    if usage_type == "takeout":
+        room_only = [item["name"] for item in items if item["usage_type"] != "takeout"]
+        if room_only:
+            raise HTTPException(
+                status_code=400,
+                detail=f"工作室内のみの器具は持ち出し予約できません: {'、'.join(room_only)}"
+            )
+    if any(quantity < 1 for quantity in quantities):
+        raise HTTPException(status_code=400, detail="数量と使用目的を入力してください。")
+    return list(zip(items, quantities))
+
+
+def shortage_detail(prefix, shortages):
+    lines = "、".join(f"{name}（利用可能数: {available}）" for name, available in shortages)
+    return f"{prefix}{lines}"
+
+
 def date_range(start_day, end_day):
     current = start_day
     while current <= end_day:
@@ -696,6 +738,26 @@ def takeout_availability(item, start_day, end_day, db=None):
         overlap_end = min(end_day, datetime.date.fromisoformat(reserved_end))
         for day in date_range(overlap_start, overlap_end):
             reserved_by_day[day.isoformat()] += quantity
+    # 持ち出し可能な器具は工作室内でも予約できるため、室内利用の分も在庫から差し引く。
+    # 持ち出しは日単位なので、その日の室内利用の同時使用数のピークを丸一日分として扱う。
+    room_rows = database.execute(
+        """
+        SELECT use_day, start_time, end_time, quantity
+        FROM equipment_room_reservation
+        WHERE equipment_id = ? AND use_day >= ? AND use_day <= ?
+        """,
+        (item["id"], start_day.isoformat(), end_day.isoformat())
+    ).fetchall()
+    room_by_day = {}
+    for use_day, room_start, room_end, quantity in room_rows:
+        room_by_day.setdefault(use_day, []).append((room_start, room_end, quantity))
+    for use_day, bookings in room_by_day.items():
+        if use_day in reserved_by_day:
+            # 同時使用数のピークは、いずれかの予約の開始時刻で発生する
+            reserved_by_day[use_day] += max(
+                sum(q for s, e, q in bookings if s <= moment < e)
+                for moment, _, _ in bookings
+            )
     peak_reserved = max(reserved_by_day.values(), default=0)
     return {
         **item,
@@ -715,13 +777,23 @@ def room_slot_availability(item, use_day, db=None):
         """,
         (item["id"], use_day.isoformat())
     ).fetchall()
+    # 持ち出し中の数は、その日の全時間帯で室内利用にも使えない
+    takeout_reserved = database.execute(
+        """
+        SELECT COALESCE(SUM(quantity), 0)
+        FROM equipment_reservation
+        WHERE (equipment_id = ? OR ((equipment_id IS NULL OR equipment_id = '') AND equipment = ?))
+          AND start_day <= ? AND end_day >= ?
+        """,
+        (item["id"], item["name"], use_day.isoformat(), use_day.isoformat())
+    ).fetchone()[0]
     now = datetime.datetime.now(JST)
     slots = []
     for total_minutes in range(9 * 60, 20 * 60 + 1, 30):
         start_time = f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
         end_minutes = total_minutes + 30
         end_time = f"{end_minutes // 60:02d}:{end_minutes % 60:02d}"
-        reserved = sum(
+        reserved = takeout_reserved + sum(
             quantity for reserved_start, reserved_end, quantity in rows
             if reserved_start < end_time and reserved_end > start_time
         )
@@ -2681,11 +2753,17 @@ async def AdminDeleteCommunityPost(
 @app.get("/equipment-reservation", response_class=HTMLResponse)
 async def EquipmentReservationPage(request: Request):
     today = datetime.date.today().isoformat()
+    # 更新したJS/CSSが古いキャッシュのまま使われないよう、更新日時をクエリに付ける
+    asset_version = max(
+        int((BASE_DIR / "static" / path).stat().st_mtime)
+        for path in ("equipment_reservation.js", "student/equipment_reservation.css")
+    )
     return templates.TemplateResponse(
         request=request,
         name="equipment_reservation.html",
         context={
             "request": request,
+            "asset_version": asset_version,
             "catalog": load_equipment_catalog(),
             "selected_day": today,
             "user_login": request.session.get("user_login"),
@@ -2978,20 +3056,23 @@ async def CancelReservation(
 @app.post("/equipment-reservation")
 async def CreateEquipmentReservation(
     request: Request,
-    equipment_id: str = Form(""),
+    equipment_id: list[str] = Form([]),
     equipment: str = Form(""),
     start_day: str = Form(...),
     end_day: str = Form(...),
-    quantity: int = Form(...),
+    quantity: list[int] = Form(...),
     purpose: str = Form(...),
     note: str = Form("")
 ):
     catalog = load_equipment_catalog()
-    item = find_equipment(catalog, equipment_id=equipment_id, equipment_name=equipment)
-    if item is None:
-        raise HTTPException(status_code=400, detail="選択した器具は利用できません。")
-    if item["usage_type"] != "takeout":
-        raise HTTPException(status_code=400, detail="この器具は工作室内専用です。")
+    equipment_ids = [value for value in as_form_list(equipment_id) if str(value).strip()]
+    if not equipment_ids and equipment:
+        # Legacy name-based single reservation.
+        legacy_item = find_equipment(catalog, equipment_name=equipment)
+        if legacy_item is None:
+            raise HTTPException(status_code=400, detail="選択した器具は利用できません。")
+        equipment_ids = [legacy_item["id"]]
+    selection = resolve_equipment_selection(catalog, equipment_ids, quantity, "takeout")
     try:
         start = datetime.date.fromisoformat(start_day)
         end = datetime.date.fromisoformat(end_day)
@@ -3003,33 +3084,43 @@ async def CreateEquipmentReservation(
         raise HTTPException(status_code=400, detail="貸出期間は最長7日間です。")
     clean_purpose = purpose.strip()
     clean_note = note.strip()
-    if quantity < 1 or not clean_purpose:
+    if not clean_purpose:
         raise HTTPException(status_code=400, detail="数量と使用目的を入力してください。")
     if len(clean_purpose) > 500 or len(clean_note) > 500:
         raise HTTPException(status_code=400, detail="使用目的と備考は500文字以内で入力してください。")
 
+    user_id = request.session.get("user_id")
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
         try:
             db.execute("BEGIN IMMEDIATE")
-            availability = takeout_availability(item, start, end, db)
-            if quantity > availability["available"]:
+            shortages = []
+            for item, item_quantity in selection:
+                available = takeout_availability(item, start, end, db)["available"]
+                if item_quantity > available:
+                    shortages.append((item["name"], available))
+            if shortages:
                 db.rollback()
                 raise HTTPException(
                     status_code=409,
-                    detail=f"選択した期間は必要な数量を確保できません。利用可能数: {availability['available']}"
+                    detail=shortage_detail("選択した期間は必要な数量を確保できません。", shortages)
                 )
-            reservation_id = db.execute("""INSERT INTO equipment_reservation
-                (userid, equipment, start_day, end_day, quantity, purpose, note, equipment_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", (
-                    request.session.get("user_id"), item["name"], start.isoformat(),
-                    end.isoformat(), quantity, clean_purpose, clean_note, item["id"]
-                )).lastrowid
-            create_notification(
-                db, request.session.get("user_id"), "実験器具の予約を受け付けました",
-                reservation_body("equipment_takeout", {
+            reservation_ids = []
+            rows = []
+            for item, item_quantity in selection:
+                reservation_ids.append(db.execute("""INSERT INTO equipment_reservation
+                    (userid, equipment, start_day, end_day, quantity, purpose, note, equipment_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", (
+                        user_id, item["name"], start.isoformat(),
+                        end.isoformat(), item_quantity, clean_purpose, clean_note, item["id"]
+                    )).lastrowid)
+                rows.append({
                     "equipment": item["name"], "start_day": start.isoformat(),
-                    "end_day": end.isoformat(), "quantity": quantity
-                }), "reservation_created", "equipment_takeout", reservation_id
+                    "end_day": end.isoformat(), "quantity": item_quantity
+                })
+            create_notification(
+                db, user_id, "実験器具の予約を受け付けました",
+                equipment_bulk_body("equipment_takeout", rows),
+                "reservation_created", "equipment_takeout", reservation_ids[0]
             )
             db.commit()
         except HTTPException:
@@ -3037,7 +3128,7 @@ async def CreateEquipmentReservation(
         except Exception:
             db.rollback()
             raise
-    return {"result": True}
+    return {"result": True, "reservation_ids": reservation_ids}
 
 @app.get("/mypage/equipment-reservation/{reservation_id}/cancel")
 async def CancelEquipmentReservation(request: Request, reservation_id: int):
@@ -3079,8 +3170,6 @@ async def EquipmentRoomAvailability(equipment_id: str, day: str):
     item = find_equipment(load_equipment_catalog(), equipment_id=equipment_id)
     if item is None:
         raise HTTPException(status_code=404, detail="器具が見つかりません。")
-    if item["usage_type"] != "in_room":
-        raise HTTPException(status_code=400, detail="この器具は持ち出し用です。")
     try:
         use_day = datetime.date.fromisoformat(day)
     except ValueError:
@@ -3093,21 +3182,17 @@ async def EquipmentRoomAvailability(equipment_id: str, day: str):
 @app.post("/equipment-room-reservation")
 async def CreateEquipmentRoomReservation(
     request: Request,
-    equipment_id: str = Form(...),
+    equipment_id: list[str] = Form(...),
     use_day: str = Form(...),
     start_time: str = Form(...),
     end_time: str = Form(...),
-    quantity: int = Form(...),
+    quantity: list[int] = Form(...),
     purpose: str = Form(...),
     note: str = Form("")
 ):
     if request.session.get("user_login") is not True or not request.session.get("user_id"):
         raise HTTPException(status_code=401, detail="ログインが必要です。")
-    item = find_equipment(load_equipment_catalog(), equipment_id=equipment_id)
-    if item is None:
-        raise HTTPException(status_code=400, detail="選択した器具は利用できません。")
-    if item["usage_type"] != "in_room":
-        raise HTTPException(status_code=400, detail="この器具は持ち出し用です。")
+    selection = resolve_equipment_selection(load_equipment_catalog(), equipment_id, quantity, "in_room")
     try:
         reservation_day = datetime.date.fromisoformat(use_day)
         parsed_start = datetime.datetime.strptime(start_time, "%H:%M").time()
@@ -3129,41 +3214,51 @@ async def CreateEquipmentRoomReservation(
         raise HTTPException(status_code=400, detail="この時間帯は予約できません。")
     clean_purpose = purpose.strip()
     clean_note = note.strip()
-    if quantity < 1 or not clean_purpose:
+    if not clean_purpose:
         raise HTTPException(status_code=400, detail="数量と使用目的を入力してください。")
     if len(clean_purpose) > 500 or len(clean_note) > 500:
         raise HTTPException(status_code=400, detail="使用目的と備考は500文字以内で入力してください。")
 
+    user_id = request.session.get("user_id")
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
         try:
             db.execute("BEGIN IMMEDIATE")
-            slots = room_slot_availability(item, reservation_day, db)
-            selected_slots = [
-                slot for slot in slots
-                if slot["start_time"] < end_time and slot["end_time"] > start_time
-            ]
-            if not selected_slots or any(slot["closed"] for slot in selected_slots):
-                db.rollback()
-                raise HTTPException(status_code=400, detail="この時間帯は予約できません。")
-            available = min(slot["available_quantity"] for slot in selected_slots)
-            if quantity > available:
+            shortages = []
+            for item, item_quantity in selection:
+                slots = room_slot_availability(item, reservation_day, db)
+                selected_slots = [
+                    slot for slot in slots
+                    if slot["start_time"] < end_time and slot["end_time"] > start_time
+                ]
+                if not selected_slots or any(slot["closed"] for slot in selected_slots):
+                    db.rollback()
+                    raise HTTPException(status_code=400, detail="この時間帯は予約できません。")
+                available = min(slot["available_quantity"] for slot in selected_slots)
+                if item_quantity > available:
+                    shortages.append((item["name"], available))
+            if shortages:
                 db.rollback()
                 raise HTTPException(
                     status_code=409,
-                    detail=f"選択した時間帯は在庫が不足しています。利用可能数: {available}"
+                    detail=shortage_detail("選択した時間帯は在庫が不足しています。", shortages)
                 )
-            reservation_id = db.execute("""INSERT INTO equipment_room_reservation
-                (userid, equipment_id, equipment, use_day, start_time, end_time, quantity, purpose, note)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
-                    request.session.get("user_id"), item["id"], item["name"], reservation_day.isoformat(),
-                    start_time, end_time, quantity, clean_purpose, clean_note
-                )).lastrowid
-            create_notification(
-                db, request.session.get("user_id"), "実験器具の予約を受け付けました",
-                reservation_body("equipment_in_room", {
+            reservation_ids = []
+            rows = []
+            for item, item_quantity in selection:
+                reservation_ids.append(db.execute("""INSERT INTO equipment_room_reservation
+                    (userid, equipment_id, equipment, use_day, start_time, end_time, quantity, purpose, note)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
+                        user_id, item["id"], item["name"], reservation_day.isoformat(),
+                        start_time, end_time, item_quantity, clean_purpose, clean_note
+                    )).lastrowid)
+                rows.append({
                     "equipment": item["name"], "use_day": reservation_day.isoformat(),
-                    "start_time": start_time, "end_time": end_time, "quantity": quantity
-                }), "reservation_created", "equipment_in_room", reservation_id
+                    "start_time": start_time, "end_time": end_time, "quantity": item_quantity
+                })
+            create_notification(
+                db, user_id, "実験器具の予約を受け付けました",
+                equipment_bulk_body("equipment_in_room", rows),
+                "reservation_created", "equipment_in_room", reservation_ids[0]
             )
             db.commit()
         except HTTPException:
@@ -3171,7 +3266,7 @@ async def CreateEquipmentRoomReservation(
         except Exception:
             db.rollback()
             raise
-    return {"result": True}
+    return {"result": True, "reservation_ids": reservation_ids}
 
 
 @app.post("/mypage/equipment-room-reservation/{reservation_id}/cancel")

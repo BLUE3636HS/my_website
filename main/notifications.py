@@ -154,6 +154,20 @@ def reservation_body(reservation_type, row):
             f"利用時間: {row['start_time']} ～ {row['end_time']}\n数量: {row['quantity']}")
 
 
+def equipment_bulk_body(reservation_type, rows):
+    """Body for one notification covering several equipment reservations of the same type."""
+    if len(rows) == 1:
+        return reservation_body(reservation_type, rows[0])
+    first = rows[0]
+    items = "\n".join(f"・{row['equipment']} × {row['quantity']}" for row in rows)
+    if reservation_type == "equipment_takeout":
+        schedule = f"利用区分: 持ち出し\n利用期間: {first['start_day']} ～ {first['end_day']}"
+    else:
+        schedule = (f"利用区分: 工作室内\n利用日: {first['use_day']}\n"
+                    f"利用時間: {first['start_time']} ～ {first['end_time']}")
+    return f"{schedule}\n器具（{len(rows)}種類）:\n{items}"
+
+
 def create_reservation_reminders(database_path, target_date=None):
     tomorrow = target_date or (datetime.datetime.now(JST).date() + datetime.timedelta(days=1))
     day = tomorrow.isoformat()
