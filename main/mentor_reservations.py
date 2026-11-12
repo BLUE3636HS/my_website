@@ -15,6 +15,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from google_calendar import GoogleCalendarError, create_mentor_event, delete_mentor_event
 from admin_management import active_admin
 from notifications import create_admin_notification, create_notification, reservation_body
+from mentor_inquiries import student_unread_counts
 
 
 JST = datetime.timezone(datetime.timedelta(hours=9))
@@ -436,9 +437,10 @@ def build_router(database_path, templates, uploads_dir=None):
         with closing(sqlite3.connect(database_path)) as db:
             db.row_factory = sqlite3.Row
             mentors = db.execute("SELECT admin_id,display_name,description,profile_image FROM mentor_profile WHERE is_published=1 AND admin_id NOT IN (SELECT id FROM admin WHERE deleted_at IS NOT NULL) ORDER BY display_name,admin_id").fetchall()
+            unread_counts = student_unread_counts(db, request.session.get("user_id"))
         return templates.TemplateResponse(request=request, name="mentor/list.html", context={
             "request": request, "user_id": request.session.get("user_id"), "mentors": mentors,
-            "mentor_image_url": mentor_image_url})
+            "mentor_image_url": mentor_image_url, "inquiry_unread_counts": unread_counts})
 
     @router.get("/mentor-reservation/{admin_id}", response_class=HTMLResponse)
     async def mentor_booking_page(request: Request, admin_id: str):

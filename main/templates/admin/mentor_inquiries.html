@@ -1,0 +1,29 @@
+{% extends "admin/base.html" %}
+{% block title %}メンター問い合わせ{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/mentor.css">{% endblock %}
+{% block content %}
+<div class="mentor-page">
+    <header class="mentor-hero">
+        <p class="eyebrow">問い合わせ</p>
+        <h1>メンター問い合わせ</h1>
+        <p>あなた宛てに生徒から届いた問い合わせです。</p>
+    </header>
+    {% if notice %}<p class="mentor-notice is-{{ notice.type }}">{{ notice.message }}</p>{% endif %}
+    <div class="mentor-panel mentor-table-wrap">
+        <table class="mentor-table">
+            <tr><th>生徒</th><th>最新メッセージ</th><th>最終更新</th><th>状態</th><th>操作</th></tr>
+            {% for t in threads %}
+            <tr>
+                <td>{{ t.student_id }}{% if t.student_school %}<small>{{ t.student_school }}</small>{% endif %}</td>
+                <td class="mentor-inquiry-preview">{% if t.last_sender == 'admin' %}<small>あなた:</small>{% endif %}{{ t.last_body | truncate(80, True, '…') }}</td>
+                <td>{{ t.last_message_at }}</td>
+                <td>{% if t.unread_count %}<span class="mentor-inquiry-unread">未読 {{ t.unread_count }}</span>{% elif t.last_sender == 'student' %}未返信{% else %}返信済み{% endif %}</td>
+                <td><a class="mentor-button" href="/admin/mentor-inquiries/{{ t.id }}">開く</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5">問い合わせはありません。</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+{% endblock %}

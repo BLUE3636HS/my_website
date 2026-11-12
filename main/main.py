@@ -28,6 +28,11 @@ from notifications import (
 )
 from mypage_calendar import calendar_reservations, admin_calendar_reservations
 from staff_dashboard import teacher_dashboard_summary, admin_dashboard_summary, login_status, INACTIVE_DAYS
+from mentor_inquiries import (
+    admin_unread_inquiry_count,
+    build_router as build_mentor_inquiry_router,
+    initialize_mentor_inquiry_tables,
+)
 from mentor_reservations import (
     build_router as build_mentor_router,
     csrf_token as mentor_csrf_token,
@@ -391,6 +396,7 @@ if "returned" not in equipment_room_reservation_columns:
     )
 initialize_notification_tables(conn)
 initialize_mentor_tables(conn)
+initialize_mentor_inquiry_tables(conn)
 conn.commit()
 migrate_admin_database(DATABASE_PATH)
 initialize_reservation_schedule(conn)
@@ -404,7 +410,12 @@ app.mount("/uploads/equipment", StaticFiles(directory=str(EQUIPMENT_UPLOADS_DIR)
 app.mount("/uploads/mentor-profile", StaticFiles(directory=str(MENTOR_PROFILE_UPLOADS_DIR)), name="mentor_profile_uploads")
 
 def admin_template_context(request):
-    return {"is_super_admin": getattr(request.state, "admin_role", None) == "super_admin"}
+    context = {"is_super_admin": getattr(request.state, "admin_role", None) == "super_admin"}
+    admin_id = request.session.get("admin_id")
+    if getattr(request.state, "admin_role", None) and admin_id and request.url.path.startswith("/admin"):
+        with closing(sqlite3.connect(DATABASE_PATH)) as db:
+            context["mentor_inquiry_unread_count"] = admin_unread_inquiry_count(db, admin_id)
+    return context
 
 
 def student_template_context(request):
@@ -433,6 +444,7 @@ app.include_router(build_school_feature_router(DATABASE_PATH, templates))
 app.include_router(build_password_router(DATABASE_PATH))
 app.include_router(create_template_router(lambda: DATABASE_PATH, templates))
 app.include_router(build_mentor_router(DATABASE_PATH, templates, MENTOR_PROFILE_UPLOADS_DIR))
+app.include_router(build_mentor_inquiry_router(DATABASE_PATH, templates))
 tekne_chat_router, tekne_chat_service = build_tekne_chat_router(DATABASE_PATH, templates, TEKNE_CHAT_STORAGE_DIR)
 app.include_router(tekne_chat_router)
 app.include_router(build_group_report_router(DATABASE_PATH, templates, tekne_chat_service, STUDY_IMAGE_UPLOADS_DIR))

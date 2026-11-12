@@ -19,6 +19,7 @@
             <div><h1>{{ mentor.display_name }}を予約</h1><p class="mentor-book-description">{{ mentor.description or '紹介文はまだ登録されていません。' }}</p></div>
         </div>
         <p>利用形式と日付を選び、空いている時間と相談内容を入力してください。</p>
+        <p class="mentor-book-inquiry">希望の日時が空いていない場合や、予約前に相談したいことがある場合は <a href="/mentor-reservation/{{ mentor.admin_id }}/inquiry">問い合わせページ</a> からメッセージを送れます。</p>
     </section>
 
     <div class="reservation-message" id="reservation-message" role="status" hidden></div>

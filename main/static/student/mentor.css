@@ -259,3 +259,45 @@
 @media (max-width: 700px) {
     .student-content .mentor-page { padding: 24px 16px 56px; }
 }
+
+/* Inquiry link on mentor cards */
+.mentor-card-actions {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+}
+
+.mentor-card-actions .mentor-button {
+    width: 100%;
+}
+
+.mentor-inquiry-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 11px 18px;
+    border: 1px solid var(--primary);
+    border-radius: 8px;
+    color: var(--primary);
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.mentor-inquiry-link:hover {
+    background: var(--surface-soft);
+}
+
+.mentor-unread-badge {
+    display: inline-grid;
+    place-items: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #d64545;
+    color: #fff;
+    font-size: 12px;
+    line-height: 1;
+}

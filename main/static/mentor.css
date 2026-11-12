@@ -187,3 +187,15 @@
         width: 128px;
     }
 }
+
+/* Mentor inquiry (admin) */
+.mentor-inquiry-thread{display:grid;gap:12px;max-height:520px;margin-bottom:20px;padding:14px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface-soft)}
+.mentor-inquiry-message{max-width:min(85%,640px);padding:10px 14px;border:1px solid var(--border);border-radius:10px;background:#fff}
+.mentor-inquiry-message.is-mine{justify-self:end;background:var(--primary-soft)}
+.mentor-inquiry-message.is-student{justify-self:start}
+.mentor-inquiry-meta{margin:0 0 4px;color:#66766d;font-size:12px}
+.mentor-inquiry-body{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.mentor-inquiry-unread{display:inline-block;padding:3px 9px;border-radius:999px;background:#a73737;color:#fff;font-size:12px;font-weight:800}
+.mentor-inquiry-preview{max-width:420px;overflow-wrap:anywhere}
+.mentor-inquiry-school{display:block;margin-top:4px;color:#66766d;font-size:14px;font-weight:600}
+.mentor-hero .eyebrow a{color:inherit;text-decoration:none}

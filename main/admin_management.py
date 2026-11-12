@@ -248,6 +248,9 @@ def build_admin_router(database_path, templates, mentor_profile_uploads_dir=None
                 replacement = db.execute("SELECT id FROM admin WHERE id<>? AND role='super_admin' AND deleted_at IS NULL ORDER BY id LIMIT 1", (admin_id,)).fetchone()
                 db.execute('UPDATE reservation_available_slot SET admin_id=? WHERE admin_id=?', (replacement[0] if replacement else 'system', admin_id))
 
+            from mentor_inquiries import delete_mentor_inquiries_for_admin
+            delete_mentor_inquiries_for_admin(db, admin_id)
+
             for table, column in (
                 ('mentor_reservation', 'mentor_admin_id'),
                 ('mentor_available_slot', 'admin_id'),

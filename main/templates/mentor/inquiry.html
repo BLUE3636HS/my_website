@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ mentor.display_name }}に問い合わせ{% endblock %}
+{% block css %}
+    <link rel="stylesheet" href="/static/student/reservation.css">
+    <link rel="stylesheet" href="/static/student/mentor_booking.css">
+{% endblock %}
+{% block content %}
+<div class="reservation-page mentor-inquiry-page">
+    <section class="reservation-hero">
+        <p class="reservation-eyebrow">問い合わせ</p>
+        <div class="mentor-book-profile">
+            <img class="mentor-profile-image" src="{{ mentor_image_url }}" alt="{{ mentor.display_name }}のメンター画像">
+            <div><h1>{{ mentor.display_name }}に問い合わせ</h1><p class="mentor-book-description">{{ mentor.description or '紹介文はまだ登録されていません。' }}</p></div>
+        </div>
+        <p>希望の日時が空いていない場合や、予約前に相談したいことがある場合はメッセージを送ってください。メンターから返信が届くと通知されます。</p>
+        <nav class="mentor-inquiry-nav">
+            <a href="/mentor-reservation">メンター一覧へ戻る</a>
+            <a href="/mentor-reservation/{{ mentor.admin_id }}">このメンターを予約する</a>
+        </nav>
+    </section>
+
+    <section class="reservation-panel mentor-inquiry-panel">
+        {% if inquiry_notice %}<p class="mentor-inquiry-notice is-{{ inquiry_notice.type }}" role="status">{{ inquiry_notice.message }}</p>{% endif %}
+        <div class="mentor-inquiry-thread" aria-live="polite">
+            {% for message in inquiry_messages %}
+            <article class="mentor-inquiry-message is-{{ 'mine' if message.sender_type == 'student' else 'mentor' }}">
+                <p class="mentor-inquiry-meta">{{ 'あなた' if message.sender_type == 'student' else mentor.display_name }}・{{ message.created_at }}</p>
+                <p class="mentor-inquiry-body">{{ message.body }}</p>
+            </article>
+            {% else %}
+            <p class="mentor-inquiry-empty">まだメッセージはありません。</p>
+            {% endfor %}
+        </div>
+        <form id="inquiry-form" class="mentor-inquiry-form" method="post" action="/mentor-reservation/{{ mentor.admin_id }}/inquiry">
+            <input type="hidden" name="csrf" value="{{ inquiry_csrf_token }}">
+            <label for="inquiry-body">メッセージ（{{ inquiry_max_length }}文字以内）</label>
+            <textarea id="inquiry-body" name="body" rows="5" maxlength="{{ inquiry_max_length }}" required></textarea>
+            <button type="submit" class="reservation-submit">送信する</button>
+        </form>
+    </section>
+</div>
+{% endblock %}
+{% block script %}
+<script>
+    // 最新のメッセージが見えるようにスレッドを一番下までスクロールする
+    document.querySelectorAll(".mentor-inquiry-thread").forEach((thread) => { thread.scrollTop = thread.scrollHeight; });
+</script>
+{% endblock %}

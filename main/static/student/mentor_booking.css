@@ -115,3 +115,98 @@
         border-radius: 14px;
     }
 }
+
+/* Mentor inquiry thread */
+.mentor-inquiry-form {
+    scroll-margin-top: 24px;
+}
+
+.mentor-inquiry-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    margin-top: 10px;
+}
+
+.mentor-inquiry-nav a,
+.mentor-book-inquiry a {
+    color: var(--primary);
+    font-weight: 700;
+}
+
+.mentor-inquiry-thread {
+    display: grid;
+    gap: 12px;
+    max-height: 420px;
+    margin: 4px 0 18px;
+    padding: 14px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-soft);
+}
+
+.mentor-inquiry-message {
+    max-width: min(85%, 640px);
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: #fff;
+    border: 1px solid var(--border);
+}
+
+.mentor-inquiry-message.is-mine {
+    justify-self: end;
+    background: #e8f2fb;
+}
+
+.mentor-inquiry-message.is-mentor {
+    justify-self: start;
+}
+
+.mentor-inquiry-meta {
+    margin: 0 0 4px;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.mentor-inquiry-body {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.mentor-inquiry-empty {
+    margin: 0;
+    color: #64748b;
+}
+
+.mentor-inquiry-form {
+    display: grid;
+    gap: 8px;
+    font-weight: 700;
+}
+
+.mentor-inquiry-form textarea {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    font: inherit;
+    font-weight: 400;
+    resize: vertical;
+}
+
+.mentor-inquiry-form textarea:focus {
+    outline: 3px solid rgba(46, 122, 151, .18);
+    border-color: var(--primary);
+}
+
+.mentor-inquiry-notice {
+    margin: 0 0 12px;
+    padding: 12px 16px;
+    border-radius: 9px;
+}
+
+.mentor-inquiry-notice.is-success { background: #e8f2fb; color: #1f4e79; }
+.mentor-inquiry-notice.is-error { background: #fdecec; color: #9b2424; }

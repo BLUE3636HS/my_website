@@ -17,10 +17,10 @@
     </head>
     <body class="role-admin">
         {% set current_path = request.url.path %}
-        {% macro nav_link(href, label, icon_name, prefix=None, exact=False, also=None) -%}
+        {% macro nav_link(href, label, icon_name, prefix=None, exact=False, also=None, badge=0) -%}
             {%- set p = prefix or href -%}
             {%- set active = current_path == p or (not exact and current_path.startswith(p ~ '/')) or (also and current_path.startswith(also)) -%}
-            <a class="staff-nav-link nav-link" href="{{ href }}"{% if active %} aria-current="page"{% endif %}>{{ icons.icon(icon_name) }}<span>{{ label }}</span></a>
+            <a class="staff-nav-link nav-link" href="{{ href }}"{% if active %} aria-current="page"{% endif %}>{{ icons.icon(icon_name) }}<span>{{ label }}</span>{% if badge %}<span class="staff-nav-badge" aria-label="未読{{ badge }}件">{{ badge }}</span>{% endif %}</a>
         {%- endmacro %}
         <div class="staff-layout admin-layout" id="staff-layout">
             <aside class="staff-sidebar sidebar" id="staff-sidebar" aria-label="管理者メニュー">
@@ -38,6 +38,7 @@
                         {% if is_super_admin %}{{ nav_link('/admin/reservation-schedule', '工作室予約可能時間設定', 'calendar') }}{% endif %}
                         {{ nav_link('/admin/mentor-schedule', 'メンター対応可能時間', 'clock', also='/admin/mentor-schedule') }}
                         {{ nav_link('/admin/mentor-reservations', 'メンター予約確認', 'mentor', also='/admin/mentor-reservations') }}
+                        {{ nav_link('/admin/mentor-inquiries', 'メンター問い合わせ', 'chat', also='/admin/mentor-inquiries', badge=mentor_inquiry_unread_count) }}
                         {{ nav_link('/admin/equipment-reservation', '実験器具予約確認', 'flask') }}
                         {{ nav_link('/admin/equipment-catalog', '実験器具管理', 'package') }}
                     </div>

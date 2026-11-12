@@ -1,0 +1,29 @@
+{% extends "admin/base.html" %}
+{% block title %}メンター問い合わせ{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/mentor.css">{% endblock %}
+{% block content %}
+<div class="mentor-page">
+    <header class="mentor-hero">
+        <p class="eyebrow"><a href="/admin/mentor-inquiries">メンター問い合わせ</a></p>
+        <h1>{{ thread.student_id }}{% if thread.student_school %}<small class="mentor-inquiry-school">{{ thread.student_school }}</small>{% endif %}</h1>
+    </header>
+    {% if notice %}<p class="mentor-notice is-{{ notice.type }}">{{ notice.message }}</p>{% endif %}
+    <section class="mentor-panel">
+        <div class="mentor-inquiry-thread">
+            {% for message in messages %}
+            <article class="mentor-inquiry-message is-{{ 'mine' if message.sender_type == 'admin' else 'student' }}">
+                <p class="mentor-inquiry-meta">{{ 'あなた' if message.sender_type == 'admin' else thread.student_id }}・{{ message.created_at }}</p>
+                <p class="mentor-inquiry-body">{{ message.body }}</p>
+            </article>
+            {% else %}
+            <p>メッセージはありません。</p>
+            {% endfor %}
+        </div>
+        <form id="reply" class="mentor-form mentor-inquiry-reply" method="post" action="/admin/mentor-inquiries/{{ thread.id }}/reply">
+            <input type="hidden" name="csrf" value="{{ csrf_token }}">
+            <label>返信（{{ max_length }}文字以内）<textarea name="body" rows="5" maxlength="{{ max_length }}" required></textarea></label>
+            <button class="mentor-button" type="submit">返信する</button>
+        </form>
+    </section>
+</div>
+{% endblock %}
