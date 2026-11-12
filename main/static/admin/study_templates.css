@@ -121,6 +121,7 @@
 .content-type-option span { display: block; padding: 9px 12px; border-radius: 8px; background: #fff; color: #173226; font-size: 16px; font-weight: 800; text-align: center; transition: background .15s, color .15s; }
 .content-type-option:hover span { background: #eef5f2; }
 .content-type-option input:checked + span { background: #3274b4; color: #fff; }
+.content-type-option #content-text:checked + span { background: var(--primary, #2f6b14); }  /* 「文字」は一覧のTと同じ緑 */
 .content-type-option input:focus-visible + span { outline: 3px solid #9cc3ea; outline-offset: 2px; }
 /* 編集欄：項目を開くまでは案内だけ */
 .editor-empty { margin: 8px 0 0; padding: 18px 14px; border: 1px dashed var(--border-strong); border-radius: 8px; color: var(--text-muted); line-height: 1.7; }
