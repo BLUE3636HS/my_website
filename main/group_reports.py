@@ -44,8 +44,11 @@ def run_scheduled_snapshots(database_path, now=None):
 
 
 def version_rows(db, group_id):
-    return [dict(zip(('id', 'version_number', 'saved_at', 'saved_by', 'kind', 'scheduled_date'), r)) for r in db.execute(
-        'SELECT id,version_number,saved_at,saved_by,kind,scheduled_date FROM group_report_version WHERE group_id=? ORDER BY version_number DESC', (group_id,))]
+    # saved_by_name: 保存した生徒の名前（自動保存や退会済みの生徒は saved_by の値をそのまま使う）
+    return [dict(zip(('id', 'version_number', 'saved_at', 'saved_by', 'kind', 'scheduled_date', 'saved_by_name'), r)) for r in db.execute(
+        '''SELECT v.id,v.version_number,v.saved_at,v.saved_by,v.kind,v.scheduled_date,COALESCE(s.name,v.saved_by)
+           FROM group_report_version v LEFT JOIN student s ON s.id=v.saved_by
+           WHERE v.group_id=? ORDER BY v.version_number DESC''', (group_id,))]
 
 _SOCKETS = {}
 _SOCKET_LOCK = asyncio.Lock()
