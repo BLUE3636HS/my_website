@@ -15,7 +15,7 @@ from uuid import uuid4
 import asyncio, sqlite3, shutil, bcrypt, datetime, csv, secrets, io, json, math, mimetypes
 import hashlib, hmac, logging
 from starlette.datastructures import UploadFile as StarletteUploadFile
-from studies import connect_studies, initialize_studies, get_templates, get_submission_collaboration, study_file_path, study_pdf_path, validate_pdf
+from studies import connect_studies, initialize_studies, get_templates, get_submission_collaboration, study_file_path, study_pdf_path, validate_pdf, field_has_images, field_has_text
 from study_images import normalize_study_image, study_image_path
 from urllib.parse import urlencode
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -1243,19 +1243,24 @@ async def pdf(id: int, request: Request):
         if study and study[1] == 'template':
             field_rows = db.execute("""SELECT f.id, f.label, COALESCE(v.value, ''), f.heading_font_size, f.body_font_size, f.hide_heading,
                     f.heading_alignment, f.body_alignment, f.heading_bold, f.body_bold,
-                    f.field_type, f.image_size, f.image_alignment
+                    f.field_type, f.image_size, f.image_alignment, f.with_images
                 FROM study_template_field f
                 LEFT JOIN study_field_value v ON v.field_id = f.id AND v.study_id = ?
                 WHERE f.template_id = ? ORDER BY f.position, f.id""", (id, study[2])).fetchall()
             for field in field_rows:
+                both = field[10] == 'text' and bool(field[13])
                 if field[10] == 'text':
-                    sections.append((field[1], field[2], *field[3:10]))
-                    continue
+                    if not both:
+                        sections.append((field[1], field[2], *field[3:10]))
+                        continue
+                    empty = not field[2].strip()
+                    sections.append((field[1], '(未入力)' if empty else field[2], field[3], field[4],
+                                     False if empty else bool(field[5]), *field[6:10]))
                 images = db.execute("""SELECT stored_name, caption FROM study_field_image
                     WHERE study_id=? AND field_id=? ORDER BY position,id""", (id, field[0])).fetchall()
                 sections.append({
                     'type': 'image', 'label': field[1], 'heading_font_size': field[3],
-                    'body_font_size': field[4], 'hide_heading': bool(field[5]),
+                    'body_font_size': field[4], 'hide_heading': True if both else bool(field[5]),
                     'heading_alignment': field[6], 'body_alignment': field[7],
                     'heading_bold': bool(field[8]), 'body_bold': bool(field[9]),
                     'image_size': field[11], 'image_alignment': field[12],
@@ -4100,20 +4105,23 @@ async def Add(request: Request):
                         template = db.execute("SELECT id FROM study_template WHERE id = ? AND active = 1", (template_id,)).fetchone()
                         if not template:
                             raise HTTPException(422, "選択されたテンプレートは利用できません。")
-                        fields = db.execute("SELECT id, label, max_length, field_type FROM study_template_field WHERE template_id = ? ORDER BY position, id", (template_id,)).fetchall()
+                        fields = [(field["id"], field["label"], field["max_length"], field["field_type"])
+                                  for field in next(item for item in get_templates(db) if item["id"] == template_id)["fields"]]
                         allowed = set()
                         for field_id, _label, _max_length, field_type in fields:
-                            allowed.add(("field_" if field_type == "text" else "image_") + str(field_id))
-                            if field_type == "image":
-                                allowed.add(f"caption_{field_id}")
+                            if field_has_text(field_type):
+                                allowed.add(f"field_{field_id}")
+                            if field_has_images(field_type):
+                                allowed.update((f"image_{field_id}", f"caption_{field_id}"))
                         if any((key.startswith("field_") or key.startswith("image_") or key.startswith("caption_")) and key not in allowed for key in form):
                             raise HTTPException(422, "テンプレートに存在しない項目が含まれています。")
                         for field_id, label, max_length, field_type in fields:
-                            if field_type == "text":
+                            if field_has_text(field_type):
                                 value = text_value(f"field_{field_id}").replace('\r\n', '\n').replace('\r', '\n')
                                 if max_length and len(value) > max_length:
                                     raise HTTPException(422, f"「{label}」は{max_length}文字以内で入力してください。")
                                 values.append((field_id, value))
+                            if not field_has_images(field_type):
                                 continue
                             uploads = form.getlist(f"image_{field_id}")
                             captions = form.getlist(f"caption_{field_id}")

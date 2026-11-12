@@ -13,7 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator, model_validator
 
-from studies import connect_studies, get_templates
+from studies import connect_studies, get_templates, stored_field_type
+from report_header import MAX_HEADER_ITEMS, header_options, save_school_header_items, school_header_items, school_header_style, validate_header_items
 
 
 class TemplateField(BaseModel):
@@ -29,7 +30,7 @@ class TemplateField(BaseModel):
     hide_heading: StrictBool = False
     max_length: StrictInt = Field(default=0, ge=0, le=9007199254740991)
     required: StrictBool = False
-    field_type: Literal['text', 'image'] = 'text'
+    field_type: Literal['text', 'image', 'both'] = 'text'
     image_size: Literal['small', 'large'] = 'small'
     image_alignment: Literal['left', 'center', 'right'] = 'center'
 
@@ -100,12 +101,23 @@ class SnapshotDays(BaseModel):
     days: list[StrictStr] = Field(default_factory=list, max_length=400)
 
 
+class HeaderStyle(BaseModel):
+    """PDFの先頭に印字する情報の文字サイズ・配置・太字（全行共通）。"""
+    model_config = ConfigDict(extra='forbid')
+    font_size: StrictInt = Field(default=11, ge=6, le=36)
+    alignment: Literal['left', 'center', 'right'] = 'left'
+    bold: StrictBool = False
+
+
 class SchoolReportTemplate(BaseModel):
     model_config = ConfigDict(extra='forbid')
     csrf_token: StrictStr
     name: StrictStr = Field(default='学校成果レポート', max_length=100)
     fields: list[TemplateField] = Field(min_length=1)
     source_template_id: StrictInt | None = None
+    # PDFの先頭に印字する情報（None のときは今の設定を変えない）
+    header_items: list[StrictStr] | None = Field(default=None, max_length=MAX_HEADER_ITEMS)
+    header_style: HeaderStyle | None = None
 
     @model_validator(mode='after')
     def unique_field_keys(self):
@@ -148,7 +160,7 @@ def create_template_router(database_path, templates):
             raise HTTPException(403, 'super_teacherのみ利用できます。')
         return row[0]
 
-    def apply_template(db, school, template_id, actor):
+    def apply_template(db, school, template_id, actor, header_items=None, header_style=None):
         import datetime
         from studies import get_templates
         target = db.execute('SELECT id,name FROM study_template WHERE id=? AND active=1 AND owner_school=?', (template_id,school)).fetchone()
@@ -172,7 +184,9 @@ def create_template_router(database_path, templates):
                         next_values[item['stable_key']] = {'value': prior.get('value', ''), 'images': []}
                 else:
                     next_values[item['stable_key']] = {'value': '', 'images': []}
-            snapshot = {'id':template_id, 'name':target[1], 'fields':fields}
+            snapshot = {'id':template_id, 'name':target[1], 'fields':fields,
+                        'header_items': header_items if header_items is not None else school_header_items(db, school),
+                        'header_style': header_style if header_style is not None else school_header_style(db, school)}
             db.execute('UPDATE group_report_draft SET template_id=?,template_snapshot=?,report_data=?,revision=revision+1,updated_at=? WHERE group_id=?',
                        (template_id,json.dumps(snapshot,ensure_ascii=False),json.dumps(next_values,ensure_ascii=False),datetime.datetime.now(datetime.timezone.utc).isoformat(),draft[0]))
             db.execute('DELETE FROM group_report_lock WHERE group_id=?',(draft[0],))
@@ -208,6 +222,10 @@ def create_template_router(database_path, templates):
             assigned = db.execute('SELECT template_id FROM school_report_template WHERE school=?',(school,)).fetchone()
             all_items = {item['id']: item for item in get_templates(db, include_inactive=True)}
             current = all_items.get(assigned[0]) if assigned else None
+            options = header_options(db, school)
+            known = {item['key'] for item in options}
+            selected_header = [item for item in school_header_items(db, school) if item in known]
+            header_style = school_header_style(db, school)
         source = next((item for item in items if item['id'] == source_template_id), None)
         if source_template_id is not None and source is None:
             raise HTTPException(404, '複製元の共通テンプレートが見つかりません。')
@@ -218,6 +236,7 @@ def create_template_router(database_path, templates):
             'apply_mode':True, 'apply_endpoint':'/teacher/school-report/apply',
             'source_action':'/teacher/school-report/template', 'source_template_id':source_template_id,
             'source_template_name': source['name'] if source else None,
+            'header_options': options, 'header_items': selected_header, 'header_style': header_style,
             'initial_template_fields': [{key: value for key, value in field.items() if key not in ('id', 'required')}
                                        for field in initial['fields']] if initial else []})
 
@@ -290,10 +309,17 @@ def create_template_router(database_path, templates):
                     if key and key not in source_keys and db.execute('SELECT 1 FROM study_template_field WHERE stable_key=?',(key,)).fetchone():
                         raise HTTPException(422,'項目識別キーが既存テンプレートと重複しています。複製元を選び直してください。')
                     if not key: item['stable_key']=uuid.uuid4().hex
+                header_items=None
+                header_style=data.header_style.model_dump() if data.header_style is not None else None
+                if data.header_items is not None:
+                    try: header_items=validate_header_items(db,school,data.header_items)
+                    except ValueError as exc: raise HTTPException(422,str(exc))
+                    if header_style is None: header_style=school_header_style(db,school)
+                    save_school_header_items(db,school,header_items,request.session.get('teacher_id'),header_style)
                 template_id=db.execute('INSERT INTO study_template(name,active,owner_school) VALUES(?,1,?)',(data.name.strip(),school)).lastrowid
-                db.executemany('''INSERT INTO study_template_field(template_id,label,position,required,heading_font_size,body_font_size,hide_heading,max_length,heading_alignment,body_alignment,heading_bold,body_bold,field_type,image_size,image_alignment,stable_key)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',[(template_id,f['label'],i,0,f['heading_font_size'],f['body_font_size'],f['hide_heading'],f['max_length'],f['heading_alignment'],f['body_alignment'],f['heading_bold'],f['body_bold'],f['field_type'],f['image_size'],f['image_alignment'],f['stable_key']) for i,f in enumerate(fields)])
-                affected=apply_template(db,school,template_id,request.session.get('teacher_id'))
+                db.executemany('''INSERT INTO study_template_field(template_id,label,position,required,heading_font_size,body_font_size,hide_heading,max_length,heading_alignment,body_alignment,heading_bold,body_bold,field_type,image_size,image_alignment,stable_key,with_images)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',[(template_id,f['label'],i,0,f['heading_font_size'],f['body_font_size'],f['hide_heading'],f['max_length'],f['heading_alignment'],f['body_alignment'],f['heading_bold'],f['body_bold'],*stored_field_type(f['field_type'])[:1],f['image_size'],f['image_alignment'],f['stable_key'],stored_field_type(f['field_type'])[1]) for i,f in enumerate(fields)])
+                affected=apply_template(db,school,template_id,request.session.get('teacher_id'),header_items,header_style)
         except sqlite3.Error:
             logging.exception('Failed to apply school report template')
             raise HTTPException(500,'適用できませんでした。入力内容を確認して再試行してください。')
@@ -318,12 +344,13 @@ def create_template_router(database_path, templates):
             with closing(connect_studies(database_path())) as db, db:
                 template_id = db.execute('INSERT INTO study_template(name,active) VALUES (?,1)', (data.name,)).lastrowid
                 db.executemany('''INSERT INTO study_template_field
-                    (template_id,label,position,required,heading_font_size,body_font_size,hide_heading,max_length,heading_alignment,body_alignment,heading_bold,body_bold,field_type,image_size,image_alignment,stable_key)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', [
+                    (template_id,label,position,required,heading_font_size,body_font_size,hide_heading,max_length,heading_alignment,body_alignment,heading_bold,body_bold,field_type,image_size,image_alignment,stable_key,with_images)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', [
                         (template_id, item.label, position, 0, item.heading_font_size,
                          item.body_font_size, item.hide_heading, item.max_length, item.heading_alignment,
-                         item.body_alignment, item.heading_bold, item.body_bold, item.field_type,
-                         item.image_size, item.image_alignment, item.stable_key or uuid.uuid4().hex)
+                         item.body_alignment, item.heading_bold, item.body_bold, stored_field_type(item.field_type)[0],
+                         item.image_size, item.image_alignment, item.stable_key or uuid.uuid4().hex,
+                         stored_field_type(item.field_type)[1])
                         for position, item in enumerate(data.fields)])
         except sqlite3.Error:
             logging.exception('Failed to create study template')

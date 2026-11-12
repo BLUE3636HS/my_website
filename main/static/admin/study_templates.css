@@ -11,7 +11,28 @@
 #template-status { margin: 8px 0; padding: 10px 14px; border-radius: 8px; background: var(--primary-soft); color: var(--text); }
 .template-import-notice { margin: 8px 0; padding: 10px 14px; border-left: 4px solid var(--primary); border-radius: 6px; background: var(--primary-soft); }
 .template-name-field { max-width: 520px; }
-.template-list-card .template-add-field { width: 100%; padding: 10px; border-style: dashed; }
+.template-list-card .template-add-field, .template-header-card .template-add-field { width: 100%; padding: 10px; border-style: dashed; }
+/* PDFの先頭に印字する情報（左の列で項目一覧の上） */
+/* 左：上に「先頭の情報」、その下に「項目一覧｜項目の設定」。右：プレビュー */
+.template-main { display: grid; gap: 18px; min-width: 0; }
+.template-main > .template-card { margin: 0; }
+.template-columns { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.1fr); gap: 18px; align-items: start; min-width: 0; }
+.header-card-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 240px); gap: 18px; align-items: start; }
+.header-card-body > div > p:first-child { margin-top: 0; }
+.header-style-group { margin: 0; }
+.header-item-list { margin: 0 0 10px; padding: 0; list-style: none; }
+.header-item-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.header-item-row select { flex: 1 1 140px; min-width: 0; width: auto; }
+.header-item-row .field-actions { margin-top: 0; }
+.header-item-empty { margin: 0 0 10px; color: var(--text-muted); }
+.header-item-row.drop-target { outline: 2px dashed var(--primary); outline-offset: 2px; }
+/* 普段は閉じておき、見出しの▼を押すと広がる */
+.template-header-card > summary { display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; font-size: 18px; font-weight: 700; }
+.template-header-card > summary::-webkit-details-marker { display: none; }
+.template-header-card > summary::before { content: "▶"; font-size: 12px; color: var(--text-muted); transition: transform .15s; }
+.template-header-card[open] > summary::before { transform: rotate(90deg); }
+.template-header-card[open] > summary { margin-bottom: 8px; }
+.header-summary-count { color: var(--text-muted); font-size: 14px; font-weight: 400; }
 .field-editor-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .template-import-dialog { width: min(960px, calc(100vw - 32px)); max-height: calc(100vh - 64px); padding: 24px; border: 0; border-radius: 16px; box-shadow: 0 12px 40px #0003; color: #243c30; }
 .template-import-dialog::backdrop { background: #0005; }
@@ -43,10 +64,23 @@
 #field-apply:hover { background: var(--primary-strong); }
 .template-manager button:disabled { opacity: .5; cursor: default; }
 .template-manager :focus-visible { outline: 3px solid #7dbb93; outline-offset: 2px; }
-.template-builder { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.1fr) minmax(260px, 1.3fr); gap: 18px; align-items: start; margin-top: 16px; }
+.template-builder { display: grid; grid-template-columns: minmax(0, 2.1fr) minmax(260px, 1.3fr); gap: 18px; align-items: start; margin-top: 16px; }
 .template-builder .template-card { margin-top: 0; }
 #field-list { list-style: none; padding: 0; }
-.field-row { border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 10px; overflow-wrap: anywhere; }
+/* 項目一覧：1行表示（⋮⋮ 種類 見出し 制限 ✎ ×） */
+.field-row { display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 8px; padding: 5px 6px; margin-bottom: 6px; min-width: 0; }
+.template-manager .field-row .field-handle { flex: none; width: 28px; height: 30px; padding: 0; }
+.field-kind { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 5px; font-weight: 700; font-size: 13px; color: #fff; }
+.field-kind-text { background: var(--primary, #2f6b14); }
+.field-kind-image { background: #4a6fa5; }
+.field-kind-both { width: 30px; background: linear-gradient(90deg, var(--primary, #2f6b14) 50%, #4a6fa5 50%); font-size: 12px; }
+.field-limits { flex: none; display: flex; gap: 3px; }
+.field-row-label { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.field-limit { flex: none; min-width: 26px; padding: 1px 6px; border: 1px solid var(--border); border-radius: 999px; text-align: center; font-size: 13px; color: var(--text-muted); }
+.field-row-actions { flex: none; display: flex; gap: 2px; }
+.template-manager .field-row-actions button { width: 30px; height: 30px; padding: 0; font-size: 15px; line-height: 1; }
+.template-manager .field-row-actions .field-remove:hover { color: #b3261e; border-color: #b3261e; }
+.field-legend { color: var(--text-muted); font-size: 12px; }
 .field-row.selected { background: var(--primary-soft); border-color: var(--primary); }
 .field-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
 .field-handle { cursor: grab !important; touch-action: none; }
@@ -56,7 +90,7 @@
 .preview-paper h3 { font-weight: normal; margin: 12px 0 6px; line-height: 1.46; }
 .template-definitions li { margin-bottom: 15px; overflow-wrap: anywhere; }
 .template-manager [hidden] { display: none !important; }
-@media(max-width: 1150px) { .template-builder { grid-template-columns: 1fr; } .preview-paper { max-width: 600px; } }
+@media(max-width: 1150px) { .template-builder, .template-columns, .header-card-body { grid-template-columns: 1fr; } .preview-paper { max-width: 600px; } }
 
 .alignment-label { display: block; margin: 14px 0 7px; }
 .alignment-buttons { display: flex; gap: 4px; }
@@ -74,3 +108,20 @@
 .field-settings-group { border: 1px solid var(--border-strong); border-radius: 10px; padding: 8px 14px 16px; margin: 16px 0; background: var(--surface-soft); min-width: 0; }
 .field-settings-group legend { padding: 0 8px; color: var(--primary); font-size: 16px; font-weight: 700; }
 .field-settings-group > label:first-of-type { margin-top: 6px; }
+/* 編集中の項目：薄い赤の枠。触っている設定に対応する部分は赤字・赤枠 */
+.preview-field { position: relative; }
+.preview-field.is-editing { outline: 1px dashed #e8a3a3; outline-offset: 3px; border-radius: 2px; }
+.preview-paper .preview-highlight { color: #d32f2f !important; }
+.preview-paper .preview-image-placeholder.preview-highlight { border: 2px solid #d32f2f; background: #fdecec; }
+.preview-paper h3.preview-highlight, .preview-paper p.preview-highlight { background: #fdecec; }
+/* 入力する内容：「文字」「画像」の2つのボタン（中身はチェックボックス。メンター予約のオンライン／オフラインと同じ見た目） */
+.content-type-options { display: flex; gap: 4px; padding: 3px; border: 1px solid #b4cfc5; border-radius: 12px; background: #fff; margin-bottom: 14px; }
+.content-type-option { position: relative; flex: 1 1 0; min-width: 0; margin: 0; cursor: pointer; }
+.content-type-option input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.content-type-option span { display: block; padding: 9px 12px; border-radius: 8px; background: #fff; color: #173226; font-size: 16px; font-weight: 800; text-align: center; transition: background .15s, color .15s; }
+.content-type-option:hover span { background: #eef5f2; }
+.content-type-option input:checked + span { background: #3274b4; color: #fff; }
+.content-type-option input:focus-visible + span { outline: 3px solid #9cc3ea; outline-offset: 2px; }
+/* 編集欄：項目を開くまでは案内だけ */
+.editor-empty { margin: 8px 0 0; padding: 18px 14px; border: 1px dashed var(--border-strong); border-radius: 8px; color: var(--text-muted); line-height: 1.7; }
+.editor-live-note { margin: 14px 0 0; color: var(--text-muted); font-size: 13px; }

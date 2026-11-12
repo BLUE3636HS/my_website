@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisco
 from fastapi.responses import Response
 
 from studies import connect_studies, get_templates, prune_manual_report_versions
+from report_header import DEFAULT_HEADER_ITEMS, group_context_snapshot, header_text, normalize_header_style, school_header_items, school_header_style
 from study_pdf import render_study_pdf
 from study_images import normalize_study_image
 from tekne_chat import _same_origin
@@ -34,8 +35,9 @@ def run_scheduled_snapshots(database_path, now=None):
                 if db.execute("SELECT 1 FROM group_report_version WHERE group_id=? AND kind='scheduled' AND scheduled_date=?", (group_id, day)).fetchone():
                     continue
                 version = db.execute('SELECT COALESCE(MAX(version_number),0)+1 FROM group_report_version WHERE group_id=?', (group_id,)).fetchone()[0]
-                db.execute("""INSERT INTO group_report_version(group_id,school_id,school_name,version_number,template_snapshot,report_snapshot,saved_by,saved_at,kind,scheduled_date)
-                    VALUES(?,?,?,?,?,?,?,?,'scheduled',?)""", (group_id, school_id, school_name, version, template_snapshot, report_data, SCHEDULED_SAVED_BY, saved_at, day))
+                context = json.dumps(group_context_snapshot(db, group_id, school_name), ensure_ascii=False)
+                db.execute("""INSERT INTO group_report_version(group_id,school_id,school_name,version_number,template_snapshot,report_snapshot,saved_by,saved_at,kind,scheduled_date,context_snapshot)
+                    VALUES(?,?,?,?,?,?,?,?,'scheduled',?,?)""", (group_id, school_id, school_name, version, template_snapshot, report_data, SCHEDULED_SAVED_BY, saved_at, day, context))
                 created += 1
             db.execute('UPDATE group_report_snapshot_day SET processed_at=? WHERE school=? AND day=?', (saved_at, school, day))
     return created
@@ -55,8 +57,25 @@ async def notify_group_template_changed(group_ids):
         try: await ws.send_json({'type':'template.updated'})
         except Exception: pass
 
-def pdf_sections(database_path,image_dir,template,values,metadata):
-    sections=[('保存情報',metadata,11,10,False,'left','left',False,False)]
+def load_version(db,group_id,version_id):
+    """保存履歴1件と、PDFの先頭に印字する文字列（テンプレートに保存された設定＋保存時点のメンバー情報）を返す。"""
+    cursor=db.execute('SELECT template_snapshot,report_snapshot,version_number,saved_by,saved_at,school_name,kind,scheduled_date,context_snapshot FROM group_report_version WHERE id=? AND group_id=?',(version_id,group_id))
+    row=cursor.fetchone()
+    if row is None: return None
+    row=dict(zip([c[0] for c in cursor.description],row))
+    template=json.loads(row['template_snapshot'])
+    items=template.get('header_items',DEFAULT_HEADER_ITEMS)
+    row['header_style']=normalize_header_style(template.get('header_style'))
+    # 以前の履歴には保存時点のメンバー情報がないので、今のメンバーで代用する
+    context=json.loads(row['context_snapshot']) if row['context_snapshot'] else group_context_snapshot(db,group_id,row['school_name'])
+    row['header']=header_text(items,{**row,'group_id':group_id},context)
+    return row
+
+
+def pdf_sections(database_path,image_dir,template,values,metadata,header_style=None):
+    # 先頭の情報（先生が成果レポート設定で選んだもの）。見出しは付けず、何も選ばれていなければ印字しない
+    style=normalize_header_style(header_style)
+    sections=[('保存情報',metadata,11,style['font_size'],True,'left',style['alignment'],False,style['bold'])] if metadata else []
     if isinstance(database_path,sqlite3.Connection):
         assets={r[0]:r[1] for r in database_path.execute('SELECT content_hash,stored_name FROM group_report_asset')}
     else:
@@ -64,19 +83,24 @@ def pdf_sections(database_path,image_dir,template,values,metadata):
             assets={r[0]:r[1] for r in db.execute('SELECT content_hash,stored_name FROM group_report_asset')}
     for field in template['fields']:
         data=values.get(field['stable_key'],{})
-        if field.get('field_type')=='image':
+        kind=field.get('field_type','text')
+        style=(field.get('heading_font_size',11),field.get('body_font_size',10))
+        align=(field.get('heading_alignment','left'),field.get('body_alignment','left'),field.get('heading_bold',False),field.get('body_bold',False))
+        # 文字（文字だけ／文字と画像）。空欄なら「(未入力)」と見出しを出す
+        if kind in ('text','both'):
+            value=data.get('value') or ''
+            empty=not value.strip()
+            sections.append((field['label'],'(未入力)' if empty else value,*style,False if empty else field.get('hide_heading',False),*align))
+        # 画像（画像だけ／文字と画像）。文字と画像のときは見出しを文字側で出しているので、画像側には付けない
+        if kind in ('image','both'):
             images=[]
             for item in data.get('images',[]):
                 stored=assets.get(item.get('content_hash'))
                 if stored and (Path(image_dir)/stored).is_file(): images.append((str(Path(image_dir)/stored),item.get('caption','')[:50]))
             if images:
-                sections.append({'type':'image','label':field['label'],'images':images,'heading_font_size':field.get('heading_font_size',11),'body_font_size':field.get('body_font_size',10),'heading_alignment':field.get('heading_alignment','left'),'body_alignment':field.get('body_alignment','left'),'body_bold':field.get('body_bold',False),'heading_bold':field.get('heading_bold',False),'hide_heading':field.get('hide_heading',False),'image_size':field.get('image_size','small'),'image_alignment':field.get('image_alignment','center')})
-            else:
-                sections.append((field['label'],'(未入力)',field.get('heading_font_size',11),field.get('body_font_size',10),False,field.get('heading_alignment','left'),field.get('body_alignment','left'),field.get('heading_bold',False),field.get('body_bold',False)))
-        else:
-            value=data.get('value') or ''
-            empty=not value.strip()
-            sections.append((field['label'],'(未入力)' if empty else value,field.get('heading_font_size',11),field.get('body_font_size',10),False if empty else field.get('hide_heading',False),field.get('heading_alignment','left'),field.get('body_alignment','left'),field.get('heading_bold',False),field.get('body_bold',False)))
+                sections.append({'type':'image','label':field['label'],'images':images,'heading_font_size':style[0],'body_font_size':style[1],'heading_alignment':align[0],'body_alignment':align[1],'heading_bold':align[2],'body_bold':align[3],'hide_heading':True if kind=='both' else field.get('hide_heading',False),'image_size':field.get('image_size','small'),'image_alignment':field.get('image_alignment','center')})
+            elif kind=='image':
+                sections.append((field['label'],'(未入力)',*style,False,*align))
     return sections
 
 
@@ -108,7 +132,7 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
         template=next(x for x in get_templates(db) if x['id']==setting[0])
         for field in template['fields']:
             if not field.get('stable_key'): field['stable_key']=f"legacy-{field['id']}"
-        snapshot={'id':template['id'],'name':template['name'],'fields':template['fields']}
+        snapshot={'id':template['id'],'name':template['name'],'fields':template['fields'],'header_items':school_header_items(db,group['school_name']),'header_style':school_header_style(db,group['school_name'])}
         data={f['stable_key']:{'value':'','images':[]} for f in template['fields']}
         db.execute('INSERT OR IGNORE INTO group_report_draft(group_id,school_id,school_name,template_id,template_snapshot,report_data,updated_at,revision) VALUES(?,?,?,?,?,?,?,0)',
                    (group['id'],group['school_id'],group['school_name'],template['id'],json.dumps(snapshot,ensure_ascii=False),json.dumps(data,ensure_ascii=False),now()))
@@ -125,7 +149,7 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
             if maximum and len(value)>maximum: raise HTTPException(422,'入力文字数が上限を超えています。')
             images=item.get('images',[])
             if not isinstance(images,list) or len(images)>4: raise HTTPException(422,'画像の数が不正です。')
-            if images and fields[key].get('field_type')!='image': raise HTTPException(422,'画像を添付できない項目です。')
+            if images and fields[key].get('field_type') not in ('image','both'): raise HTTPException(422,'画像を添付できない項目です。')
             for image in images:
                 if (not isinstance(image,dict) or not isinstance(image.get('content_hash'),str)
                         or not isinstance(image.get('caption',''),str) or len(image.get('caption',''))>50
@@ -184,8 +208,9 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
             db.execute('UPDATE group_report_draft SET report_data=?,updated_at=?,revision=revision+1 WHERE group_id=?',(json.dumps(merged,ensure_ascii=False),now(),group_id))
             state['data']=merged
             version=db.execute('SELECT COALESCE(MAX(version_number),0)+1 FROM group_report_version WHERE group_id=?',(group_id,)).fetchone()[0]
-            saved=now(); db.execute('INSERT INTO group_report_version(group_id,school_id,school_name,version_number,template_snapshot,report_snapshot,saved_by,saved_at) VALUES(?,?,?,?,?,?,?,?)',
-                (group_id,group['school_id'],group['school_name'],version,json.dumps(state['template'],ensure_ascii=False),json.dumps(state['data'],ensure_ascii=False),user,saved))
+            context=json.dumps(group_context_snapshot(db,group_id,group['school_name']),ensure_ascii=False)
+            saved=now(); db.execute('INSERT INTO group_report_version(group_id,school_id,school_name,version_number,template_snapshot,report_snapshot,saved_by,saved_at,context_snapshot) VALUES(?,?,?,?,?,?,?,?,?)',
+                (group_id,group['school_id'],group['school_name'],version,json.dumps(state['template'],ensure_ascii=False),json.dumps(state['data'],ensure_ascii=False),user,saved,context))
             prune_manual_report_versions(db,group_id)
         return {'ok':True,'version_number':version,'saved_at':saved}
     @router.post('/api/group-reports/{group_id}/assets')
@@ -201,7 +226,7 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
             db.execute('BEGIN IMMEDIATE')
             state=draft(db,group)
             field=next((f for f in state['template']['fields'] if f['stable_key']==field_key),None) if state else None
-            if field is None or field.get('field_type')!='image': raise HTTPException(422,'画像項目が不正です。')
+            if field is None or field.get('field_type') not in ('image','both'): raise HTTPException(422,'画像項目が不正です。')
             if len(state['data'].get(field_key,{}).get('images',[]))>=4: raise HTTPException(422,'画像は1項目につき4枚までです。')
             lock=db.execute('SELECT student_id FROM group_report_lock WHERE group_id=? AND field_key=?',(group_id,field_key)).fetchone()
             if not lock or lock[0]!=user: raise HTTPException(423,'画像を追加するには項目の編集ロックが必要です。')
@@ -224,11 +249,11 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
     async def version_pdf(request:Request,group_id:str,version_id:int):
         _,group=group_access(request.session,group_id)
         with closing(connect_studies(database_path)) as db:
-            row=db.execute('SELECT template_snapshot,report_snapshot,version_number,saved_by,saved_at,school_name FROM group_report_version WHERE id=? AND group_id=?',(version_id,group_id)).fetchone()
+            row=load_version(db,group_id,version_id)
         if not row: raise HTTPException(404,'保存履歴が見つかりません。')
-        template=json.loads(row[0]); values=json.loads(row[1]); sections=pdf_sections(database_path,image_dir,template,values,f"学校：{row[5]}\nグループ：{group['name']}\nバージョン：{row[2]}\n保存日時：{row[4]}\n保存者：{row[3]}")
+        sections=pdf_sections(database_path,image_dir,json.loads(row['template_snapshot']),json.loads(row['report_snapshot']),row['header'],row['header_style'])
         pdf=await asyncio.to_thread(render_study_pdf,sections)
-        return Response(pdf,media_type='application/pdf',headers={'Content-Disposition':f'inline; filename="report-v{row[2]}.pdf"'})
+        return Response(pdf,media_type='application/pdf',headers={'Content-Disposition':f'inline; filename="report-v{row["version_number"]}.pdf"'})
     @router.get('/teacher/reports')
     async def teacher_reports(request:Request):
         if request.session.get('teacher_login') is not True: raise HTTPException(403,'先生としてログインしてください。')
@@ -246,10 +271,10 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
         if request.session.get('teacher_login') is not True: raise HTTPException(403,'先生としてログインしてください。')
         with closing(connect_studies(database_path)) as db:
             teacher=db.execute('SELECT school FROM teacher WHERE id=?',(request.session.get('teacher_id'),)).fetchone()
-            row=db.execute('SELECT template_snapshot,report_snapshot,version_number,saved_by,saved_at,school_name FROM group_report_version WHERE id=? AND group_id=?',(version_id,group_id)).fetchone()
-        if teacher is None or row is None or row[5]!=teacher[0]: raise HTTPException(404,'保存履歴が見つかりません。')
-        template=json.loads(row[0]);values=json.loads(row[1]);sections=pdf_sections(database_path,image_dir,template,values,f"学校：{row[5]}\nグループ：{group_id}\nバージョン：{row[2]}\n保存日時：{row[4]}\n保存者：{row[3]}")
-        return Response(await asyncio.to_thread(render_study_pdf,sections),media_type='application/pdf',headers={'Content-Disposition':f'inline; filename="report-v{row[2]}.pdf"'})
+            row=load_version(db,group_id,version_id)
+        if teacher is None or row is None or row['school_name']!=teacher[0]: raise HTTPException(404,'保存履歴が見つかりません。')
+        sections=pdf_sections(database_path,image_dir,json.loads(row['template_snapshot']),json.loads(row['report_snapshot']),row['header'],row['header_style'])
+        return Response(await asyncio.to_thread(render_study_pdf,sections),media_type='application/pdf',headers={'Content-Disposition':f'inline; filename="report-v{row["version_number"]}.pdf"'})
     @router.websocket('/ws/group-reports/{group_id}')
     async def socket(websocket:WebSocket,group_id:str):
         if not _same_origin(websocket): await websocket.close(code=4403); return

@@ -3,7 +3,8 @@
      data-return-url="{{ return_url|default('/admin/study-templates') }}"
      data-create-success-message="{{ create_success_message|default('') }}"
      data-source-template-id="{{ source_template_id or '' }}"
-     data-apply-mode="{{ 'true' if apply_mode else 'false' }}">
+     data-apply-mode="{{ 'true' if apply_mode else 'false' }}"
+     data-sample-school="{{ sample_school|default('') }}">
     {% set can_import = study_templates is defined and study_templates %}
     <div class="template-toolbar">
         <div class="template-toolbar-text">
@@ -22,17 +23,53 @@
     <input id="template-name" type="text" maxlength="100" value="{{ initial_template_name|default('') }}" required></div>{% endif %}
     <script id="template-initial-fields" type="application/json">{{ initial_template_fields|default([])|tojson }}</script>
     <div class="template-builder">
+        <div class="template-main">
+        {% if header_options is defined %}
+        {% set hs = header_style|default({'font_size': 11, 'alignment': 'left', 'bold': false}) %}
+        <details class="template-card template-header-card">
+            <summary><span class="header-summary-title">PDFの先頭に印字する情報</span> <span id="header-item-count" class="header-summary-count"></span></summary>
+            <script id="header-options-data" type="application/json">{{ header_options|tojson }}</script>
+            <script id="header-items-data" type="application/json">{{ header_items|default([])|tojson }}</script>
+            <div class="header-card-body">
+                <div>
+                    <p>上から順に印字します。⋮⋮をドラッグして並び替えできます。メンバーの情報は1人1行にまとめて印字します。</p>
+                    <ol id="header-item-list" class="header-item-list"></ol>
+                    <p id="header-item-empty" class="header-item-empty" hidden>何も印字しません。</p>
+                    <button id="header-item-add" class="template-add-field" type="button">＋ 情報を追加</button>
+                </div>
+                <fieldset class="field-settings-group header-style-group">
+                    <legend>文字の設定（全行共通）</legend>
+                    <label for="header-font-size">文字サイズ</label>
+                    <input id="header-font-size" type="number" min="6" max="36" step="1" value="{{ hs.font_size }}" required>
+                    <span id="header-alignment-label" class="alignment-label">配置</span>
+                    <div class="alignment-buttons" role="group" aria-labelledby="header-alignment-label">
+                        <button type="button" class="alignment-button" data-header-alignment="left" aria-label="先頭の情報を左よせ" title="左よせ" aria-pressed="{{ 'true' if hs.alignment == 'left' else 'false' }}"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M3 4h18 M3 8h12 M3 12h18 M3 16h12 M3 20h18"/></svg></button>
+                        <button type="button" class="alignment-button" data-header-alignment="center" aria-label="先頭の情報を中央よせ" title="中央よせ" aria-pressed="{{ 'true' if hs.alignment == 'center' else 'false' }}"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M3 4h18 M6 8h12 M3 12h18 M6 16h12 M3 20h18"/></svg></button>
+                        <button type="button" class="alignment-button" data-header-alignment="right" aria-label="先頭の情報を右よせ" title="右よせ" aria-pressed="{{ 'true' if hs.alignment == 'right' else 'false' }}"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M3 4h18 M9 8h12 M3 12h18 M9 16h12 M3 20h18"/></svg></button>
+                    </div>
+                    <label class="template-check"><input id="header-bold" type="checkbox"{% if hs.bold %} checked{% endif %}> 太字にする</label>
+                </fieldset>
+            </div>
+        </details>
+        {% endif %}
+        <div class="template-columns">
         <section class="template-card template-list-card">
             <h2>項目一覧</h2>
-            <p>「編集」で右の設定に読み込みます。⋮⋮をドラッグ、または↑↓で並び替えできます。</p>
+            <p>✎で右の設定に読み込み、×で削除します。⋮⋮をドラッグして並び替えできます。<br><small class="field-legend">T＝文字だけ　P＝画像だけ　TP＝文字と画像　∞＝文字数無制限（数字は文字数制限）　▢＝画像 大（1列）　▢▢＝画像 小（2列）</small></p>
             <ol id="field-list"></ol>
             <button id="field-new" class="template-add-field" type="button">＋ 項目を追加</button>
         </section>
         <form id="field-editor" class="template-card">
-            <h2 id="editor-title">項目を追加</h2>
-            <label for="field-type">項目の種類</label>
-            <select id="field-type"><option value="text">文章</option><option value="image">画像</option></select>
-            <fieldset class="field-settings-group">
+            <h2 id="editor-title">項目を編集</h2>
+            <p id="editor-empty" class="editor-empty">左の項目一覧で ✎ を押すと、ここで編集できます。新しい項目は一覧の下の「＋ 項目を追加」で追加します。</p>
+            <div id="editor-body" hidden>
+            <span id="field-content-label" class="alignment-label">入力する内容（両方選ぶと文字の下に画像）</span>
+            <div class="content-type-options" role="group" aria-labelledby="field-content-label">
+                <label class="content-type-option"><input id="content-text" type="checkbox" checked><span>文字</span></label>
+                <label class="content-type-option"><input id="content-image" type="checkbox"><span>画像</span></label>
+            </div>
+            <select id="field-type" hidden aria-hidden="true" tabindex="-1"><option value="text">文字だけ</option><option value="both">文字と画像</option><option value="image">画像だけ</option></select>
+            <fieldset class="field-settings-group" id="heading-settings-group">
                 <legend>見出し設定</legend>
                 <label for="field-label">見出し（必須）</label><input id="field-label" required>
                 <label class="template-check"><input id="hide-heading" type="checkbox"> PDFで見出しを非表示にする</label>
@@ -72,8 +109,12 @@
                 </div>
                 <p>JPEG・PNGを最大4枚、各5MBまで追加できます。キャプションは各画像50文字以内で必須です。</p>
             </fieldset>
-            <div class="field-editor-actions"><button id="field-apply" type="button">項目を追加</button><button id="field-cancel" type="button">入力をクリア</button></div>
+            <p class="editor-live-note">変更はすぐに一覧とプレビューに反映されます。</p>
+            <div class="field-editor-actions"><button id="field-cancel" type="button">編集を閉じる</button></div>
+            </div>
         </form>
+        </div>
+        </div>
         <section class="template-preview"><h2>PDF簡易プレビュー</h2><p>実際のPDFとは改ページ等が異なる場合があります。</p><div class="preview-paper" id="preview-paper"></div></section>
     </div>
     {% if can_import %}

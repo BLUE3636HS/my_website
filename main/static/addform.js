@@ -40,6 +40,8 @@ function generateFields() {
         label.textContent = field.label;
         if (field.max_length > 0) label.textContent += `［${field.max_length}文字以内］`;
         fields.append(label, input);
+        // 「文字と画像」の項目は、文字の下に画像の欄も出す
+        if (field.field_type === "both") renderImageField(field, `${field.label}の画像（任意）`);
     }
     updateMode();
 }
@@ -47,11 +49,11 @@ function templateImageDrafts() {
     if (!imageDrafts.has(currentTemplate)) imageDrafts.set(currentTemplate, new Map());
     return imageDrafts.get(currentTemplate);
 }
-function renderImageField(field) {
+function renderImageField(field, title = field.label) {
     const wrapper = document.createElement("fieldset");
     wrapper.className = "study-image-field";
     const legend = document.createElement("legend");
-    legend.textContent = field.label;
+    legend.textContent = title;
     const help = document.createElement("p");
     help.textContent = "JPEG・PNGを最大4枚、各5MBまで。各画像の説明は50文字以内で必須です。";
     const picker = document.createElement("input");

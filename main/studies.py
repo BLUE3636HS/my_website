@@ -45,6 +45,8 @@ def initialize_studies(db):
             'field_type': "TEXT NOT NULL DEFAULT 'text' CHECK(field_type IN ('text','image'))",
             'image_size': "TEXT NOT NULL DEFAULT 'small' CHECK(image_size IN ('small','large'))",
             'image_alignment': "TEXT NOT NULL DEFAULT 'center' CHECK(image_alignment IN ('left','center','right'))",
+            # 1 のとき文字の下に画像も入れられる（項目の内容「文字と画像」）
+            'with_images': 'INTEGER NOT NULL DEFAULT 0 CHECK(with_images IN (0,1))',
         }.items():
             if name not in field_columns:
                 db.execute(f'ALTER TABLE study_template_field ADD COLUMN {name} {definition}')
@@ -94,6 +96,15 @@ def initialize_studies(db):
             db.execute("ALTER TABLE group_report_version ADD COLUMN kind TEXT NOT NULL DEFAULT 'manual'")
         if "scheduled_date" not in version_columns:
             db.execute("ALTER TABLE group_report_version ADD COLUMN scheduled_date TEXT")
+        # 保存した時点のグループ名・メンバー情報（PDFの先頭に印字する情報）。古い履歴は NULL
+        if "context_snapshot" not in version_columns:
+            db.execute("ALTER TABLE group_report_version ADD COLUMN context_snapshot TEXT")
+        # 学校ごとの「PDFの先頭に印字する情報」の設定（JSONのキー配列）
+        db.execute("""CREATE TABLE IF NOT EXISTS school_report_header (
+            school TEXT PRIMARY KEY NOT NULL, items_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL, updated_by TEXT NOT NULL)""")
+        if "style_json" not in {row[1] for row in db.execute("PRAGMA table_info(school_report_header)")}:
+            db.execute("ALTER TABLE school_report_header ADD COLUMN style_json TEXT")
         db.execute("""CREATE UNIQUE INDEX IF NOT EXISTS group_report_version_scheduled
             ON group_report_version(group_id,scheduled_date) WHERE kind='scheduled'""")
         db.execute("""CREATE TABLE IF NOT EXISTS group_report_snapshot_day (
@@ -149,6 +160,23 @@ def prune_manual_report_versions(db, group_id=None, keep=MANUAL_REPORT_VERSION_L
         WHERE rank > ?)""", (*params, keep)).rowcount
 
 
+# 項目の内容：text＝文字だけ、image＝画像だけ、both＝文字と画像（文字の下に画像）
+FIELD_TYPES = ('text', 'image', 'both')
+
+
+def field_has_text(field_type):
+    return field_type in ('text', 'both')
+
+
+def field_has_images(field_type):
+    return field_type in ('image', 'both')
+
+
+def stored_field_type(field_type):
+    """画面・APIの項目の内容を、DBの (field_type, with_images) に変換する。"""
+    return ('text', 1) if field_type == 'both' else (field_type, 0)
+
+
 def get_templates(db, include_inactive=False):
     return [{"id": row[0], "name": row[1], "active": bool(row[2]), "fields": [
         {"id": field[0], "stable_key": field[14], "label": field[1], "required": False,
@@ -156,8 +184,9 @@ def get_templates(db, include_inactive=False):
          "hide_heading": bool(field[5]), "max_length": field[6],
          "heading_alignment": field[7], "body_alignment": field[8],
          "heading_bold": bool(field[9]), "body_bold": bool(field[10]),
-         "field_type": field[11], "image_size": field[12], "image_alignment": field[13]}
-        for field in db.execute("""SELECT id, label, required, heading_font_size, body_font_size, hide_heading, max_length, heading_alignment, body_alignment, heading_bold, body_bold, field_type, image_size, image_alignment, stable_key FROM study_template_field
+         "field_type": "both" if field[11] == "text" and field[15] else field[11],
+         "image_size": field[12], "image_alignment": field[13]}
+        for field in db.execute("""SELECT id, label, required, heading_font_size, body_font_size, hide_heading, max_length, heading_alignment, body_alignment, heading_bold, body_bold, field_type, image_size, image_alignment, stable_key, with_images FROM study_template_field
             WHERE template_id = ? ORDER BY position, id""", (row[0],))
     ]} for row in db.execute("SELECT id, name, active FROM study_template WHERE active = 1 OR ? ORDER BY id", (include_inactive,))]
 
