@@ -22,8 +22,6 @@
         <p class="mentor-book-inquiry">希望の日時が空いていない場合や、予約前に相談したいことがある場合は <a href="/mentor-reservation/{{ mentor.admin_id }}/inquiry">問い合わせページ</a> からメッセージを送れます。</p>
     </section>
 
-    <div class="reservation-message" id="reservation-message" role="status" hidden></div>
-
     <section id="step-type" class="reservation-panel" style="margin-bottom: 22px">
         <fieldset class="meeting-type-fieldset">
             <legend>利用形式</legend>
@@ -102,6 +100,7 @@
         <button type="button" class="reservation-submit" id="reservation-submit" disabled>
             予約する
         </button>
+        <div class="reservation-message" id="reservation-message" role="status" hidden></div>
     </section>
 </div>
 {% endblock %}

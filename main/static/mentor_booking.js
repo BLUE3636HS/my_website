@@ -40,6 +40,7 @@ function showMessage(text, type = "error") {
     message.textContent = text;
     message.className = `reservation-message is-${type}`;
     message.hidden = false;
+    message.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 function clearMessage() {
     message.hidden = true;

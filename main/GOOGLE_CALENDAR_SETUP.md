@@ -1,178 +1,255 @@
-# Google Calendar / Google Meet 連携設定手順
+# Google カレンダー / Google Meet 連携の設定手順
 
-この手順では、大学生メンターの**オンライン予約**時に、TEKNE共通Googleアカウントのカレンダーへ予定を作成し、専用のGoogle Meet URLを発行できるようにします。オフライン予約ではGoogle CalendarやMeetを使いません。
+大学生メンターの **オンライン予約** が入ったとき、TEKNE 共通 Google アカウントのカレンダーに予定を自動で作り、Google Meet の URL を発行するための設定です。
+（オフライン予約ではカレンダーも Meet も使いません。）
 
-設定は次の順で進めます。
+この手順はすべて **ブラウザと Windows の設定画面だけ** で進められます。PowerShell やプログラムの実行は不要です。
 
-1. Google CloudプロジェクトとCalendar APIを用意する
-2. OAuth同意画面とOAuthクライアントを設定する
-3. 共通アカウントを認可し、refresh tokenを取得する
-4. 4つの値を本番環境のSecret管理へ登録する
-5. オンライン予約とキャンセルをテストする
+---
 
-> **重要:** OAuthクライアントのJSONファイル、client secret、refresh tokenは認証情報です。Git、ソースコード、DB、チャット、メール、チケット、ログへ貼り付けないでください。認可操作はTEKNE共通Googleアカウントを管理できる担当者が行ってください。
+## はじめに：全体の流れと最終的に手に入れるもの
 
-## 1. Google CloudプロジェクトとCalendar API
+| ステップ | やること | 所要時間の目安 |
+| --- | --- | --- |
+| 1 | Google Cloud にプロジェクトを作り、カレンダー API をオンにする | 5分 |
+| 2 | 「同意画面」（アプリの名札）を設定する | 5分 |
+| 3 | 「OAuth クライアント」（アプリの身分証）を作る | 5分 |
+| 4 | OAuth Playground で「リフレッシュトークン」（ずっと使える合言葉）を受け取る | 5分 |
+| 5 | Windows の環境変数に 4 つの値を登録する | 5分 |
+| 6 | アプリを再起動して動作確認する | 10分 |
 
-1. [Google Cloud Console](https://console.cloud.google.com/)を開き、設定に使うGoogleアカウントでログインします。
-2. 画面上部のプロジェクト選択メニューから「新しいプロジェクト」を選びます。
-3. 例としてプロジェクト名を `TEKNE Mentor Calendar` とし、組織を選択できる場合はTEKNEの管理対象を選び、「作成」を押します。作成後、そのプロジェクトが選択されていることを確認します。
-4. 「APIとサービス」→「ライブラリ」を開き、`Google Calendar API` を検索して選択し、「有効にする」を押します。
-5. 「APIとサービス」→「有効なAPIとサービス」に Google Calendar API が表示されることを確認します。
+最終的に、次の **4 つの値** をこの PC に登録します。手順の途中で出てくるので、そのつど下の「メモ欄」の要領で控えてください。
 
-## 2. OAuth同意画面とクライアント
+| 名前（環境変数名） | 中身 | どこで手に入るか |
+| --- | --- | --- |
+| `GOOGLE_CALENDAR_CLIENT_ID` | クライアント ID（`〜.apps.googleusercontent.com` で終わる長い文字列） | ステップ 3 |
+| `GOOGLE_CALENDAR_CLIENT_SECRET` | クライアント シークレット（`GOCSPX-` で始まる文字列） | ステップ 3 |
+| `GOOGLE_CALENDAR_REFRESH_TOKEN` | リフレッシュトークン（`1//` で始まる長い文字列） | ステップ 4 |
+| `GOOGLE_CALENDAR_ID` | 予定を入れるカレンダー。通常は `primary` | ステップ 5 |
 
-Google Cloud Consoleの「Google Auth Platform」を開きます。コンソール表示によっては「APIとサービス」→「OAuth同意画面」にあります。
+> **⚠ 取り扱い注意**
+> クライアント シークレットとリフレッシュトークンは **パスワードと同じ扱い** です。
+> - Git（このフォルダーのファイル）、チャット、メール、共有ドキュメントに貼らないでください。
+> - 作業中に控える場合は、PC のメモ帳に一時的に貼り、**保存せずに閉じる** ようにしてください。
 
-### 2.1 アプリ情報と対象ユーザー
+### 作業前に用意するもの
 
-1. 「ブランディング」または初期設定画面で、アプリ名（例: `TEKNE Mentor Calendar`）、ユーザーサポートメール、開発者連絡先メールを入力して保存します。
-2. 「対象」または「Audience」で利用対象を選びます。
-   - TEKNE共通アカウントが、このGoogle Cloudプロジェクトを所有するGoogle Workspace組織に属する場合は、組織ポリシーを確認したうえで `Internal` を選びます。組織外のアカウントは認可できません。
-   - 組織内に限定できないGoogleアカウントを使う場合は `External` を選びます。まず `Testing` で設定を確認し、「テストユーザー」にTEKNE共通アカウントを追加します。
-3. `External` の `Testing` では、登録したテストユーザーだけが認可できます。Calendar scopeを使う認可は通常7日で期限切れになり、refresh tokenも使えなくなるため、継続運用には適しません。本番運用では `In production` への公開が必要です。`calendar.events` はCalendarイベントの参照・編集を許可するscopeです。Externalアプリでこのscopeを使う場合、GoogleのOAuth確認が必要になることがあります。画面に表示される提出・確認要件に従ってください。InternalでもWorkspace管理者のAPI制限を確認してください。
+- **TEKNE 共通 Google アカウント**（Google Workspace のアカウント）にログインできること
+- できれば **Google Chrome**（ほかのブラウザでも可）
+- 作業中は他の個人 Google アカウントとの取り違えを防ぐため、**シークレットウィンドウ**（Chrome なら `Ctrl + Shift + N`）で TEKNE 共通アカウントだけにログインして進めるのがおすすめです。
 
-### 2.2 Calendar scope
+> 💡 Google の画面は時期によって表示名やボタン位置が少し変わることがあります。名前が完全に一致しない場合は、近い名前のメニューを探してください。
 
-1. 「データアクセス」または「スコープを追加または削除」を開きます。
-2. 次のscope **だけ**を追加し、保存します。
+---
+
+## ステップ 1：プロジェクトを作り、カレンダー API をオンにする
+
+1. [Google Cloud Console](https://console.cloud.google.com/) を開き、**TEKNE 共通アカウント** でログインします。
+   - 初めての場合は利用規約の画面が出るので、国を「日本」にして同意します。
+2. 画面左上の **プロジェクト選択ボタン**（「プロジェクトを選択」や既存のプロジェクト名が書かれたボタン）をクリックします。
+3. 出てきた画面の右上にある **「新しいプロジェクト」** をクリックします。
+4. 次のように入力して **「作成」** をクリックします。
+   - **プロジェクト名**：`TEKNE Mentor Calendar`（任意の名前で可）
+   - **組織**：TEKNE のドメイン（例：`tekne.〇〇`）が選ばれていることを確認します。
+     ※ ここが「組織なし」になっていると、ステップ 2 で「内部」が選べません。
+5. 作成が終わったら（右上のベルマークに通知が出ます）、もう一度左上のプロジェクト選択ボタンを押し、**今作ったプロジェクトを選択** します。画面上部にプロジェクト名が表示されていれば OK です。
+6. 画面上部の検索バーに **`Google Calendar API`** と入力し、検索結果の「Google Calendar API」をクリックします。
+7. 青い **「有効にする」** ボタンをクリックします。
+   - 「API が有効です」や「管理」ボタンが表示されれば完了です。
+
+---
+
+## ステップ 2：同意画面（アプリの名札）を設定する
+
+Google にログインして許可を出すとき「〇〇 がカレンダーへのアクセスを求めています」と表示される画面の設定です。
+
+1. 画面左上の **≡（ハンバーガーメニュー）** → **「API とサービス」** → **「OAuth 同意画面」** をクリックします。
+   - 「Google Auth Platform」という画面に切り替わることがあります。同じものなので問題ありません。
+2. 「Google Auth Platform はまだ構成されていません」と表示されたら **「開始」** をクリックし、順に入力します。
+   1. **アプリ情報**
+      - アプリ名：`TEKNE Mentor Calendar`
+      - ユーザーサポートメール：TEKNE 共通アカウントのメールアドレスを選択
+      - 「次へ」
+   2. **対象（対象ユーザー）**
+      - **「内部」** を選択 → 「次へ」
+      - 「内部」が選べない（グレーになっている）場合は、ステップ 1 の「組織」が設定されていません。下の「よくある問題」を参照してください。
+   3. **連絡先情報**
+      - メールアドレス：TEKNE 共通アカウントのメールアドレス → 「次へ」
+   4. **終了**
+      - ポリシーへの同意にチェック → 「続行」 → **「作成」**
+3. 左メニューの **「データアクセス」** をクリックし、使う権限（スコープ）を登録します。
+   1. **「スコープを追加または削除」** をクリックします。
+   2. 右側に出てきたパネルの一番下、**「スコープの手動追加」** の欄に次の 1 行を貼り付けます。
+
+      ```text
+      https://www.googleapis.com/auth/calendar.events
+      ```
+
+   3. **「テーブルに追加」** → **「更新」** をクリックします。
+   4. 画面下の **「Save（保存）」** をクリックします。
+
+> 💡 この権限は「カレンダーの予定を見る・作る・消す」だけを許可するものです。アプリはこれ以外を使わないので、他のスコープは追加しないでください。
+
+> 💡 「内部」にしておくと、Google の審査は不要で、許可が 7 日で切れるといった制限もありません。
+
+---
+
+## ステップ 3：OAuth クライアント（アプリの身分証）を作る
+
+1. 左メニューの **「クライアント」** をクリックし、**「＋ クライアントを作成」** をクリックします。
+   （「API とサービス」→「認証情報」→「＋ 認証情報を作成」→「OAuth クライアント ID」からでも同じ画面に行けます。）
+2. 次のように入力します。
+   - **アプリケーションの種類**：**「ウェブ アプリケーション」**
+   - **名前**：`TEKNE Calendar Playground`（任意）
+   - **承認済みの JavaScript 生成元**：何も入れない
+   - **承認済みのリダイレクト URI**：**「＋ URI を追加」** を押し、次をそのまま貼り付けます（最後に `/` を付けないこと）。
+
+     ```text
+     https://developers.google.com/oauthplayground
+     ```
+
+3. **「作成」** をクリックします。
+4. 「OAuth クライアントを作成しました」という画面に **クライアント ID** と **クライアント シークレット** が表示されます。
+   - ここで **「JSON をダウンロード」** を押して保存しておくと安心です（ダウンロードフォルダーに保存されます。作業完了後に削除します）。
+   - または、2 つの値を右側のコピーボタンでコピーし、メモ帳に一時的に貼っておきます。
+
+> **⚠ 重要：** 新しい画面では、クライアント シークレットは **この作成直後の画面でしか全文を表示できない** ことがあります。閉じる前に必ず控えてください。
+> 控え忘れた場合は、クライアントの詳細画面で「シークレットを追加」して新しいシークレットを作るか、クライアントを作り直してください。
+
+---
+
+## ステップ 4：OAuth Playground でリフレッシュトークンを受け取る
+
+OAuth Playground は Google が公式に提供しているテスト用 Web ページです。ここで TEKNE 共通アカウントとして「許可」を出し、アプリが今後ずっと使える合言葉（リフレッシュトークン）を受け取ります。
+
+### 4-1. 自分のクライアントを使う設定にする
+
+1. [OAuth 2.0 Playground](https://developers.google.com/oauthplayground) を開きます。
+2. 画面 **右上の歯車アイコン（⚙ OAuth 2.0 configuration）** をクリックします。
+3. 開いた設定パネルで次のようにします。
+   - **OAuth flow**：`Server-side`（初期値のまま）
+   - **Access type**：`Offline`（初期値のまま）
+   - **Force prompt**：`Consent Screen` を選択
+   - **「Use your own OAuth credentials」にチェック** を入れる
+   - **OAuth Client ID**：ステップ 3 のクライアント ID を貼り付け
+   - **OAuth Client secret**：ステップ 3 のクライアント シークレットを貼り付け
+4. 「Close」で閉じます。
+
+> 💡 「Use your own OAuth credentials」にチェックを入れ忘れると、Google の共用クライアントで発行されてしまい、**24 時間でトークンが無効** になります。必ずチェックしてください。
+
+### 4-2. 許可を出す（Step 1）
+
+1. 左側の **「Step 1 Select & authorize APIs」** の一覧の下にある入力欄 **「Input your own scopes」** に、次を貼り付けます。
 
    ```text
    https://www.googleapis.com/auth/calendar.events
    ```
 
-アプリはカレンダーイベントを作成・削除します。別のscopeを追加しないでください。
+   （一覧から「Calendar API v3」を探して選ぶ方法もありますが、余分な権限を選ばないように、この入力欄を使ってください。）
+2. 青い **「Authorize APIs」** ボタンをクリックします。
+3. Google のログイン画面が開いたら、**必ず TEKNE 共通アカウントを選択** します。個人アカウントを選ばないでください。
+4. 「TEKNE Mentor Calendar が Google アカウントへのアクセスを求めています」という画面で、内容（アプリ名・カレンダーの予定へのアクセス）を確認して **「許可」**（または「続行」）をクリックします。
+5. Playground の画面に戻り、自動的に「Step 2」が開きます。
 
-### 2.3 Desktop app OAuthクライアント
+### 4-3. リフレッシュトークンを受け取る（Step 2）
 
-1. 「クライアント」→「クライアントを作成」を選びます。
-2. アプリケーションの種類は `Desktop app` を選び、名前を `TEKNE Calendar Token Setup` などとします。
-3. 作成後、クライアントのJSONファイルをダウンロードします。ローカルPCの一時作業用フォルダーだけに置いてください。
-4. このDesktop app方式では、通常、Cloud ConsoleにコールバックURLを手入力しません。後述のライブラリがPC内の一時的なlocalhost受け口を使います。Web application型クライアントを作った場合は、ダウンロードしたJSONをこの手順のスクリプトにそのまま使えないため、Desktop app型を作り直してください。
+1. **「Step 2 Exchange authorization code for tokens」** の中にある青い **「Exchange authorization code for tokens」** ボタンをクリックします。
+2. 少し待つと、その下に次の 2 つが表示されます。
+   - **Refresh token**：`1//` で始まる長い文字列 ← **これが必要な値です**
+   - Access token：`ya29.` で始まる文字列（こちらは 1 時間で切れるので不要）
+3. **Refresh token** の欄の文字列を **すべて** 選択してコピーし、メモ帳に一時的に貼っておきます。
+   - 欄が狭くて末尾が見えにくい場合は、欄の中をクリック → `Ctrl + A` → `Ctrl + C` で全体をコピーできます。
+   - 右側の「Request / Response」欄の `"refresh_token": "1//..."` からもコピーできます（`"` は含めない）。
+4. Refresh token の欄が **空** の場合は、下の「よくある問題」を参照してください。
+5. 値を控えたら、Playground のタブは閉じて構いません。
 
-## 3. TEKNE共通アカウントの認可とrefresh token取得
+---
 
-この作業は本番サーバーではなく、ブラウザを使える管理者PCで一度だけ行います。スクリプトとJSONは一時フォルダーに置き、作業完了後に削除します。
+## ステップ 5：Windows の環境変数に 4 つの値を登録する
 
-### 3.1 一時作業フォルダーとライブラリ
+アプリは `.env` ファイルを読み込まないため、Windows の「環境変数」に登録します。
 
-Windows PowerShellの例です。`$env:TEMP` 配下に専用フォルダーを作り、隔離したPython環境を用意します。
+1. 画面下の **スタートボタン（Windows マーク）** をクリックし、そのまま **「環境変数」** と入力します。
+2. 検索結果の **「環境変数を編集」**（「アカウントの環境変数を編集」）をクリックします。
+   - 「システム環境変数を編集」ではなく、こちらを選んでください（管理者権限が不要です）。
+3. 「環境変数」ウィンドウが開きます。**上半分の「〇〇 のユーザー環境変数」** の **「新規」** ボタンをクリックします。
+4. 次の表の 4 つを、1 つずつ「新規」→ 入力 → 「OK」で追加します。
 
-```powershell
-$work = Join-Path $env:TEMP "tekne-google-calendar-oauth"
-New-Item -ItemType Directory -Force -Path $work | Out-Null
-python -m venv (Join-Path $work ".venv")
-& (Join-Path $work ".venv\Scripts\python.exe") -m pip install --upgrade google-auth-oauthlib
-```
+   | 変数名（そのまま入力） | 変数値 |
+   | --- | --- |
+   | `GOOGLE_CALENDAR_CLIENT_ID` | ステップ 3 のクライアント ID |
+   | `GOOGLE_CALENDAR_CLIENT_SECRET` | ステップ 3 のクライアント シークレット |
+   | `GOOGLE_CALENDAR_REFRESH_TOKEN` | ステップ 4 のリフレッシュトークン |
+   | `GOOGLE_CALENDAR_ID` | `primary` |
 
-ダウンロードしたOAuthクライアントJSONを、このフォルダーへ `client_secret.json` という名前で保存します。JSONをGit管理下のプロジェクトフォルダーへ置かないでください。
+   入力時の注意：
+   - 変数名は **大文字・小文字・アンダーバー（_）まで完全に同じ** にしてください。
+   - 値の **前後に空白や `"`（引用符）を付けない** でください。
+   - `GOOGLE_CALENDAR_ID` の `primary` は「TEKNE 共通アカウントのメインのカレンダー」という意味です。別のカレンダーに予定を入れたい場合は、下の補足を参照してください。
+5. 4 つとも一覧に表示されたことを確認し、**「環境変数」ウィンドウの「OK」** を押して閉じます（ここで OK を押さないと保存されません）。
 
-### 3.2 一時スクリプトを実行
+> **補足：メイン以外のカレンダーを使う場合**
+> 1. [Google カレンダー](https://calendar.google.com/) を TEKNE 共通アカウントで開きます。
+> 2. 左側「マイカレンダー」で使いたいカレンダーにマウスを乗せ、「︙」→「設定と共有」をクリックします。
+> 3. 下へスクロールし、「カレンダーの統合」の **「カレンダー ID」**（`〜@group.calendar.google.com` のような文字列）をコピーします。
+> 4. この値を `GOOGLE_CALENDAR_ID` に設定します。
+> ※ TEKNE 共通アカウントがそのカレンダーで「予定の変更」ができる権限を持っている必要があります。
 
-次の内容をメモ帳などで一時ファイル `$work\get_refresh_token.py` に保存します。ファイルにclient secretやrefresh tokenを直接書き込む必要はありません。
+---
 
-```python
-from google_auth_oauthlib.flow import InstalledAppFlow
+## ステップ 6：アプリを再起動して動作確認する
 
-SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
+### 6-1. 再起動
 
-flow = InstalledAppFlow.from_client_secrets_file(
-    "client_secret.json",
-    scopes=SCOPES,
-)
-credentials = flow.run_local_server(
-    host="127.0.0.1",
-    port=0,
-    access_type="offline",
-    prompt="consent",
-)
+環境変数は **起動済みのアプリやターミナルには反映されません**。必ず次の順で再起動してください。
 
-if not credentials.refresh_token:
-    raise RuntimeError(
-        "refresh tokenが返りませんでした。Testing状態、対象ユーザー、scopeを確認して再認可してください。"
-    )
+1. 動いているアプリ（uvicorn）を止めます（ターミナルで `Ctrl + C`）。
+2. アプリを起動していた **ターミナル（PowerShell、VS Code など）をいったん完全に閉じます**。
+   - VS Code の中のターミナルを使っている場合は、**VS Code 自体を閉じて開き直して** ください。
+3. いつもの方法でアプリを起動し直します。
 
-print("GOOGLE_CALENDAR_CLIENT_ID=" + credentials.client_id)
-print("GOOGLE_CALENDAR_CLIENT_SECRET=" + credentials.client_secret)
-print("GOOGLE_CALENDAR_REFRESH_TOKEN=" + credentials.refresh_token)
-```
+### 6-2. オンライン予約の確認
 
-PowerShellでスクリプトを実行します。
+確認しやすい日時（数日先など）でテスト予約を作ります。
 
-```powershell
-Push-Location $work
-try {
-    & (Join-Path $work ".venv\Scripts\python.exe") .\get_refresh_token.py
-}
-finally {
-    Pop-Location
-}
-```
+- [ ] 生徒アカウントで、大学生メンターの **オンライン** 予約を作成できる
+- [ ] TEKNE 共通アカウントの [Google カレンダー](https://calendar.google.com/) に、「大学生メンター相談 - 〇〇」という予定が **正しい日本時間** で入っている
+- [ ] その予定に **Google Meet** のリンクが付いていて、開ける
+- [ ] 生徒側：通知の詳細とマイページの予約詳細から Meet を開ける
+- [ ] メンター側：通知または管理画面の予約一覧から Meet を開ける
+- [ ] サイトで予約をキャンセルすると、Google カレンダーの予定が消える
 
-1. ブラウザが開いたら、必ずTEKNE共通Googleアカウントを選択します。個人アカウントで認可しないでください。
-2. アプリ名・scopeを確認し、Calendarイベントへのアクセスを許可します。未確認アプリの警告が出る場合、認可前にプロジェクト名・対象ユーザー・scopeを担当者間で確認します。
-3. ブラウザに認可完了のメッセージが表示されたらPowerShellへ戻ります。
-4. `GOOGLE_CALENDAR_CLIENT_ID`、`GOOGLE_CALENDAR_CLIENT_SECRET`、`GOOGLE_CALENDAR_REFRESH_TOKEN` の3行が表示されることを確認します。値を共有文書やシェル履歴へ貼り付けず、本番Secret管理へ安全に登録します。
+### 6-3. オフライン予約の確認
 
-`redirect_uri_mismatch` が表示される場合は、OAuthクライアントが `Desktop app` 型か、スクリプトがそのクライアントJSONを読んでいるかを確認します。この方式では固定URLを登録しません。Web application型クライアントや別クライアントのJSONを混在させないでください。
+- [ ] オフライン予約を作成しても、Google カレンダーに予定が作られず、通知や予約詳細に Meet リンクが出ない
+- [ ] 確認後、テスト予約をキャンセルする
 
-### 3.3 一時ファイルを削除
+### 6-4. 後片付け
 
-Secret管理へ値を登録し、値が欠けていないことを確認した後、PowerShellで一時フォルダーを削除します。
+- [ ] ステップ 3 でダウンロードした JSON ファイル（`client_secret_〜.json`）を **ダウンロードフォルダーから削除** し、ごみ箱も空にする
+- [ ] 値を一時的に貼ったメモ帳を **保存せずに閉じる**
 
-```powershell
-Remove-Item -LiteralPath $work -Recurse -Force
-```
+---
 
-refresh tokenが取得できなかった場合、トークン行を手作業で作らないでください。TEKNE共通アカウントがテストユーザーに登録されているか、正しいアカウントで認可したかを確認し、必要ならGoogleアカウントの「サードパーティ製アプリとサービス」からこのアプリのアクセスを取り消して、`prompt="consent"` のまま再認可します。
+## よくある問題
 
-## 4. 本番サーバーのSecret設定
-
-アプリは `.env` ファイルを自動読込しません。ホスティングサービス、サービスマネージャー、またはコンテナ基盤のSecret／環境変数設定画面に、次の4つを登録します。
-
-| 環境変数 | 設定する値 |
+| 症状 | 原因と対処 |
 | --- | --- |
-| `GOOGLE_CALENDAR_CLIENT_ID` | 一時スクリプト出力のclient ID |
-| `GOOGLE_CALENDAR_CLIENT_SECRET` | 一時スクリプト出力のclient secret |
-| `GOOGLE_CALENDAR_REFRESH_TOKEN` | 一時スクリプト出力のrefresh token |
-| `GOOGLE_CALENDAR_ID` | 使用するカレンダーID。共通アカウントのメインカレンダーなら `primary` |
+| ステップ 2 で「内部」が選べない | プロジェクトが TEKNE の組織に属していません。TEKNE 共通（Workspace）アカウントでログインしているか確認し、ステップ 1 で「組織」に TEKNE のドメインを選んでプロジェクトを作り直してください。 |
+| Playground で「アクセスをブロック: このアプリのリクエストは無効です」`redirect_uri_mismatch`（エラー 400） | 1. エラー画面の **「エラーの詳細」** をクリックし、表示される `redirect_uri=` と `client_id=` をメモします。<br>2. Cloud Console の「クライアント」一覧で、その `client_id` と同じクライアントを開きます（別のクライアントの ID を Playground に貼っていることが多い原因です）。<br>3. そのクライアントの種類が **「ウェブ アプリケーション」** であること（「デスクトップ アプリ」では不可）、「承認済みのリダイレクト URI」に `https://developers.google.com/oauthplayground` が **一字一句同じ** で入っていること（末尾 `/` なし、`https`、前後に空白なし）を確認し、違えば直して **「保存」** を押します。<br>4. 保存後、反映まで **5 分ほど待って** から、Playground を再読み込みしてステップ 4-1 からやり直します。 |
+| Playground で `invalid_client` | 歯車の設定に貼ったクライアント ID・シークレットが間違っているか、前後に空白が入っています。貼り直してください。 |
+| 許可画面で「アクセスがブロックされました」「管理者によって制限されています」 | Workspace の管理者がアプリや API の利用を制限しています。Google 管理コンソールの「セキュリティ」→「API の制御」で、このアプリ（クライアント ID）を信頼済みにしてもらうよう管理者に依頼してください。 |
+| Refresh token の欄が空 | 歯車の設定で「Access type: Offline」「Force prompt: Consent Screen」になっているか確認し、Step 1 からやり直してください。それでも出ない場合は、[Google アカウントの「サードパーティ製のアプリとサービス」](https://myaccount.google.com/connections) から「TEKNE Mentor Calendar」へのアクセスを削除してから再度許可してください。 |
+| 予約時に「Google Meetの準備に必要な設定が完了していません。」と表示される | 4 つの環境変数のどれかが読み込まれていません。変数名のつづり・大文字小文字、値の前後の空白を確認し、**ターミナル（VS Code）を閉じて開き直してから** アプリを再起動してください。 |
+| 予約時に「Google Meetの準備に失敗しました。」と表示される | ・ステップ 1 で正しいプロジェクトに Calendar API を有効にしたか<br>・クライアント ID / シークレット / リフレッシュトークンが同じクライアントのものか（クライアントを作り直した場合はステップ 4 からやり直し）<br>・`GOOGLE_CALENDAR_ID` が正しいか、共通アカウントがそのカレンダーを編集できるか<br>を確認してください。 |
+| しばらく動いていたのに急に失敗するようになった | 共通アカウントのパスワード変更、アプリへのアクセスの取り消し、クライアント シークレットの削除などでトークンが無効になった可能性があります。ステップ 4 で新しいリフレッシュトークンを取得し、ステップ 5 で `GOOGLE_CALENDAR_REFRESH_TOKEN` の値を「編集」で上書きして、アプリを再起動してください。 |
 
-別の共有カレンダーを使う場合は、Google Calendarの設定で「カレンダーの統合」→「カレンダーID」を確認して設定します。認可したTEKNE共通アカウントに、そのカレンダーで予定を変更できる権限が必要です。値の前後に引用符や余分な空白を付けないでください。
+---
 
-4つの値を設定したらサービスを再起動し、実行環境に環境変数が渡されていることをSecret値を表示せずに確認します。値を確認する目的でログへ出力しないでください。
+## 参考：Google の公式資料
 
-## 5. 動作確認
-
-本番利用前に、運用担当者が確認できるテスト日時で一度ずつ予約を作成します。
-
-### オンライン予約
-
-1. 生徒アカウントから大学生メンターの**オンライン**予約を作成します。
-2. Google Calendarに予定が作成され、日時が日本時間で表示されることを確認します。
-3. 予定にGoogle Meetがあり、Meet URLを開けることを確認します。
-4. 生徒は通知詳細とマイページ予約詳細、担当メンターは通知または管理画面の予約一覧からMeetを開けることを確認します。
-5. サイトから予約をキャンセルし、Google Calendarの予定が削除されることを確認します。
-
-### オフライン予約
-
-オフライン予約を作成し、Calendarイベント・Meetが作成されず、通知や予約詳細にMeetリンクが表示されないことを確認します。確認用予約は後でキャンセルしてください。
-
-## 6. よくある問題
-
-| 症状 | 確認・対処 |
-| --- | --- |
-| `redirect_uri_mismatch` | OAuthクライアントが `Desktop app` 型であること、対応するJSONをスクリプトが開いていることを確認します。Web application型を使っている場合はDesktop app型を作り直します。 |
-| refresh tokenが空 | 正しい共通アカウントを選んだか、External/Testingの場合はテストユーザーに登録済みか、Calendar scopeを許可したかを確認します。アプリの許可を取り消した後、`prompt="consent"` で再認可します。 |
-| 数日後に認証エラーになる | OAuth同意画面がExternal/Testingのままでは、Calendar scopeの認可とrefresh tokenは通常7日で期限切れになります。本番ステータスまたはWorkspace内のInternal設定を確認し、必要なGoogle確認・管理者承認を済ませてから再認可します。 |
-| 予約時に「Google Meetの準備に必要な設定が完了していません」と表示 | サーバーSecretに4つの環境変数がすべて登録されているか、名前の大文字小文字や値の空白、サービス再起動を確認します。 |
-| API無効・アクセス拒否エラー | 正しいCloudプロジェクトでGoogle Calendar APIが有効か、OAuth scopeが `calendar.events` か、Workspace管理者がアプリやAPIを制限していないかを確認します。 |
-| カレンダーへの権限エラー | `GOOGLE_CALENDAR_ID` が正しいか、共通アカウントが対象カレンダーで予定を変更できる権限を持つかを確認します。メインカレンダーを使う場合は `primary` を指定します。 |
-| refresh tokenが後日無効になった | 共通アカウントのアプリ許可が取り消されていないか、External/Testingのままになっていないかを確認します。再認可で新しいrefresh tokenを取得し、Secret管理の `GOOGLE_CALENDAR_REFRESH_TOKEN` を更新してサービスを再起動します。 |
-
-## 公式資料
-
-- [Google Calendar APIを有効にする](https://developers.google.com/workspace/guides/enable-apis)
-- [Google OAuth 2.0 Desktopアプリ](https://developers.google.com/identity/protocols/oauth2/native-app)
-- [Google OAuth Webサーバーアプリとオフラインアクセス](https://developers.google.com/identity/protocols/oauth2/web-server)
-- [Google Calendar APIの認証scope](https://developers.google.com/workspace/calendar/api/auth)
-- [Google Auth Platformの対象ユーザーとTesting状態](https://support.google.com/cloud/answer/15549945)
+- [Google Workspace API を有効にする](https://developers.google.com/workspace/guides/enable-apis)
+- [OAuth 同意画面を構成する](https://developers.google.com/workspace/guides/configure-oauth-consent)
+- [OAuth クライアント ID 認証情報を作成する](https://developers.google.com/workspace/guides/create-credentials)
+- [Google Calendar API のスコープ](https://developers.google.com/workspace/calendar/api/auth)
+- [OAuth 2.0 Playground](https://developers.google.com/oauthplayground)
