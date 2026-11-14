@@ -3,7 +3,7 @@
 {% block title %}ワークスペース{% endblock %}
 {% block page_title %}ワークスペース{% endblock %}
 {% block css %}
-<link rel="stylesheet" href="/static/student/chat.css?v=icon-order-1">
+<link rel="stylesheet" href="/static/student/chat.css?v=drop-hint-1">
 {% endblock %}
 
 {% block content %}
@@ -19,7 +19,8 @@
         <input id="tc-group-search" type="search" placeholder="名前">
         <div id="tc-group-list" class="tc-group-list" aria-live="polite"></div>
     </aside>
-    <main class="tc-conversation">
+    <main class="tc-conversation" id="tc-conversation">
+        <div id="tc-drop-overlay" class="tc-drop-overlay" hidden aria-hidden="true"><p>ここにドロップしてファイルを保存</p></div>
         <header class="tc-conversation-header">
             <div class="tc-conversation-title"><div id="tc-current-icon" class="tc-avatar">T</div><div><h2 id="tc-current-name">グループを選択</h2><span id="tc-current-members"></span></div></div>
             <div class="tc-header-actions">
@@ -34,7 +35,7 @@
         <section id="tc-messages" class="tc-messages" aria-label="メッセージ"></section>
         <form id="tc-message-form" class="tc-message-form">
             <label class="visually-hidden" for="tc-message-input">メッセージ</label>
-            <textarea id="tc-message-input" rows="2" maxlength="5000" placeholder="メッセージを入力（Enterで送信、Shift+Enterで改行）" disabled></textarea>
+            <textarea id="tc-message-input" rows="2" maxlength="5000" placeholder="メッセージを入力（Enterで送信、Shift+Enterで改行）&#10;ファイルはこの画面にドロップすると保存できます" disabled></textarea>
             <button id="tc-send-message" type="submit" disabled>送信</button>
         </form>
     </main>
@@ -105,6 +106,18 @@
         <div class="tc-dialog-actions"><button type="button" class="tc-dialog-cancel">キャンセル</button><button type="submit">保存</button></div>
     </form>
 </dialog>
+<dialog id="tc-drop-dialog" class="tc-dialog">
+    <form id="tc-drop-form">
+        <h2>ファイルを保存</h2>
+        <p class="tc-drop-note">次のファイルを<span id="tc-drop-space">ワークスペース</span>のフォルダに保存します。</p>
+        <ul id="tc-drop-files" class="tc-drop-files"></ul>
+        <p id="tc-drop-target-label" class="tc-drop-label">保存先フォルダ</p>
+        <div id="tc-drop-tree" class="tc-folder-tree tc-drop-tree" role="tree" aria-labelledby="tc-drop-target-label"></div>
+        <p class="tc-drop-selected">保存先：<strong id="tc-drop-selected">ルート</strong></p>
+        <p id="tc-drop-status" class="tc-drop-status" role="status"></p>
+        <div class="tc-dialog-actions"><button type="button" class="tc-dialog-cancel" id="tc-drop-cancel">キャンセル</button><button type="submit" id="tc-drop-save">保存</button></div>
+    </form>
+</dialog>
 <dialog id="tc-move-dialog" class="tc-dialog">
     <form id="tc-move-form">
         <h2>保存先を選択</h2>
@@ -124,5 +137,5 @@
 {% endblock %}
 
 {% block script %}
-<script src="/static/tekne_chat/chat.js?v=icon-order-1" defer></script>
+<script src="/static/tekne_chat/chat.js?v=drop-hint-1" defer></script>
 {% endblock %}

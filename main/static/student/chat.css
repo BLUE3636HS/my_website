@@ -35,7 +35,20 @@
 .tc-group-copy strong { font-size: 14px; }
 .tc-group-copy span { margin-top: 3px; color: var(--text-muted); font-size: 12px; }
 .student-content:has(.tekne-chat-app) { display: flex; overflow: hidden; }
-.tc-conversation { display: flex; min-width: 0; min-height: 0; flex-direction: column; background: #fff; }
+.tc-conversation { position: relative; display: flex; min-width: 0; min-height: 0; flex-direction: column; background: #fff; }
+/* メッセージ画面にファイルをドラッグしている間の案内 */
+.tc-drop-overlay { position: absolute; inset: 8px; z-index: 5; display: grid; place-items: center; border: 3px dashed var(--primary); border-radius: 14px; background: rgba(230, 243, 248, .92); pointer-events: none; }
+.tc-drop-overlay[hidden] { display: none; }
+.tc-drop-overlay p { margin: 0; color: var(--primary); font-size: 18px; font-weight: 700; }
+.tc-drop-note { margin: 0 0 8px; color: var(--text-muted); font-size: 13px; }
+.tc-drop-files { display: grid; gap: 4px; max-height: 160px; overflow: auto; margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft, #f5f9f8); list-style: none; font-size: 13px; }
+.tc-drop-files li { display: flex; justify-content: space-between; gap: 10px; overflow-wrap: anywhere; }
+.tc-drop-files li span:last-child { flex: none; color: var(--text-muted); }
+.tc-drop-label { margin: 0 0 6px; color: var(--text-muted); font-size: 12px; }
+.tc-drop-tree { max-height: 240px; overflow: auto; padding: 6px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.tc-drop-selected { margin: 8px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+.tc-drop-selected strong { color: var(--primary); }
+.tc-drop-status { min-height: 1.4em; margin: 8px 0 0; color: var(--text-muted); font-size: 13px; }
 .tc-conversation-header { min-height: 70px; justify-content: space-between; gap: 10px; padding: 0 18px; border-bottom: 1px solid var(--border); }
 .tc-conversation-title { min-width: 0; gap: 10px; }
 .tc-conversation-title h2 { overflow: hidden; margin: 0 0 3px; font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
@@ -186,3 +199,6 @@
     .tc-show-files .tc-panel-heading button { width: auto; height: auto; padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px; font-size: 0; }
     .tc-show-files .tc-panel-heading button::after { content: "チャットに戻る"; font-size: 12px; }
 }
+
+/* 画面には表示せず、読み上げだけに使うラベル（「メッセージ」など） */
+.tekne-chat-app .visually-hidden { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
