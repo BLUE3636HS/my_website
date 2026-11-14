@@ -1,60 +1,16 @@
 // ワークスペースのメッセージ画面にファイルをドロップ → 保存先フォルダを選んで保存する
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const vm = require('node:vm');
 const { test } = require('node:test');
+const { Element, setup: baseSetup, ok, settle } = require('./chat_harness.cjs');
 
-class Element {
-    constructor(id = '') {
-        this.id = id; this.listeners = {}; this.children = []; this.dataset = {}; this.value = ''; this.textContent = '';
-        this.hidden = false; this.disabled = false; this.options = []; this.open = false; this.style = {};
-        this.classList = { toggle() {}, add() {}, remove() {}, contains() { return false; } };
-    }
-    addEventListener(event, callback) { (this.listeners[event] ||= []).push(callback); }
-    dispatch(event, payload = {}) { for (const callback of this.listeners[event] || []) callback(payload); }
-    async dispatchAsync(event, payload = {}) { for (const callback of this.listeners[event] || []) await callback(payload); }
-    append(...items) { this.children.push(...items); }
-    replaceChildren(...items) { this.children = items; this.options = items.filter((item) => item instanceof Option); }
-    replaceWith() {}
-    add(option) { this.options.push(option); }
-    setAttribute(name, value) { this[name] = value; }
-    removeAttribute() {}
-    querySelector() { return null; }
-    querySelectorAll() { return []; }
-    closest() { return new Element(); }
-    showModal() { this.open = true; }
-    close() { this.open = false; this.dispatch('close'); }
-    focus() {}
-    requestSubmit() {}
-}
-class Option { constructor(text, value) { this.text = text; this.value = value; } }
-
+// アップロードの送信だけを取り出しやすくする
 function setup(fetchImpl) {
-    const ids = new Map();
-    const byId = (id) => { if (!ids.has(id)) ids.set(id, new Element(id)); return ids.get(id); };
-    const app = byId('tekne-chat-app');
-    app.dataset = { csrf: 'csrf', currentUser: 'a', initialGroup: '', initialFile: '', initialFolder: '' };
-    byId('tc-group-search').value = '';
-    byId('tc-side-panel').hidden = true;
-    const uploads = [];
-    const context = vm.createContext({
-        document: { getElementById: byId, querySelectorAll: () => [], querySelector: () => null, createElement: () => new Element(), createTextNode: (t) => t, hidden: false },
-        window: { addEventListener() {} },
-        location: { protocol: 'http:', host: 'test', search: '' },
-        WebSocket: class { constructor() { this.readyState = 0; } addEventListener() {} close() {} send() {} },
-        FormData: class { constructor() { this.data = new Map(); } set(key, value) { this.data.set(key, value); } },
-        URLSearchParams, Option, setTimeout, clearTimeout, setInterval: () => 0, console,
-        fetch: async (path, options = {}) => {
-            if (options.method === 'POST' && path.endsWith('/files')) uploads.push({ path, folder: options.body.data.get('folder_id'), file: options.body.data.get('file') });
-            return fetchImpl(path, options);
-        },
-    });
-    vm.runInContext(fs.readFileSync('static/tekne_chat/chat.js', 'utf8'), context);
-    return { byId, uploads };
+    const page = baseSetup(fetchImpl);
+    return { ...page, get uploads() {
+        return page.requests.filter((r) => r.method === 'POST' && r.path.endsWith('/files'))
+            .map((r) => ({ path: r.path, folder: r.body.get('folder_id'), file: r.body.get('file') }));
+    } };
 }
-
-const ok = (body) => ({ ok: true, json: async () => body });
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const groups = { groups: [{ id: 'g1', name: '植物の研究', kind: 'personal', member_count: 1 }] };
 const tree = { folders: [
     { id: 'f1', parent_id: null, name: 'データ', path: 'データ' },

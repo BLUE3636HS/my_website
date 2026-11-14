@@ -3,7 +3,7 @@
 {% block title %}ワークスペース{% endblock %}
 {% block page_title %}ワークスペース{% endblock %}
 {% block css %}
-<link rel="stylesheet" href="/static/student/chat.css?v=drop-hint-1">
+<link rel="stylesheet" href="/static/student/chat.css?v=file-panel-1">
 {% endblock %}
 
 {% block content %}
@@ -56,23 +56,14 @@
                 </nav>
                 <div class="tc-file-content">
                     <div class="tc-file-toolbar">
-                        <div class="tc-file-toolbar-primary">
-                            <button id="tc-new-folder" type="button">フォルダ作成</button>
-                            <label class="tc-upload-button">ファイルをアップロード<input id="tc-upload-file" type="file" hidden></label>
-                        </div>
-                        <div class="tc-file-toolbar-actions" role="group" aria-label="選択した項目の操作">
-                            <span id="tc-selection-status" class="tc-selection-status">項目を選択してください</span>
-                            <button id="tc-selected-download" type="button" disabled>ダウンロード</button>
-                            <button id="tc-selected-rename" type="button" disabled>名前変更</button>
-                            <button id="tc-selected-move" type="button" disabled>移動</button>
-                            <button id="tc-selected-delete" type="button" disabled>削除</button>
-                        </div>
+                        <button id="tc-new-folder" class="tc-tool-button" type="button">＋ フォルダ作成</button>
+                        <label class="tc-upload-button tc-tool-button">↑ アップロード<input id="tc-upload-file" type="file" hidden></label>
+                        <label class="visually-hidden" for="tc-file-search">ファイル・フォルダ検索</label>
+                        <input id="tc-file-search" class="tc-file-search" type="search" placeholder="グループ内を検索">
                     </div>
-                    <label for="tc-file-search">ファイル・フォルダ検索</label>
-                    <input id="tc-file-search" type="search" placeholder="グループ内を検索">
-                    <p id="tc-folder-path" class="tc-folder-path">ルート</p>
-                    <div class="tc-file-table-header" aria-hidden="true"><span>名前</span><span>アップロード者</span><span>登録日時</span><span>サイズ</span></div>
+                    <nav id="tc-folder-path" class="tc-breadcrumb" aria-label="現在の場所"></nav>
                     <div id="tc-file-list" class="tc-file-list" aria-live="polite"></div>
+                    <div id="tc-entry-menu" class="tc-entry-menu" role="menu" hidden></div>
                 </div>
             </div>
         </section>
@@ -137,5 +128,5 @@
 {% endblock %}
 
 {% block script %}
-<script src="/static/tekne_chat/chat.js?v=drop-hint-1" defer></script>
+<script src="/static/tekne_chat/chat.js?v=file-panel-1" defer></script>
 {% endblock %}

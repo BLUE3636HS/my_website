@@ -30,7 +30,7 @@
     function newEventId() { return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
     const isPersonal = (group) => group?.kind === "personal";
     function setEnabled(enabled) {
-        for (const id of ["tc-message-input", "tc-send-message", "tc-rename-group", "tc-toggle-members", "tc-toggle-files", "tc-new-folder", "tc-upload-file", "tc-leave-group", "tc-selected-download", "tc-selected-rename", "tc-selected-move", "tc-selected-delete"]) $(id).disabled = !enabled;
+        for (const id of ["tc-message-input", "tc-send-message", "tc-rename-group", "tc-toggle-members", "tc-toggle-files", "tc-new-folder", "tc-upload-file", "tc-leave-group", "tc-file-search"]) $(id).disabled = !enabled;
     }
     function groupIcon(group) {
         const avatar = document.createElement("div");
@@ -338,15 +338,8 @@
         if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
         return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
     }
-    function renderSelectionActions() {
-        const selected = state.selectedEntry;
-        const hasEntry = Boolean(selected);
-        $("tc-selection-status").textContent = selected ? `選択中: ${selected.item.name || selected.item.display_name}` : "項目を選択してください";
-        $("tc-selected-download").disabled = !hasEntry || selected.kind !== "file";
-        $("tc-selected-rename").disabled = !hasEntry;
-        $("tc-selected-move").disabled = !hasEntry || selected.kind !== "file";
-        $("tc-selected-delete").disabled = !hasEntry;
-    }
+    // 操作は各行の「⋯」メニューから行う。選択の変更時はメニューを閉じるだけ
+    function renderSelectionActions() { closeEntryMenu(); }
     function setSelectedEntry(kind, item) {
         state.selectedEntry = kind && item ? { kind, item } : null;
         renderSelectionActions();
@@ -356,7 +349,7 @@
             row.setAttribute("aria-pressed", String(Boolean(selected)));
         }
     }
-    function createEntryRow({ item, kind, icon, uploader = "—", createdAt = "", size = "—", path = "", onOpen }) {
+    function createEntryRow({ item, kind, icon, uploader = "", createdAt = "", size = "", path = "", onOpen }) {
         const row = document.createElement("div"); row.className = "tc-file-row";
         row.dataset.id = String(item.id); row.dataset.kind = kind;
         row.setAttribute("role", "button"); row.tabIndex = 0;
@@ -369,16 +362,109 @@
             if (event.key === " ") { event.preventDefault(); setSelectedEntry(kind, item); }
             if (event.key === "Enter") { event.preventDefault(); Promise.resolve(onOpen?.()).catch(showError); }
         });
-        const title = document.createElement("div"); title.className = "tc-file-entry-title";
         const name = item.name || item.display_name;
-        const entryName = document.createElement("span"); entryName.className = "tc-file-entry-link";
-        entryName.textContent = `${icon} ${name}`; entryName.title = path || name; title.append(entryName);
-        if (path) { const location = document.createElement("small"); location.textContent = path; title.append(location); }
-        const uploaderCell = document.createElement("span"); uploaderCell.className = "tc-file-cell"; uploaderCell.dataset.label = "投稿者"; uploaderCell.textContent = uploader || "—";
-        const dateCell = document.createElement("span"); dateCell.className = "tc-file-cell"; dateCell.dataset.label = "登録日時"; dateCell.textContent = formatDate(createdAt);
-        const sizeCell = document.createElement("span"); sizeCell.className = "tc-file-cell"; sizeCell.dataset.label = "サイズ"; sizeCell.textContent = size;
-        row.append(title, uploaderCell, dateCell, sizeCell);
+        const iconCell = document.createElement("span"); iconCell.className = "tc-file-icon"; iconCell.setAttribute("aria-hidden", "true"); iconCell.textContent = icon;
+        const main = document.createElement("div"); main.className = "tc-file-main";
+        const entryName = document.createElement("strong"); entryName.className = "tc-file-name"; entryName.textContent = name; entryName.title = name;
+        // 2段目：サイズ・登録日時・アップロード者（個人スペースでは自分しかいないので省略）
+        const details = kind === "folder" ? ["フォルダ", formatDate(createdAt)] : [size, formatDate(createdAt), isPersonal(state.group) ? "" : uploader];
+        const meta = document.createElement("span"); meta.className = "tc-file-meta"; meta.textContent = details.filter(Boolean).join("・");
+        main.append(entryName, meta);
+        if (path) { const location = document.createElement("span"); location.className = "tc-file-location"; location.textContent = `場所：${path}`; main.append(location); }
+        const more = document.createElement("button"); more.type = "button"; more.className = "tc-file-more"; more.textContent = "⋯";
+        more.setAttribute("aria-label", `${name}の操作`); more.setAttribute("aria-haspopup", "menu"); more.setAttribute("aria-expanded", "false");
+        more.addEventListener("click", (event) => {
+            event.stopPropagation();
+            // 開いているメニューの「⋯」をもう一度押したら閉じる
+            if (state.menuButton === more && !$("tc-entry-menu").hidden) { closeEntryMenu({ focus: true }); return; }
+            setSelectedEntry(kind, item); openEntryMenu(more, { kind, item, onOpen });
+        });
+        more.addEventListener("dblclick", (event) => event.stopPropagation());
+        more.addEventListener("keydown", (event) => event.stopPropagation());
+        row.append(iconCell, main, more);
         return row;
+    }
+    // 行の「⋯」から開く操作メニュー（ファイル：ダウンロード・名前変更・移動・削除／フォルダ：開く・名前変更・削除）
+    function closeEntryMenu({ focus = false } = {}) {
+        const menu = $("tc-entry-menu"); if (!menu || menu.hidden) return;
+        menu.hidden = true; menu.replaceChildren();
+        state.menuButton?.setAttribute("aria-expanded", "false");
+        if (focus) state.menuButton?.focus();
+        state.menuButton = null;
+    }
+    function openEntryMenu(button, entry) {
+        const menu = $("tc-entry-menu");
+        closeEntryMenu();
+        const items = entry.kind === "folder"
+            ? [["開く", () => entry.onOpen?.()], ["名前変更", () => renameEntry(entry)], ["削除", () => deleteEntry(entry), true]]
+            : [["ダウンロード", () => downloadEntry(entry)], ["名前変更", () => renameEntry(entry)], ["移動", () => moveEntry(entry)], ["削除", () => deleteEntry(entry), true]];
+        for (const [label, action, danger] of items) {
+            const choice = document.createElement("button"); choice.type = "button"; choice.setAttribute("role", "menuitem");
+            choice.className = danger ? "tc-entry-menu-item is-danger" : "tc-entry-menu-item"; choice.textContent = label;
+            choice.addEventListener("click", (event) => { event.stopPropagation(); closeEntryMenu(); Promise.resolve(action()).catch(showError); });
+            menu.append(choice);
+        }
+        menu.hidden = false; state.menuButton = button; button.setAttribute("aria-expanded", "true");
+        const box = button.getBoundingClientRect?.(), area = menu.parentElement?.getBoundingClientRect?.();
+        if (box && area) {
+            // 下に入りきらないときは「⋯」の上に開く
+            const below = box.bottom - area.top + 4, height = menu.offsetHeight || 0;
+            menu.style.top = `${below + height > area.height - 8 ? Math.max(8, box.top - area.top - height - 4) : below}px`;
+            menu.style.right = `${Math.max(8, area.right - box.right)}px`;
+        }
+        menu.querySelector?.("button")?.focus();
+    }
+    function downloadEntry(entry) {
+        if (entry.kind === "file") window.location.href = `/tekne-chat/api/files/${encodeURIComponent(entry.item.id)}/download`;
+    }
+    async function renameEntry(entry) {
+        const currentName = entry.item.name || entry.item.display_name;
+        const name = prompt("新しい名前", currentName);
+        if (!name || name === currentName) return;
+        const path = entry.kind === "folder" ? `/tekne-chat/api/folders/${entry.item.id}` : `/tekne-chat/api/files/${entry.item.id}`;
+        await api(path, { method: "PATCH", body: form({ name }) });
+        if (entry.kind === "folder") { entry.item.name = name; await loadFolderTree(); }
+        else entry.item.display_name = name;
+        await loadFiles();
+    }
+    async function moveEntry(entry) {
+        if (entry.kind !== "file") return;
+        const tree = await api(`/tekne-chat/api/groups/${encodeURIComponent(state.group.id)}/folder-tree`);
+        const target = $("tc-move-target"); target.replaceChildren(new Option("ルート", ""));
+        for (const folder of tree.folders) target.add(new Option(folder.path, folder.id));
+        target.value = entry.item.folder_id || ""; state.movingFileId = entry.item.id; $("tc-move-dialog").showModal();
+    }
+    async function deleteEntry(entry) {
+        const isFolder = entry.kind === "folder";
+        const name = entry.item.name || entry.item.display_name;
+        if (!confirm(isFolder ? `「${name}」と中のファイルを削除しますか？` : `「${name}」を削除しますか？`)) return;
+        const path = isFolder ? `/tekne-chat/api/folders/${entry.item.id}` : `/tekne-chat/api/files/${entry.item.id}`;
+        await api(path, { method: "DELETE", body: form() });
+        setSelectedEntry(null, null);
+        if (isFolder) await loadFolderTree();
+        await loadFiles();
+    }
+    // 現在の場所を「ルート ＞ 親 ＞ 子」の形で表示し、途中の階層は押して移動できるようにする
+    function renderBreadcrumb(query) {
+        const nav = $("tc-folder-path"); nav.replaceChildren();
+        if (query) {
+            const label = document.createElement("span"); label.className = "tc-breadcrumb-current"; label.textContent = `「${query}」の検索結果`;
+            const clear = document.createElement("button"); clear.type = "button"; clear.className = "tc-breadcrumb-clear"; clear.textContent = "検索をやめる";
+            clear.addEventListener("click", () => { $("tc-file-search").value = ""; loadFiles().catch(showError); });
+            nav.append(label, clear); return;
+        }
+        const folders = folderMap(), chain = [];
+        for (let id = state.folderId ? String(state.folderId) : ""; id && folders.has(id); id = folders.get(id).parent_id ? String(folders.get(id).parent_id) : "") chain.unshift(folders.get(id));
+        const crumbs = [{ id: null, name: "ルート" }, ...chain];
+        crumbs.forEach((crumb, index) => {
+            if (index) { const sep = document.createElement("span"); sep.className = "tc-breadcrumb-sep"; sep.setAttribute("aria-hidden", "true"); sep.textContent = "＞"; nav.append(sep); }
+            if (index === crumbs.length - 1) {
+                const current = document.createElement("span"); current.className = "tc-breadcrumb-current"; current.setAttribute("aria-current", "location"); current.textContent = crumb.name; nav.append(current);
+            } else {
+                const link = document.createElement("button"); link.type = "button"; link.className = "tc-breadcrumb-link"; link.textContent = crumb.name;
+                link.addEventListener("click", () => selectFolder(crumb.id).catch(showError)); nav.append(link);
+            }
+        });
     }
     async function loadFiles() {
         if (!state.group) return;
@@ -396,16 +482,18 @@
             const collection = state.selectedEntry.kind === "file" ? result.files : result.folders;
             if (!collection.some((item) => String(item.id) === selectedId)) setSelectedEntry(null, null);
         }
-        $("tc-folder-path").textContent = query ? `検索結果: ${query}` : (result.folder_path || "ルート");
+        renderBreadcrumb(query);
         const list = $("tc-file-list"); list.replaceChildren();
         for (const folder of result.folders) {
-            const path = folderMap().get(String(folder.id))?.path || folder.name;
-            list.append(createEntryRow({ item: folder, kind: "folder", name: folder.name, icon: "📁", createdAt: folder.created_at, path, onOpen: () => selectFolder(folder.id) }));
+            // 「場所」は検索結果のときだけ出す（フォルダを開いているときは上の現在地で分かるため）
+            const path = query ? `ルート/${folderMap().get(String(folder.id))?.path || folder.name}` : "";
+            list.append(createEntryRow({ item: folder, kind: "folder", name: folder.name, icon: "📁", createdAt: folder.created_at, path, onOpen: () => { $("tc-file-search").value = ""; return selectFolder(folder.id); } }));
         }
         for (const file of result.files) {
-            const path = file.folder_id ? folderMap().get(String(file.folder_id))?.path || "" : "ルート";
+            const path = query ? (file.folder_id ? `ルート/${folderMap().get(String(file.folder_id))?.path || ""}` : "ルート") : "";
             const open = () => { window.location.href = `/tekne-chat/api/files/${encodeURIComponent(file.id)}/download`; };
-            list.append(createEntryRow({ item: file, kind: "file", icon: "📄", uploader: file.uploaded_by_login_id || "削除済みユーザー", createdAt: file.created_at, size: formatSize(file.size_bytes), path, onOpen: open }));
+            const uploader = file.uploaded_by_name || file.uploaded_by_login_id || "削除済みユーザー";
+            list.append(createEntryRow({ item: file, kind: "file", icon: "📄", uploader, createdAt: file.created_at, size: formatSize(file.size_bytes), path, onOpen: open }));
         }
         if (!result.files.length && !result.folders.length) { const empty = document.createElement("p"); empty.className = "tc-empty"; empty.textContent = query ? "検索結果がありません" : "項目はありません"; list.append(empty); }
     }
@@ -534,49 +622,10 @@
     $("tc-toggle-members").addEventListener("click", () => openPanel("members"));
     $("tc-toggle-files").addEventListener("click", () => openPanel("files"));
     $("tc-close-panel").addEventListener("click", () => { sidePanel.hidden = true; app.classList.remove("tc-show-files"); });
-    $("tc-selected-download").addEventListener("click", () => {
-        const selected = state.selectedEntry;
-        if (selected?.kind === "file") window.location.href = `/tekne-chat/api/files/${encodeURIComponent(selected.item.id)}/download`;
-    });
-    $("tc-selected-rename").addEventListener("click", async () => {
-        const selected = state.selectedEntry;
-        if (!selected) return;
-        const currentName = selected.item.name || selected.item.display_name;
-        const name = prompt("新しい名前", currentName);
-        if (!name) return;
-        try {
-            const path = selected.kind === "folder" ? `/tekne-chat/api/folders/${selected.item.id}` : `/tekne-chat/api/files/${selected.item.id}`;
-            await api(path, { method: "PATCH", body: form({ name }) });
-            if (selected.kind === "folder") { selected.item.name = name; await loadFolderTree(); }
-            else selected.item.display_name = name;
-            renderSelectionActions(); await loadFiles();
-        } catch (error) { showError(error); }
-    });
-    $("tc-selected-move").addEventListener("click", async () => {
-        const selected = state.selectedEntry;
-        if (selected?.kind !== "file") return;
-        try {
-            const tree = await api(`/tekne-chat/api/groups/${encodeURIComponent(state.group.id)}/folder-tree`);
-            const target = $("tc-move-target"); target.replaceChildren(new Option("ルート", ""));
-            for (const folder of tree.folders) target.add(new Option(folder.path, folder.id));
-            target.value = selected.item.folder_id || ""; state.movingFileId = selected.item.id; $("tc-move-dialog").showModal();
-        } catch (error) { showError(error); }
-    });
-    $("tc-selected-delete").addEventListener("click", async () => {
-        const selected = state.selectedEntry;
-        if (!selected) return;
-        const isFolder = selected.kind === "folder";
-        const name = selected.item.name || selected.item.display_name;
-        const promptText = isFolder ? `「${name}」と中のファイルを削除しますか？` : `「${name}」を削除しますか？`;
-        if (!confirm(promptText)) return;
-        try {
-            const path = isFolder ? `/tekne-chat/api/folders/${selected.item.id}` : `/tekne-chat/api/files/${selected.item.id}`;
-            await api(path, { method: "DELETE", body: form() });
-            setSelectedEntry(null, null);
-            if (isFolder) await loadFolderTree();
-            await loadFiles();
-        } catch (error) { showError(error); }
-    });
+    // メニューの外を押す・Escape・一覧のスクロールでメニューを閉じる
+    document.addEventListener("click", (event) => { if (!$("tc-entry-menu").contains?.(event.target)) closeEntryMenu(); });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeEntryMenu({ focus: true }); });
+    $("tc-file-list").addEventListener("scroll", () => closeEntryMenu());
     $("tc-move-form").addEventListener("submit", async (event) => {
         event.preventDefault(); if (!state.movingFileId) return;
         try { await api(`/tekne-chat/api/files/${state.movingFileId}/move`, { method: "POST", body: form({ folder_id: $("tc-move-target").value }) }); $("tc-move-dialog").close(); state.movingFileId = null; await loadFiles(); }

@@ -202,6 +202,15 @@ class ChatListAndIconTests(unittest.TestCase):
         self.chat.create_message(self.session, first['id'], '新しいメモ')
         self.assertEqual(self.chat.groups(self.session)[0]['id'], first['id'])
 
+    def test_file_list_includes_uploader_name_with_id_fallback(self):
+        group = self.chat.create_group(self.session, '共同研究')
+        self.chat.upload_file(self.session, group['id'], None, UploadFile(io.BytesIO(b'data'), filename='a.txt'))
+        listed = self.chat.list_files(self.session, group['id'])['files'][0]
+        self.assertEqual((listed['uploaded_by_login_id'], listed['uploaded_by_name']), ('a', 'A'))
+        with closing(connect_studies(self.path)) as db, db:
+            db.execute("UPDATE student SET name='' WHERE id='a'")
+        self.assertEqual(self.chat.list_files(self.session, group['id'], query='a.txt')['files'][0]['uploaded_by_name'], 'a')
+
     def icon_update(self, group_id, **values):
         update = self.endpoint('/tekne-chat/api/groups/{group_id}/icon', 'POST')
         values.setdefault('file', None)
