@@ -39,6 +39,7 @@ from mentor_reservations import (
     initialize_mentor_tables,
     mentor_image_url,
 )
+from announcements import build_announcement_router, initialize_announcements, active_announcements, linkify, format_period
 from admin_management import migrate_admin_database, build_admin_router, active_admin, require_super_admin, session_secret, build_password_router
 from school_registration import (
     initialize_student_account_fields,
@@ -401,6 +402,7 @@ conn.commit()
 migrate_admin_database(DATABASE_PATH)
 initialize_reservation_schedule(conn)
 seed_school_feature_settings(DATABASE_PATH)
+initialize_announcements(conn)
 with closing(connect_studies(DATABASE_PATH)) as study_db:
     initialize_studies(study_db)
 
@@ -439,6 +441,9 @@ def student_template_context(request):
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"), context_processors=[student_template_context, admin_template_context])
 templates.env.filters["notification_category"] = notification_category
 templates.env.filters["notification_category_label"] = notification_category_label
+templates.env.filters["linkify"] = linkify
+templates.env.filters["announcement_period"] = format_period
+app.include_router(build_announcement_router(DATABASE_PATH, templates))
 app.include_router(build_admin_router(DATABASE_PATH, templates, MENTOR_PROFILE_UPLOADS_DIR))
 app.include_router(build_school_feature_router(DATABASE_PATH, templates))
 app.include_router(build_password_router(DATABASE_PATH))
@@ -1136,6 +1141,7 @@ async def Dashboard(request: Request):
             """,
             (user_id,)
         ).fetchall()
+        announcements = active_announcements(db)
 
     return templates.TemplateResponse(
         request = request,
@@ -1147,7 +1153,8 @@ async def Dashboard(request: Request):
             "unread_notifications": unread_notifications,
             "next_reservation": next_reservation,
             "next_equipment_reservation": next_equipment_reservation,
-            "missing_required_fields": missing_required_fields
+            "missing_required_fields": missing_required_fields,
+            "announcements": announcements
         }
     )
 

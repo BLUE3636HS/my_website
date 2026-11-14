@@ -1,0 +1,85 @@
+{% extends 'admin/base.html' %}
+{% import "student_icons.html" as ui_icons %}
+{% block title %}ダッシュボード掲示{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/admin/announcements.css">{% endblock %}
+{% block content %}
+<section class="announcement-admin-panel">
+    <h1>ダッシュボード掲示</h1>
+    <p>生徒ダッシュボードの「お知らせ」欄に、期間限定のカードを表示します（全生徒が対象）。カードを押すと詳細ページが開きます。アンケートのURLなどはリンクURLに入力してください。</p>
+    {% if error %}<p class="login-error" role="alert">{{ error }}</p>{% endif %}
+    {% if notice %}<p class="school-features-notice" role="status">{{ notice }}</p>{% endif %}
+
+    <form class="announcement-form" method="post" action="/admin/announcements{% if editing_id %}/{{ editing_id }}{% endif %}">
+        <h2>{% if editing_id %}掲示を編集{% else %}新しい掲示を作成{% endif %}</h2>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>題名 <span class="announcement-required">必須</span>
+            <input type="text" name="title" required maxlength="{{ limits.title }}" value="{{ form.title or '' }}" placeholder="例: 活動アンケートへのご協力のお願い">
+        </label>
+        <label>概要（ダッシュボードのカードに表示）
+            <input type="text" name="summary" maxlength="{{ limits.summary }}" value="{{ form.summary or '' }}" placeholder="例: 5分ほどで回答できます">
+        </label>
+        <label>本文（詳細ページに表示。URLは自動でリンクになります）
+            <textarea name="body" rows="7" maxlength="{{ limits.body }}">{{ form.body or '' }}</textarea>
+        </label>
+        <div class="announcement-form-row">
+            <label>リンクURL
+                <input type="url" name="link_url" maxlength="{{ limits.url }}" value="{{ form.link_url or '' }}" placeholder="https://forms.office.com/...">
+            </label>
+            <label>ボタンの文字
+                <input type="text" name="link_label" maxlength="{{ limits.link_label }}" value="{{ form.link_label or '' }}" placeholder="例: アンケートに回答する（空欄なら「リンクを開く」）">
+            </label>
+        </div>
+        <div class="announcement-form-row">
+            <label>表示開始（空欄ならすぐに表示）
+                <input type="datetime-local" name="starts_at" value="{{ form.starts_at or '' }}">
+            </label>
+            <label>表示終了（空欄なら無期限）
+                <input type="datetime-local" name="ends_at" value="{{ form.ends_at or '' }}">
+            </label>
+        </div>
+        <fieldset class="announcement-choice">
+            <legend>種類（色とアイコンは種類ごとに決まります）</legend>
+            {% for key, label, tone, icon in kinds %}
+            <label class="announcement-kind tone-{{ tone }}"><input type="radio" name="kind" value="{{ key }}"{% if form.kind == key %} checked{% endif %}><span class="announcement-kind-icon">{{ ui_icons.icon(icon) }}</span><span>{{ label }}</span></label>
+            {% endfor %}
+        </fieldset>
+        <div class="announcement-form-actions">
+            <button class="school-features-save" type="submit">{% if editing_id %}更新する{% else %}作成する{% endif %}</button>
+            {% if editing_id %}<a class="announcement-cancel" href="/admin/announcements">編集をやめる</a>{% endif %}
+        </div>
+    </form>
+
+    <h2 class="announcement-list-title">掲示一覧</h2>
+    {% if items %}
+    <div class="school-features-table-wrap">
+        <table class="announcement-table">
+            <thead><tr><th scope="col">状態</th><th scope="col">種類</th><th scope="col">題名</th><th scope="col">表示期間</th><th scope="col">作成者</th><th scope="col">操作</th></tr></thead>
+            <tbody>
+            {% for item in items %}
+                <tr>
+                    <td><span class="announcement-status announcement-status-{{ item.status }}">{% if item.status == 'active' %}表示中{% elif item.status == 'scheduled' %}公開前{% else %}終了{% endif %}</span></td>
+                    <td>{% for key, label, tone, icon in kinds %}{% if icon == item.icon %}<span class="announcement-kind-badge tone-{{ tone }}">{{ ui_icons.icon(icon) }}{{ label }}</span>{% endif %}{% endfor %}</td>
+                    <td class="announcement-title-cell">{{ item.title }}{% if item.link_url %}<br><small>{{ item.link_url }}</small>{% endif %}</td>
+                    <td>{{ item.starts_at|announcement_period if item.starts_at else '指定なし' }} 〜 {{ item.ends_at|announcement_period if item.ends_at else '無期限' }}</td>
+                    <td>{{ item.created_by }}</td>
+                    <td class="announcement-actions">
+                        <a href="/admin/announcements?edit={{ item.id }}">編集</a>
+                        {% if item.status != 'ended' %}
+                        <form method="post" action="/admin/announcements/{{ item.id }}/end" onsubmit="return confirm('この掲示の表示を今すぐ終了しますか？');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">表示終了</button>
+                        </form>
+                        {% endif %}
+                        <form method="post" action="/admin/announcements/{{ item.id }}/delete" onsubmit="return confirm('この掲示を削除しますか？元に戻せません。');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="announcement-delete" type="submit">削除</button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="announcement-empty">まだ掲示はありません。</p>
+    {% endif %}
+</section>
+{% endblock %}

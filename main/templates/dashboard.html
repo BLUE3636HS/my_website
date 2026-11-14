@@ -27,6 +27,27 @@
     </section>
     {% endif %}
 
+    {% if announcements %}
+    <section class="dashboard-section dashboard-announcements" aria-labelledby="dashboard-announcements-title">
+        <div class="dashboard-section-heading">
+            <h2 id="dashboard-announcements-title">お知らせ</h2>
+        </div>
+        <div class="dashboard-announcement-list">
+            {% for item in announcements %}
+            <a class="dashboard-announcement-card tone-{{ item.tone }}" href="/announcements/{{ item.id }}">
+                <span class="dashboard-quick-icon">{{ icons.icon(item.icon) }}</span>
+                <span class="dashboard-announcement-text">
+                    <strong>{{ item.title }}</strong>
+                    {% if item.summary %}<small>{{ item.summary }}</small>{% endif %}
+                    {% if item.ends_at %}<small class="dashboard-announcement-period">{{ item.ends_at|announcement_period }} まで</small>{% endif %}
+                </span>
+                <span class="dashboard-quick-arrow">{{ icons.icon("arrow-right") }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
     {% set quick_links = [] %}
     {% if student_features.studies_add %}{% set _ = quick_links.append(('/addform', 'file-plus', 'PDFを提出', '研究成果をPDFで提出', 'blue')) %}{% endif %}
     {% if student_features.studies_list %}{% set _ = quick_links.append(('/studylist', 'list', '提出物一覧', '提出した研究成果を確認', 'indigo')) %}{% endif %}

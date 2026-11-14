@@ -310,3 +310,44 @@
 .dashboard-notification-meta .notification-kind { margin-right: 0; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; }
 .dashboard-notification-meta .notification-kind-office { background: #fdeee0; color: #a85a12; }
 .dashboard-notification-meta .notification-kind-system { background: #e4edf5; color: var(--primary); }
+
+/* ---------- 管理者からのお知らせ（期間限定掲示） ---------- */
+.dashboard-announcement-list { display: grid; gap: 10px; }
+.dashboard-announcement-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+    padding: 16px 18px;
+    border: 1px solid var(--border);
+    border-left: 5px solid var(--tone);
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    color: var(--text);
+    text-decoration: none;
+    transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+.dashboard-announcement-card:hover {
+    border-color: var(--tone);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, .08);
+    transform: translateY(-2px);
+}
+.dashboard-announcement-card:hover .dashboard-quick-arrow { color: var(--tone); transform: translateX(3px); }
+.dashboard-announcement-text { display: grid; flex: 1; min-width: 0; gap: 2px; }
+.dashboard-announcement-text strong { color: var(--text-strong); font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
+.dashboard-announcement-text small { color: var(--text-muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.dashboard-announcement-text .dashboard-announcement-period { color: var(--tone); font-size: 12px; font-weight: 700; }
+
+/* 詳細ページ */
+.announcement-back { display: inline-block; margin-bottom: 14px; color: var(--primary); font-weight: 700; text-decoration: none; }
+.announcement-back:hover { text-decoration: underline; }
+.announcement-detail { border-top: 5px solid var(--tone); }
+.announcement-detail-head { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.announcement-detail-head h1 { margin: 0; color: var(--text-strong); font-size: clamp(20px, 3vw, 26px); overflow-wrap: anywhere; }
+.announcement-detail-period { margin: 0 0 16px; color: var(--text-muted); font-size: 13px; }
+.announcement-detail-summary { margin: 0 0 16px; color: var(--text-strong); font-weight: 700; overflow-wrap: anywhere; }
+.announcement-detail-body { line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.announcement-detail-body a { color: var(--primary); }
+.announcement-detail-action { margin: 22px 0 0; }
+.announcement-detail-action .student-primary-button { background: var(--tone); }

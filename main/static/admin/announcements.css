@@ -1,0 +1,44 @@
+.announcement-admin-panel { max-width: 1100px; padding: 28px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow); }
+.announcement-admin-panel h1 { margin: 0 0 8px; font-size: clamp(22px, 3vw, 28px); }
+.announcement-admin-panel > p { color: var(--text-muted); }
+.announcement-form { display: grid; gap: 14px; margin: 20px 0 32px; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-soft); }
+.announcement-form h2, .announcement-list-title { margin: 0; font-size: 18px; }
+.announcement-form label { display: grid; gap: 6px; font-weight: 700; font-size: 14px; }
+.announcement-form input[type="text"], .announcement-form input[type="url"], .announcement-form input[type="datetime-local"], .announcement-form textarea {
+    width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font: inherit; font-weight: 400;
+}
+.announcement-form textarea { resize: vertical; }
+.announcement-required { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--danger, #dc2626); color: #fff; font-size: 11px; }
+.announcement-form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.announcement-choice { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; border: 0; }
+.announcement-choice legend { margin-bottom: 6px; font-weight: 700; font-size: 14px; }
+.announcement-form .announcement-choice label { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; background: #fff; font-weight: 500; cursor: pointer; }
+.announcement-choice label:has(input:checked) { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+.announcement-choice svg { width: 18px; height: 18px; }
+.tone-blue   { --tone: #2e7a97; --tone-soft: #e6f3f8; } .tone-green { --tone: #16a34a; --tone-soft: #eaf8ef; }
+.tone-amber  { --tone: #d97706; --tone-soft: #fff4e0; } .tone-rose  { --tone: #e11d48; --tone-soft: #ffeef2; }
+.tone-violet { --tone: #7c3aed; --tone-soft: #f3edff; }
+.announcement-form .announcement-choice .announcement-kind { color: var(--tone); }
+.announcement-choice .announcement-kind:has(input:checked) { border-color: var(--tone); background: var(--tone-soft); box-shadow: 0 0 0 2px var(--tone-soft); }
+.announcement-kind-icon { display: inline-flex; }
+.announcement-kind-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; background: var(--tone-soft); color: var(--tone); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.announcement-kind-badge svg { width: 14px; height: 14px; }
+.announcement-form-actions { display: flex; align-items: center; gap: 16px; }
+.announcement-cancel { color: var(--text-muted); }
+.announcement-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.announcement-table th, .announcement-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.announcement-title-cell { overflow-wrap: anywhere; }
+.announcement-title-cell small { color: var(--text-muted); }
+.announcement-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.announcement-actions form { margin: 0; }
+.announcement-actions button { padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px; background: #fff; font: inherit; cursor: pointer; }
+.announcement-actions .announcement-delete { border-color: #fca5a5; color: #b91c1c; }
+.announcement-status { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.announcement-status-active { background: #dcfce7; color: #166534; }
+.announcement-status-scheduled { background: #e0f2fe; color: #075985; }
+.announcement-status-ended { background: #f1f5f9; color: #64748b; }
+.announcement-empty { color: var(--text-muted); }
+@media (max-width: 760px) {
+    .announcement-admin-panel { padding: 18px; }
+    .announcement-form-row { grid-template-columns: 1fr; }
+}
