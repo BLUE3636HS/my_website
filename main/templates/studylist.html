@@ -1,41 +1,46 @@
 {% extends "base.html" %}
 {% block title %}提出物一覧{% endblock %}
 {% block css %}
-    <link rel="stylesheet" href="/static/student/studylist.css">
+    <link rel="stylesheet" href="/static/student/studylist.css?v=list-1">
 {% endblock %}
 {% block content %}
 <div class="student-page studylist-page">
     <section class="student-page-hero">
-        <p class="student-page-eyebrow">研究</p>
+        <p class="student-page-eyebrow">交流</p>
         <h1>提出物一覧</h1>
         <p>自分の提出した研究成果を確認できます。</p>
     </section>
     {% if studies %}
     <p class="studylist-count">{{ studies|length }} 件の提出物</p>
-    <section class="studylist-grid" aria-label="提出物">
-        {% for study in studies %}
-        {% set collaboration = submission_details.get(study[0]) %}
-        <article class="student-panel study-card">
-            <div class="study-card-head">
-                <span class="study-card-badge{% if collaboration %} is-group{% endif %}">{% if collaboration %}グループ提出{% else %}個人提出{% endif %}</span>
-                <time>{{ study[6] }}</time>
-            </div>
-            <h2>{{ study[1] }}</h2>
-            <p class="study-card-summary">{{ study[2] }}</p>
-            <dl class="study-card-meta">
-                <div><dt>提出者</dt><dd>{% if collaboration %}「{{ collaboration.group_name }}」{{ collaboration.submitters | join(',') }}{% else %}{{ study[8] }}{% endif %}</dd></div>
-            </dl>
-            <div class="study-card-actions">
-                {% if study[7] == "pdf" %}<a class="student-secondary-link" href="/uploads/{{study[0]}}.pdf">{{study[3]}}</a>{% else %}<a class="student-secondary-link" href="/uploads/{{ study[0] }}.pdf" target="_blank" rel="noopener">PDFを開く</a>{% endif %}
-            </div>
-        </article>
-        {% endfor %}
+    <section class="student-panel studylist-panel" aria-label="提出物">
+        <table class="studylist-table">
+            <thead>
+                <tr><th scope="col">提出日時</th><th scope="col">研究名・紹介文</th><th scope="col">区分</th><th scope="col">提出者</th><th scope="col">ファイル</th></tr>
+            </thead>
+            <tbody>
+                {% for study in studies %}
+                {% set collaboration = submission_details.get(study[0]) %}
+                <tr class="studylist-row">
+                    <td class="studylist-time" data-label="提出日時"><time>{{ study[6] }}</time></td>
+                    <td class="studylist-title" data-label="研究名・紹介文">
+                        <strong>{{ study[1] }}</strong>
+                        {% if study[2] %}<span class="studylist-summary">{{ study[2] }}</span>{% endif %}
+                    </td>
+                    <td data-label="区分"><span class="study-card-badge{% if collaboration %} is-group{% endif %}">{% if collaboration %}グループ提出{% else %}個人提出{% endif %}</span></td>
+                    <td class="studylist-submitter" data-label="提出者">{% if collaboration %}「{{ collaboration.group_name }}」{{ collaboration.submitters | join(',') }}{% else %}{{ study[8] }}{% endif %}</td>
+                    <td class="studylist-file" data-label="ファイル">
+                        {% if study[7] == "pdf" %}<a href="/uploads/{{study[0]}}.pdf">{{study[3]}}</a>{% else %}<a href="/uploads/{{ study[0] }}.pdf" target="_blank" rel="noopener">PDFを開く</a>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </section>
     {% else %}
     <section class="student-panel studylist-empty">
         <p class="studylist-empty-title">まだ提出物はありません</p>
-        <p>研究成果を追加すると、ここに一覧で表示されます。</p>
-        {% if student_features.studies_add %}<a href="/addform" class="student-primary-button">研究成果を追加する</a>{% endif %}
+        <p>PDFを提出すると、ここに一覧で表示されます。</p>
+        {% if student_features.studies_add %}<a href="/addform" class="student-primary-button">PDFを提出する</a>{% endif %}
     </section>
     {% endif %}
 </div>

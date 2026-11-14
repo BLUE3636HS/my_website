@@ -21,6 +21,7 @@ from starlette.requests import Request
 import main
 from tekne_chat import (TekneChatService, cleanup_expired_groups, create_chat_session,
                         initialize_tekne_chat, link_student_identity)
+from school_features import initialize_school_feature_settings
 from studies import connect_studies, get_templates, initialize_studies, study_file_path, study_pdf_path
 
 
@@ -67,6 +68,8 @@ class StudyTests(unittest.TestCase):
                 CREATE TABLE notification(recipient_user_id TEXT, is_read INTEGER);
                 INSERT INTO unrelated VALUES ('preserve');""")
             initialize_studies(db)
+            initialize_school_feature_settings(db)
+            db.commit()
             initialize_tekne_chat(db)
             self.template = get_templates(db)[0]
         self.chat = TekneChatService(self.path, self.root / 'chat-files')
@@ -115,45 +118,85 @@ class StudyTests(unittest.TestCase):
         nonce = secrets.token_hex(32)
         return nonce + '.' + hmac.new(b'csrf', nonce.encode(), hashlib.sha256).hexdigest()
 
-    def submit(self, mode='template', token=None, session=None, **values):
-        data = {'registration_type': mode, 'template_id': str(self.template['id']),
-                'name': '研究名', 'introduce': '紹介文',
+    def submit(self, mode='pdf', token=None, session=None, **values):
+        data = {'registration_type': mode, 'name': '研究名', 'introduce': '紹介文',
                 'csrf_token': 'csrf', 'submission_token': token or self.token(), **values}
+        if mode == 'pdf' and 'pdf' not in data:
+            data['pdf'] = UploadFile(io.BytesIO(sample_pdf()), filename='test.pdf')
         req = request('/addform', self.session if session is None else session)
         req._form = FormData(data)
         return asyncio.run(main.Add(req))
 
-    def test_empty_template_and_independent_name_and_values(self):
-        self.assertEqual(self.submit().status_code, 201)
-        self.assertEqual(self.rows('SELECT name, introduce, registration_type, template_id FROM study'),
-                         [('研究名', '紹介文', 'template', self.template['id'])])
-        self.assertEqual(self.rows('SELECT value FROM study_field_value'), [('',)] * 9)
-        values = {f"field_{field['id']}": f"長文\n{field['label']} <script>" for field in self.template['fields']}
-        self.submit(name='独立した研究名', introduce='紹介文', **values)
-        self.assertEqual(dict(self.rows('SELECT field_id, value FROM study_field_value WHERE study_id=2')),
-                         {field['id']: values[f"field_{field['id']}"] for field in self.template['fields']})
-        self.assertEqual(self.rows('SELECT name FROM study WHERE id=2'), [('独立した研究名',)])
+    def insert_template_study(self, userid='a', name='テンプレート研究', template_id=None, values=None):
+        """テンプレート提出は廃止したが、過去に提出されたデータは残るので直接DBに作る。
 
-    def test_name_and_introduction_required_for_both_modes(self):
-        for mode in ('pdf', 'template'):
-            for field, label in [('name', '名前'), ('introduce', '紹介文')]:
-                for value in ('', ' \t\n　', None):
-                    with self.subTest(mode=mode, field=field, value=value):
-                        data = {'registration_type': mode, 'template_id': str(self.template['id']),
-                                'name': '研究名', 'introduce': '紹介文', 'csrf_token': 'csrf',
-                                'submission_token': self.token()}
-                        if value is None:
-                            del data[field]
-                        else:
-                            data[field] = value
-                        if mode == 'pdf':
-                            data['pdf'] = UploadFile(io.BytesIO(sample_pdf()), filename='test.pdf')
-                        req = request('/addform', self.session)
-                        req._form = FormData(data)
-                        with self.assertRaises(HTTPException) as error:
-                            asyncio.run(main.Add(req))
-                        self.assertEqual(error.exception.status_code, 422)
-                        self.assertEqual(error.exception.detail, f'{label}を入力してください。')
+        values は {field_id: 本文}。省略した項目は空文字で保存する。"""
+        values = values or {}
+        with closing(connect_studies(self.path)) as db, db:
+            template_id = template_id or self.template['id']
+            template = next(item for item in get_templates(db, include_inactive=True) if item['id'] == template_id)
+            study_id = db.execute("""INSERT INTO study
+                (name, introduce, filename, pdfpath, userid, time, registration_type, template_id)
+                VALUES (?, '紹介文', '', '', ?, '2026-10-01 10:00:00', 'template', ?)""",
+                (name, userid, template_id)).lastrowid
+            db.executemany('INSERT INTO study_field_value(study_id, field_id, value) VALUES (?, ?, ?)',
+                           [(study_id, field['id'], values.get(field['id'], '')) for field in template['fields']])
+        return study_id
+
+    def insert_legacy_file_study(self, filename, content, stored_name):
+        """PDF以外のファイルも提出できた頃のデータ。"""
+        (self.uploads / stored_name).write_bytes(content)
+        with closing(connect_studies(self.path)) as db, db:
+            return db.execute("""INSERT INTO study
+                (name, introduce, filename, pdfpath, userid, time, registration_type)
+                VALUES ('旧ファイル', '紹介文', ?, ?, 'a', '2026-10-01 10:00:00', 'pdf')""",
+                (filename, stored_name)).lastrowid
+
+    def test_template_submission_is_rejected(self):
+        values = {f"field_{field['id']}": '本文' for field in self.template['fields']}
+        for mode in ('template', 'other'):
+            with self.subTest(mode=mode), self.assertRaises(HTTPException) as error:
+                self.submit(mode=mode, template_id=str(self.template['id']), **values)
+            self.assertEqual(error.exception.status_code, 422)
+            self.assertEqual(error.exception.detail, '研究成果はPDFファイルで提出してください。')
+        self.assertEqual(self.rows('SELECT id FROM study'), [])
+        self.assertEqual(self.rows('SELECT * FROM study_field_value'), [])
+
+    def test_missing_registration_type_is_treated_as_pdf(self):
+        data = {'name': '研究名', 'introduce': '紹介文', 'csrf_token': 'csrf', 'submission_token': self.token(),
+                'pdf': UploadFile(io.BytesIO(sample_pdf()), filename='test.pdf')}
+        req = request('/addform', self.session)
+        req._form = FormData(data)
+        self.assertEqual(asyncio.run(main.Add(req)).status_code, 201)
+        self.assertEqual(self.rows('SELECT registration_type, template_id FROM study'), [('pdf', None)])
+
+    def test_pdf_file_is_required(self):
+        req = request('/addform', self.session)
+        req._form = FormData({'registration_type': 'pdf', 'name': '研究名', 'introduce': '紹介文',
+                              'csrf_token': 'csrf', 'submission_token': self.token()})
+        with self.assertRaises(HTTPException) as error:
+            asyncio.run(main.Add(req))
+        self.assertEqual(error.exception.status_code, 422)
+        self.assertEqual(error.exception.detail, 'PDFファイルを1つ選択してください。')
+        self.assertEqual(self.rows('SELECT id FROM study'), [])
+
+    def test_name_and_introduction_required(self):
+        for field, label in [('name', '名前'), ('introduce', '紹介文')]:
+            for value in ('', ' \t\n　', None):
+                with self.subTest(field=field, value=value):
+                    data = {'registration_type': 'pdf', 'name': '研究名', 'introduce': '紹介文',
+                            'csrf_token': 'csrf', 'submission_token': self.token(),
+                            'pdf': UploadFile(io.BytesIO(sample_pdf()), filename='test.pdf')}
+                    if value is None:
+                        del data[field]
+                    else:
+                        data[field] = value
+                    req = request('/addform', self.session)
+                    req._form = FormData(data)
+                    with self.assertRaises(HTTPException) as error:
+                        asyncio.run(main.Add(req))
+                    self.assertEqual(error.exception.status_code, 422)
+                    self.assertEqual(error.exception.detail, f'{label}を入力してください。')
         self.assertEqual(self.rows('SELECT id FROM study'), [])
         self.assertEqual(list(self.uploads.iterdir()), [])
 
@@ -176,12 +219,12 @@ class StudyTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT id, name, registration_type FROM study').fetchall(), [(3, 'old', 'pdf')])
             self.assertEqual(db.execute('SELECT submission_kind, chat_group_id FROM study').fetchall(), [('individual', None)])
 
-    def test_group_submissions_snapshot_members_for_pdf_and_template(self):
+    def test_group_pdf_submissions_snapshot_members(self):
         group_id = self.create_study_group()
         pdf_response = self.submit(mode='pdf', submission_kind='group', chat_group_id=group_id,
                                    pdf=UploadFile(io.BytesIO(sample_pdf()), filename='group.pdf'))
-        template_response = self.submit(mode='template', submission_kind='group', chat_group_id=group_id)
-        self.assertEqual((pdf_response.status_code, template_response.status_code), (201, 201))
+        second_response = self.submit(mode='pdf', submission_kind='group', chat_group_id=group_id)
+        self.assertEqual((pdf_response.status_code, second_response.status_code), (201, 201))
         self.assertEqual(self.rows('SELECT submission_kind, chat_group_name FROM study ORDER BY id'),
                          [('group', '共同研究'), ('group', '共同研究')])
         self.assertEqual(self.rows('SELECT study_id, student_id_snapshot FROM study_submission_member ORDER BY study_id, position'),
@@ -329,25 +372,14 @@ class StudyTests(unittest.TestCase):
         self.assertEqual(results[0], results[1])
         self.assertEqual(len(self.rows('SELECT id FROM study')), 1)
 
-    def test_rejects_auth_csrf_unknown_templates_and_fields(self):
+    def test_rejects_auth_csrf_and_unknown_modes(self):
         for options, status in [({'session': {}}, 401), ({'csrf_token': 'wrong'}, 403),
                                 ({'submission_token': 'wrong'}, 403), ({'csrf_token': '不正'}, 403), ({'mode': 'other'}, 422),
-                                ({'template_id': '999'}, 422), ({'field_999': 'x'}, 422)]:
+                                ({'submission_kind': 'other'}, 422)]:
             with self.subTest(options=options), self.assertRaises(HTTPException) as error:
                 self.submit(**options)
             self.assertEqual(error.exception.status_code, status)
         self.assertEqual(self.rows('SELECT id FROM study'), [])
-
-    def test_dynamic_second_template_field_is_optional(self):
-        with closing(connect_studies(self.path)) as db:
-            db.execute("INSERT INTO study_template(id,name) VALUES (2,'別テンプレート')")
-            db.execute("INSERT INTO study_template_field(id,template_id,label,position,required) VALUES (20,2,'必須項目',0,1)")
-            db.commit()
-        self.submit(template_id='2', field_20='  ')
-        with self.assertRaises(HTTPException):
-            self.submit(template_id='1', field_20='他テンプレートの項目')
-        self.submit(template_id='2', field_20='入力')
-        self.assertEqual(self.rows('SELECT field_id,value FROM study_field_value ORDER BY study_id'), [(20, '  '), (20, '入力')])
 
     def test_initialization_clears_legacy_required_template_fields(self):
         with closing(connect_studies(self.path)) as db, db:
@@ -367,15 +399,27 @@ class StudyTests(unittest.TestCase):
         self.assertEqual((self.uploads / path).read_bytes(), sample_pdf())
         self.assertEqual(Path(asyncio.run(main.pdf(1, request('/uploads/1.pdf', self.session))).path), self.uploads / path)
         self.assertEqual(asyncio.run(main.pdf(1, request('/uploads/1.pdf', self.session))).headers['content-disposition'], 'inline; filename="study-1.pdf"')
-        self.submit()
+        self.insert_template_study()
         self.assertEqual(asyncio.run(main.pdf(2, request('/uploads/2.pdf', self.session))).status_code, 200)
 
-    def test_non_pdf_upload_is_saved_and_downloaded_as_attachment(self):
-        self.submit(mode='pdf', pdf=UploadFile(io.BytesIO(b'plain text'), filename='../research.TXT'))
+    def test_non_pdf_upload_is_rejected(self):
+        for filename, content in [('../research.TXT', b'plain text'), ('report.docx', b'PK\x03\x04'),
+                                  ('noext', sample_pdf()), ('fake.pdf.txt', sample_pdf())]:
+            with self.subTest(filename=filename), self.assertRaises(HTTPException) as error:
+                self.submit(pdf=UploadFile(io.BytesIO(content), filename=filename))
+            self.assertEqual(error.exception.status_code, 422)
+            self.assertEqual(error.exception.detail, 'PDFファイルを選択してください。')
+        self.assertEqual(self.rows('SELECT id FROM study'), [])
+        self.assertEqual(list(self.uploads.iterdir()), [])
+
+    def test_uppercase_pdf_extension_is_saved_as_pdf(self):
+        self.submit(pdf=UploadFile(io.BytesIO(sample_pdf()), filename='REPORT.PDF'))
         filename, path = self.rows('SELECT filename,pdfpath FROM study')[0]
-        self.assertEqual(filename, 'research.TXT')
-        self.assertTrue(path.endswith('.txt'))
-        self.assertEqual((self.uploads / path).read_bytes(), b'plain text')
+        self.assertEqual(filename, 'REPORT.PDF')
+        self.assertTrue(path.endswith('.pdf'))
+
+    def test_legacy_non_pdf_upload_is_still_downloaded_as_attachment(self):
+        self.insert_legacy_file_study('research.TXT', b'plain text', 'legacy.txt')
         response = asyncio.run(main.pdf(1, request('/uploads/1.pdf', self.session)))
         self.assertEqual(response.headers['content-disposition'], 'attachment; filename="research.TXT"')
         self.assertEqual(response.headers['content-type'], 'text/plain; charset=utf-8')
@@ -398,8 +442,8 @@ class StudyTests(unittest.TestCase):
         self.assertEqual(list(self.uploads.iterdir()), [])
 
     def test_teacher_scope_csrf_and_cascading_delete(self):
-        self.submit()
-        self.submit(session={**self.session, 'user_id': 'b'})
+        self.insert_template_study()
+        self.insert_template_study(userid='b')
         session = {'teacher_login': True, 'teacher_id': 'teacher1', 'teacher_studylist_csrf_token': 'token'}
         for study_id, csrf in [(2, 'token'), (1, 'wrong')]:
             asyncio.run(main.TeacherDeleteStudy(request('/teacher/studylist', session), study_id, csrf))
@@ -412,7 +456,7 @@ class StudyTests(unittest.TestCase):
         unrelated = self.uploads / 'keep.txt'
         unrelated.write_text('keep')
         self.submit(mode='pdf', pdf=UploadFile(io.BytesIO(sample_pdf()), filename='test.pdf'))
-        self.submit()
+        self.insert_template_study()
         for study_id in (1, 2):
             asyncio.run(main.AdminDeleteStudy(request('/admin/studies', {'admin_login': True}), study_id))
         self.assertEqual(self.rows('SELECT * FROM study_field_value'), [])
@@ -431,8 +475,8 @@ class StudyTests(unittest.TestCase):
         self.assertEqual(list(self.uploads.iterdir()), [])
         self.assertEqual(self.rows('SELECT id FROM study'), [])
 
-    def test_teacher_deletes_non_pdf_upload(self):
-        self.submit(mode='pdf', pdf=UploadFile(io.BytesIO(b'text'), filename='notes.txt'))
+    def test_teacher_deletes_legacy_non_pdf_upload(self):
+        self.insert_legacy_file_study('notes.txt', b'text', 'legacy.txt')
         session = {'teacher_login': True, 'teacher_id': 'teacher1', 'teacher_studylist_csrf_token': 'token'}
         asyncio.run(main.TeacherDeleteStudy(request('/teacher/studylist', session), 1, 'token'))
         self.assertEqual(list(self.uploads.iterdir()), [])
@@ -485,8 +529,10 @@ class StudyTests(unittest.TestCase):
         main.seed_school_feature_settings(self.path)
 
         html = self.render_student_studylist().body.decode()
-        # UI_cloude: 生徒用の提出物一覧は表からカード表示に変更（提出日時は <time> で表示）
-        self.assertIn('class="student-panel study-card"', html)
+        # 生徒用の提出物一覧はリスト（表）形式。1件ごとに1行で、提出日時は <time> で表示
+        self.assertIn('<table class="studylist-table">', html)
+        self.assertEqual(html.count('<tr class="studylist-row">'), 3)
+        self.assertNotIn('study-card"', html)
         self.assertIn('<time>2026-10-03 10:00:00</time>', html)
         self.assertLess(html.index('Newest higher id'), html.index('Newest lower id'))
         self.assertLess(html.index('Newest lower id'), html.index('Older student submission'))
@@ -518,13 +564,13 @@ class StudyTests(unittest.TestCase):
         self.assertIn('該当する提出物はありません。', html)
 
     def test_real_multipart_request(self):
-        fields = {'registration_type': 'template', 'template_id': str(self.template['id']),
-                  'name': '研究名', 'introduce': '紹介文',
-                  'csrf_token': 'csrf', 'submission_token': self.token(),
-                  'field_1': '日本語の本文\n2行目'}
+        fields = {'registration_type': 'pdf', 'name': '日本語の研究名', 'introduce': '紹介文\n2行目',
+                  'csrf_token': 'csrf', 'submission_token': self.token()}
         body = b''
         for name, value in fields.items():
             body += f'--testboundary\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode()
+        body += (b'--testboundary\r\nContent-Disposition: form-data; name="pdf"; filename="report.pdf"\r\n'
+                 b'Content-Type: application/pdf\r\n\r\n' + sample_pdf() + b'\r\n')
         body += b'--testboundary--\r\n'
         req = request('/addform', self.session)
         req.scope['method'] = 'POST'
@@ -534,11 +580,11 @@ class StudyTests(unittest.TestCase):
         req._receive = receive
         response = asyncio.run(main.Add(req))
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(self.rows('SELECT value FROM study_field_value WHERE field_id=1'), [('日本語の本文\n2行目',)])
+        self.assertEqual(self.rows('SELECT name, introduce, filename FROM study'), [('日本語の研究名', '紹介文\n2行目', 'report.pdf')])
 
     def test_form_and_all_three_lists_render(self):
         self.submit(mode='pdf', pdf=UploadFile(io.BytesIO(sample_pdf()), filename='test.pdf'))
-        self.submit()
+        self.insert_template_study()
         # Resolve by route because legacy code reuses the StudyList function name.
         for path, session in [('/addform', self.session), ('/studylist', self.session),
                               ('/teacher/studylist', {'teacher_login': True, 'teacher_id': 'teacher1'}),
@@ -548,13 +594,17 @@ class StudyTests(unittest.TestCase):
             html = response.body.decode()
             self.assertEqual(response.status_code, 200)
             if path == '/addform':
-                self.assertIn('研究レポート（基本）', html)
-                self.assertIn('study-templates', html)
+                self.assertIn('<h1>PDFを提出</h1>', html)
+                self.assertIn('accept=".pdf,application/pdf" required', html)
+                self.assertNotIn('registration_type', html)
+                self.assertNotIn('study-templates', html)
+                self.assertNotIn('研究レポート（基本）', html)
+                self.assertNotIn('研究成果を追加', html)
                 self.assertIn('id="name" name="name" required', html)
                 self.assertIn('id="introduce" name="introduce" required', html)
                 self.assertLess(html.index('name="submission_kind"'), html.index('id="name"'))
                 self.assertLess(html.index('id="group-submission-panel"'), html.index('id="name"'))
-                self.assertEqual(len(response.context['study_templates'][0]['fields']), 9)
+                self.assertNotIn('study_templates', response.context)
             else:
                 self.assertIn('/uploads/1.pdf', html)
                 self.assertIn('/uploads/2.pdf', html)

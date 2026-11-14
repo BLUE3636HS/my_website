@@ -26,6 +26,8 @@
 .tc-group-list { overflow: auto; height: calc(100% - 94px); margin-top: 12px; }
 .tc-group-item { display: flex; width: 100%; align-items: center; gap: 10px; padding: 11px 9px; border: 0; border-radius: 9px; background: transparent; text-align: left; cursor: pointer; }
 .tc-group-item:hover, .tc-group-item[aria-current="true"] { background: #e6f3f8; }
+.tc-group-section { margin: 14px 9px 4px; color: var(--text-muted); font-size: 12px; font-weight: 700; }
+.tc-group-section:first-child { margin-top: 0; }
 .tc-avatar { display: grid; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; overflow: hidden; border-radius: 50%; background: #d5eaf1; color: #2e7a97; font-weight: 700; }
 .tc-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .tc-group-copy { min-width: 0; }
@@ -87,6 +89,21 @@
 .tc-dialog-actions button[type="submit"] { background: var(--primary); border-color: var(--primary); color: #fff; }
 .tc-select { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
 .tc-dialog-cancel { margin-right: auto; }
+/* 作成ダイアログの種類選択（個人スペース／グループ） */
+.tc-kind-options { display: grid; gap: 8px; margin: 0 0 14px; padding: 0; border: 0; }
+.tc-kind-options legend { margin-bottom: 6px; color: var(--text-muted); font-size: 12px; }
+.tc-kind-options label { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; cursor: pointer; font-weight: 700; }
+.tc-kind-options label:has(input:checked) { border-color: var(--primary); background: #e6f3f8; }
+.tc-dialog .tc-kind-options input { width: auto; margin: 3px 0 0; padding: 0; }
+.tc-icon-setting { display: flex; align-items: flex-start; gap: 14px; }
+.tc-icon-preview { width: 64px; height: 64px; flex-basis: 64px; font-size: 24px; }
+.tc-icon-controls { display: grid; gap: 6px; min-width: 0; }
+.tc-icon-controls input[type="file"] { max-width: 100%; }
+.tc-icon-hint { margin: 0; color: var(--text-muted); font-size: 12px; }
+.tc-remove-icon { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.tc-remove-icon[hidden] { display: none; }
+.tc-dialog .tc-remove-icon input { width: auto; margin: 0; }
+.tc-kind-options small { grid-column: 2; color: var(--text-muted); font-size: 12px; font-weight: 400; }
 @media (max-width: 1000px) {
     .tekne-chat-app, .tekne-chat-app:has(.tc-side-panel[hidden]) { grid-template-columns: 220px minmax(320px, 1fr); }
     .tc-side-panel { position: absolute; z-index: 5; top: 120px; right: 24px; bottom: 20px; width: min(300px, calc(100vw - 48px)); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 36px #10182833; }

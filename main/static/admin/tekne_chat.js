@@ -33,7 +33,8 @@
             detailState.nextMessage = data.next_message_before_id; detailState.nextFile = data.next_file_before_id;
         }
         detail.replaceChildren();
-        const group = data.group; const heading = node("h2", `${group.name} — ${group.school_name}`);
+        const group = data.group; const personal = group.kind === "personal";
+        const heading = node("h2", `${personal ? "【個人スペース】" : ""}${group.name} — ${group.school_name}`);
         const rename = action("グループ名変更", async () => {
             const name = prompt("新しいグループ名", group.name); if (!name) return;
             const body = form(); body.set("name", name);
@@ -65,7 +66,8 @@
         const members = node("div", undefined, "tc-admin-section");
         for (const member of data.members) {
             const controls = [];
-            if (!member.left_at) controls.push(action("強制退出", async () => {
+            // 個人スペースは本人だけが使うので、強制退出は出さない（不要なら削除する）
+            if (!member.left_at && !personal) controls.push(action("強制退出", async () => {
                 if (!confirm("このメンバーをグループから退出させますか？")) return;
                 try { await api(`/admin/tekne-chat/api/groups/${group.id}/members/${member.student_id}/remove`, { method: "POST", body: form() }); await openGroup(group.id); }
                 catch (error) { alert(error.message); }

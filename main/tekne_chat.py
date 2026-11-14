@@ -96,6 +96,11 @@ def link_student_identity(db, login_id, school_name):
     return student_id
 
 
+GROUP_KIND = "group"
+PERSONAL_KIND = "personal"
+GROUP_KINDS = (GROUP_KIND, PERSONAL_KIND)
+
+
 def initialize_tekne_chat(db):
     """Validate legacy mappings, then atomically add chat-only schema and identities."""
     db.execute("PRAGMA foreign_keys = ON")
@@ -136,8 +141,13 @@ def initialize_tekne_chat(db):
             created_by TEXT NOT NULL REFERENCES tekne_student_identity(id),
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'group' CHECK(kind IN ('group','personal')),
             UNIQUE(id, school_id)
         )""")
+        # 種類: 'group' は複数人のグループ、'personal' は本人だけが使う個人スペース
+        if "kind" not in {row[1] for row in db.execute("PRAGMA table_info(tekne_chat_group)")}:
+            db.execute("""ALTER TABLE tekne_chat_group ADD COLUMN kind TEXT NOT NULL DEFAULT 'group'
+                CHECK(kind IN ('group','personal'))""")
         db.execute("""CREATE TABLE IF NOT EXISTS tekne_chat_member (
             group_id TEXT NOT NULL,
             school_id TEXT NOT NULL,
@@ -566,7 +576,7 @@ class TekneChatService:
 
     def _member(self, db, session, group_id):
         identity = self._identity(db, session)
-        row = db.execute("""SELECT g.id, g.school_id, g.name, g.icon_key, m.student_id
+        row = db.execute("""SELECT g.id, g.school_id, g.name, g.icon_key, m.student_id, g.kind
             FROM tekne_chat_group g JOIN tekne_chat_member m ON m.group_id=g.id AND m.school_id=g.school_id
             WHERE g.id=? AND g.school_id=? AND m.student_id=? AND m.left_at IS NULL""",
             (group_id, identity[1], identity[0])).fetchone()
@@ -589,7 +599,7 @@ class TekneChatService:
     def groups(self, session):
         with closing(_connect(self.database_path)) as db:
             identity = self._identity(db, session)
-            rows = db.execute("""SELECT g.id,g.name,g.icon_key,g.updated_at,
+            rows = db.execute("""SELECT g.id,g.name,g.icon_key,g.updated_at,g.kind,
                 (SELECT COUNT(*) FROM tekne_chat_member m WHERE m.group_id=g.id AND m.left_at IS NULL) member_count,
                 (SELECT body FROM tekne_chat_message x WHERE x.group_id=g.id ORDER BY x.id DESC LIMIT 1) last_message
                 FROM tekne_chat_group g JOIN tekne_chat_member m ON m.group_id=g.id
@@ -600,6 +610,8 @@ class TekneChatService:
     def submission_group_snapshot(self, db, session, group_id):
         """Validate current membership and return submitter identities using the caller's DB transaction."""
         identity, group = self._member(db, session, group_id)
+        if group[5] == PERSONAL_KIND:
+            raise HTTPException(422, "個人スペースはグループ提出に使えません。")
         members = db.execute("""SELECT i.id, i.login_id
             FROM tekne_chat_member m
             JOIN tekne_student_identity i ON i.id=m.student_id AND i.school_id=m.school_id
@@ -612,19 +624,22 @@ class TekneChatService:
             raise HTTPException(422, "選択したグループの在籍状況を確認できません。画面を再読み込みしてください。")
         return {"id": group[0], "name": group[2], "members": members}
 
-    def create_group(self, session, name):
+    def create_group(self, session, name, kind=GROUP_KIND):
+        if kind not in GROUP_KINDS:
+            raise HTTPException(422, "作成する種類を選択してください。")
         clean = _clean_group_name(name)
         if not clean:
-            raise HTTPException(422, "グループ名は日本語・英数字・空白・一部の記号で1〜100文字にしてください。")
+            label = "個人スペース名" if kind == PERSONAL_KIND else "グループ名"
+            raise HTTPException(422, f"{label}は日本語・英数字・空白・一部の記号で1〜100文字にしてください。")
         with closing(_connect(self.database_path)) as db, db:
             db.execute("BEGIN IMMEDIATE")
             identity = self._identity(db, session)
             group_id, now = uuid4().hex, _now()
-            db.execute("INSERT INTO tekne_chat_group(id,school_id,name,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?)",
-                       (group_id, identity[1], clean, identity[0], now, now))
+            db.execute("INSERT INTO tekne_chat_group(id,school_id,name,created_by,created_at,updated_at,kind) VALUES(?,?,?,?,?,?,?)",
+                       (group_id, identity[1], clean, identity[0], now, now, kind))
             db.execute("INSERT INTO tekne_chat_member(group_id,school_id,student_id,joined_at) VALUES(?,?,?,?)",
                        (group_id, identity[1], identity[0], now))
-            return {"id": group_id, "name": clean, "icon_key": None, "member_count": 1}
+            return {"id": group_id, "name": clean, "icon_key": None, "member_count": 1, "kind": kind}
 
     def rename_group(self, session, group_id, name):
         clean = _clean_group_name(name)
@@ -643,6 +658,8 @@ class TekneChatService:
         with closing(_connect(self.database_path)) as db, db:
             db.execute("BEGIN IMMEDIATE")
             identity, group = self._member(db, session, group_id)
+            if group[5] == PERSONAL_KIND:
+                raise HTTPException(422, "個人スペースには他の生徒を招待できません。")
             target = db.execute("""SELECT i.id FROM tekne_student_identity i JOIN student s ON s.id=i.login_id
                 WHERE i.login_id=? AND i.school_id=? AND i.deleted_at IS NULL AND s.school=?""",
                 (target_login_id, identity[1], identity[2])).fetchone()
@@ -678,7 +695,9 @@ class TekneChatService:
     def leave(self, session, group_id):
         with closing(_connect(self.database_path)) as db, db:
             db.execute("BEGIN IMMEDIATE")
-            identity, _ = self._member(db, session, group_id)
+            identity, group = self._member(db, session, group_id)
+            if group[5] == PERSONAL_KIND:
+                raise HTTPException(422, "個人スペースは退出できません。")
             now = _now()
             db.execute("UPDATE tekne_chat_member SET left_at=? WHERE group_id=? AND student_id=? AND left_at IS NULL",
                        (now, group_id, identity[0]))
@@ -981,7 +1000,7 @@ class TekneChatService:
     def admin_groups(self, query="", offset=0, limit=100):
         with closing(_connect(self.database_path)) as db:
             params = []
-            sql = "SELECT g.id,g.name,s.school_name,g.created_at,g.updated_at FROM tekne_chat_group g JOIN tekne_school_identity s ON s.id=g.school_id"
+            sql = "SELECT g.id,g.name,s.school_name,g.created_at,g.updated_at,g.kind FROM tekne_chat_group g JOIN tekne_school_identity s ON s.id=g.school_id"
             count_sql = "SELECT COUNT(*) FROM tekne_chat_group g JOIN tekne_school_identity s ON s.id=g.school_id"
             if query:
                 sql += " WHERE g.name LIKE ? ESCAPE '\\' OR s.school_name LIKE ? ESCAPE '\\'"
@@ -1042,6 +1061,9 @@ class TekneChatService:
     def admin_remove_member(self, admin_id, group_id, student_id):
         with closing(_connect(self.database_path)) as db, db:
             db.execute("BEGIN IMMEDIATE")
+            kind = db.execute("SELECT kind FROM tekne_chat_group WHERE id=?", (group_id,)).fetchone()
+            if kind and kind[0] == PERSONAL_KIND:
+                raise HTTPException(422, "個人スペースのメンバーは外せません。不要な場合は個人スペースを削除してください。")
             now = _now()
             changed = db.execute("UPDATE tekne_chat_member SET left_at=? WHERE group_id=? AND student_id=? AND left_at IS NULL",
                                  (now, group_id, student_id)).rowcount
@@ -1157,7 +1179,7 @@ def cleanup_expired_groups(database_path, storage_root, *, now=None, force=False
 
         groups = db.execute("""SELECT g.id,g.icon_key
             FROM tekne_chat_group g
-            WHERE g.updated_at<=?
+            WHERE g.updated_at<=? AND g.kind<>'personal'
               AND NOT EXISTS (SELECT 1 FROM tekne_chat_member active
                               WHERE active.group_id=g.id AND active.left_at IS NULL)
               AND COALESCE((SELECT MAX(m.left_at) FROM tekne_chat_member m
@@ -1293,9 +1315,9 @@ def build_tekne_chat_router(database_path, templates, storage_root):
         return {"groups": await asyncio.to_thread(service.groups, request.session)}
 
     @router.post("/tekne-chat/api/groups")
-    async def group_create(request: Request, name: str = Form(...), csrf: str = Form(...)):
+    async def group_create(request: Request, name: str = Form(...), csrf: str = Form(...), kind: str = Form(GROUP_KIND)):
         require_csrf(request, csrf)
-        return await asyncio.to_thread(service.create_group, request.session, name)
+        return await asyncio.to_thread(service.create_group, request.session, name, kind)
 
     @router.patch("/tekne-chat/api/groups/{group_id}")
     async def group_rename(request: Request, group_id: str, name: str = Form(...), csrf: str = Form(...)):

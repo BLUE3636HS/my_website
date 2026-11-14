@@ -11,7 +11,7 @@ from fastapi.responses import RedirectResponse
 
 FEATURES = (
     ("dashboard", "ダッシュボード"),
-    ("studies_add", "研究成果追加フォーム"),
+    ("studies_add", "PDF提出フォーム"),
     ("studies_list", "研究成果一覧"),
     ("community", "TEKNEコミュニティ"),
     ("workshop_reservation", "TEKNE工作室予約"),

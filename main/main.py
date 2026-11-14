@@ -15,8 +15,8 @@ from uuid import uuid4
 import asyncio, sqlite3, shutil, bcrypt, datetime, csv, secrets, io, json, math, mimetypes
 import hashlib, hmac, logging
 from starlette.datastructures import UploadFile as StarletteUploadFile
-from studies import connect_studies, initialize_studies, get_templates, get_submission_collaboration, study_file_path, study_pdf_path, validate_pdf, field_has_images, field_has_text
-from study_images import normalize_study_image, study_image_path
+from studies import connect_studies, initialize_studies, get_submission_collaboration, study_file_path, study_pdf_path, validate_pdf
+from study_images import study_image_path
 from urllib.parse import urlencode
 from PIL import Image, ImageOps, UnidentifiedImageError
 from notifications import (
@@ -1159,16 +1159,15 @@ async def AddForm(request: Request):
     nonce = secrets.token_hex(32)
     submission_token = nonce + "." + hmac.new(csrf.encode(), nonce.encode(), hashlib.sha256).hexdigest()
     try:
-        submission_groups = tekne_chat_service.groups(request.session)
+        # 個人スペースは共同提出に使えないので、通常のグループだけを選択肢にする
+        submission_groups = [group for group in tekne_chat_service.groups(request.session)
+                             if group.get("kind", "group") == "group"]
     except HTTPException:
         submission_groups = []
-    with closing(connect_studies(DATABASE_PATH)) as db:
-        study_templates = get_templates(db)
     return templates.TemplateResponse(
         request = request,
         name = "addform.html",
         context = {
-            "study_templates": study_templates,
             "submission_groups": submission_groups,
             "csrf_token": csrf,
             "submission_token": submission_token,
@@ -4071,9 +4070,9 @@ async def Add(request: Request):
         if len(nonce) != 64 or not separator or not secrets.compare_digest(signature.encode(), expected.encode()):
             raise HTTPException(403, "送信情報が不正です。画面を再読み込みしてください。")
         submission_key = hashlib.sha256((str(user_id) + ":" + token).encode()).hexdigest()
-        mode = text_value("registration_type")
-        if mode not in ("pdf", "template"):
-            raise HTTPException(422, "登録方式を選択してください。")
+        # テンプレート入力での提出は廃止（TEKNEコミュニティのレポートで作成する）
+        if text_value("registration_type", "pdf") != "pdf":
+            raise HTTPException(422, "研究成果はPDFファイルで提出してください。")
         submission_kind = text_value("submission_kind", "individual")
         if submission_kind not in ("individual", "group"):
             raise HTTPException(422, "提出区分を選択してください。")
@@ -4089,7 +4088,6 @@ async def Add(request: Request):
         if not introduce.strip():
             raise HTTPException(422, "紹介文を入力してください。")
         temporary = final = None
-        created_image_paths = []
         try:
             with closing(connect_studies(DATABASE_PATH)) as db:
                 # Serialize duplicate requests before checking the unique key.
@@ -4108,93 +4106,36 @@ async def Add(request: Request):
                             if exc.status_code in (401, 403, 404):
                                 raise HTTPException(422, "選択したグループに現在参加していません。画面を再読み込みしてください。")
                             raise
-                    template_id, values, image_values, filename, pdfpath = None, [], [], "", ""
-                    if mode == "template":
-                        try:
-                            template_id = int(text_value("template_id"))
-                        except ValueError:
-                            raise HTTPException(422, "テンプレートを選択してください。")
-                        template = db.execute("SELECT id FROM study_template WHERE id = ? AND active = 1", (template_id,)).fetchone()
-                        if not template:
-                            raise HTTPException(422, "選択されたテンプレートは利用できません。")
-                        fields = [(field["id"], field["label"], field["max_length"], field["field_type"])
-                                  for field in next(item for item in get_templates(db) if item["id"] == template_id)["fields"]]
-                        allowed = set()
-                        for field_id, _label, _max_length, field_type in fields:
-                            if field_has_text(field_type):
-                                allowed.add(f"field_{field_id}")
-                            if field_has_images(field_type):
-                                allowed.update((f"image_{field_id}", f"caption_{field_id}"))
-                        if any((key.startswith("field_") or key.startswith("image_") or key.startswith("caption_")) and key not in allowed for key in form):
-                            raise HTTPException(422, "テンプレートに存在しない項目が含まれています。")
-                        for field_id, label, max_length, field_type in fields:
-                            if field_has_text(field_type):
-                                value = text_value(f"field_{field_id}").replace('\r\n', '\n').replace('\r', '\n')
-                                if max_length and len(value) > max_length:
-                                    raise HTTPException(422, f"「{label}」は{max_length}文字以内で入力してください。")
-                                values.append((field_id, value))
-                            if not field_has_images(field_type):
-                                continue
-                            uploads = form.getlist(f"image_{field_id}")
-                            captions = form.getlist(f"caption_{field_id}")
-                            if len(uploads) > 4:
-                                raise HTTPException(422, f"「{label}」の画像は最大4枚です。")
-                            if len(uploads) != len(captions):
-                                raise HTTPException(422, f"「{label}」の画像と説明の数が一致しません。")
-                            for position, (upload, caption) in enumerate(zip(uploads, captions)):
-                                if not isinstance(upload, StarletteUploadFile) or not isinstance(caption, str):
-                                    raise HTTPException(422, "画像の入力形式が不正です。")
-                                caption = caption.strip()
-                                if not caption:
-                                    raise HTTPException(422, f"「{label}」の画像説明を入力してください。")
-                                if len(caption) > 50:
-                                    raise HTTPException(422, f"「{label}」の画像説明は50文字以内で入力してください。")
-                                try:
-                                    content, image_format, width, height, suffix, original_name = normalize_study_image(upload)
-                                except ValueError as exc:
-                                    raise HTTPException(422, f"「{label}」: {exc}")
-                                stored_name = uuid4().hex + suffix
-                                image_final = study_image_path(STUDY_IMAGE_UPLOADS_DIR, stored_name)
-                                image_temporary = image_final.with_name("." + image_final.name + ".tmp")
-                                created_image_paths.append(image_temporary)
-                                with image_temporary.open("xb") as output:
-                                    output.write(content)
-                                image_temporary.replace(image_final)
-                                created_image_paths.remove(image_temporary)
-                                created_image_paths.append(image_final)
-                                image_values.append((field_id, position, stored_name, original_name,
-                                                     caption, image_format, width, height))
-                    else:
-                        upload = form.get("pdf")
-                        if not isinstance(upload, StarletteUploadFile) or len(form.getlist("pdf")) != 1:
-                            raise HTTPException(422, "研究成果ファイルを1つ選択してください。")
-                        filename = upload.filename.replace("\\", "/").rsplit("/", 1)[-1]
-                        filename = "".join(char for char in filename if ord(char) >= 32 and ord(char) != 127)
-                        if not filename:
-                            raise HTTPException(422, "ファイル名を確認してください。")
-                        upload.file.seek(0, 2)
-                        size = upload.file.tell()
-                        upload.file.seek(0)
-                        if size > STUDY_UPLOAD_MAX_BYTES:
-                            raise HTTPException(413, "ファイルは100MB以内にしてください。")
-                        if Path(filename).suffix.lower() == ".pdf":
-                            try:
-                                validate_pdf(upload)
-                            except ValueError as exc:
-                                raise HTTPException(422, str(exc))
-                        suffix = Path(filename).suffix.lower()
-                        pdfpath = uuid4().hex + suffix
-                        final = study_file_path(UPLOADS_DIR, pdfpath)
-                        temporary = final.with_suffix(".tmp")
-                        with temporary.open("xb") as output:
-                            shutil.copyfileobj(upload.file, output)
-                        temporary.replace(final)
+                    upload = form.get("pdf")
+                    if not isinstance(upload, StarletteUploadFile) or len(form.getlist("pdf")) != 1:
+                        raise HTTPException(422, "PDFファイルを1つ選択してください。")
+                    filename = upload.filename.replace("\\", "/").rsplit("/", 1)[-1]
+                    filename = "".join(char for char in filename if ord(char) >= 32 and ord(char) != 127)
+                    if not filename:
+                        raise HTTPException(422, "ファイル名を確認してください。")
+                    upload.file.seek(0, 2)
+                    size = upload.file.tell()
+                    upload.file.seek(0)
+                    if size > STUDY_UPLOAD_MAX_BYTES:
+                        raise HTTPException(413, "ファイルは100MB以内にしてください。")
+                    if Path(filename).suffix.lower() != ".pdf":
+                        raise HTTPException(422, "PDFファイルを選択してください。")
+                    try:
+                        validate_pdf(upload)
+                    except ValueError as exc:
+                        raise HTTPException(422, str(exc))
+                    pdfpath = uuid4().hex + ".pdf"
+                    final = study_file_path(UPLOADS_DIR, pdfpath)
+                    temporary = final.with_suffix(".tmp")
+                    with temporary.open("xb") as output:
+                        shutil.copyfileobj(upload.file, output)
+                    temporary.replace(final)
                     result = db.execute("""INSERT INTO study
                         (name, introduce, filename, pdfpath, userid, time, registration_type, template_id, submission_key,
                          submission_kind, chat_group_id, chat_group_name)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (
                             name, introduce, filename, pdfpath, user_id,
-                            datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"), mode, template_id, submission_key,
+                            datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"), "pdf", None, submission_key,
                             submission_kind, group_snapshot["id"] if group_snapshot else None,
                             group_snapshot["name"] if group_snapshot else None))
                     study_id = result.lastrowid
@@ -4203,12 +4144,6 @@ async def Add(request: Request):
                             (study_id, tekne_student_id, student_id_snapshot, position) VALUES (?, ?, ?, ?)""",
                             [(study_id, member[0], member[1], position)
                              for position, member in enumerate(group_snapshot["members"])])
-                    db.executemany("INSERT INTO study_field_value(study_id, field_id, value) VALUES (?, ?, ?)",
-                                   [(study_id, field_id, value) for field_id, value in values])
-                    db.executemany("""INSERT INTO study_field_image
-                        (study_id,field_id,position,stored_name,original_name,caption,image_format,width,height)
-                        VALUES (?,?,?,?,?,?,?,?,?)""",
-                        [(study_id, *value) for value in image_values])
             return JSONResponse({"ok": True, "id": study_id}, status_code=201)
         except Exception as exc:
             for path in (temporary, final):
@@ -4217,11 +4152,6 @@ async def Add(request: Request):
                         path.unlink(missing_ok=True)
                     except OSError:
                         logging.exception("Failed to clean research file %s", path)
-            for path in created_image_paths:
-                try:
-                    path.unlink(missing_ok=True)
-                except OSError:
-                    logging.exception("Failed to clean research image %s", path)
             if isinstance(exc, HTTPException):
                 raise
             logging.exception("Research submission failed")

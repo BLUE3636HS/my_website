@@ -1,4 +1,4 @@
-// Small DOM harness: exercise generated fields and async submission without a browser.
+// Small DOM harness: exercise the PDF submission form without a browser.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
@@ -7,89 +7,81 @@ const { test } = require('node:test');
 class Element {
     constructor(tag = '') { this.tag = tag; this.children = []; this.listeners = {}; this.value = ''; }
     append(...items) { this.children.push(...items); }
-    replaceChildren() { this.children = []; }
-    querySelectorAll(tag) { return this.children.filter(item => item.tag === tag); }
     addEventListener(event, callback) { this.listeners[event] = callback; }
     setAttribute() {}
     removeAttribute() {}
-    setCustomValidity(message) { this.validationMessage = message; }
 }
 
 function setup(fetch) {
-    const ids = Object.fromEntries(['study-form', 'add_btn', 'submission-status', 'study-templates',
-        'template-id', 'template-fields', 'pdf-panel', 'pdf_file', 'template-panel'].map(id => [id, new Element()]));
-    ids['study-templates'].textContent = JSON.stringify([
-        { id: 1, fields: Array.from({ length: 9 }, (_, i) => ({ id: i + 1, label: `項目${i}`, required: false })) },
-        { id: 2, fields: Array.from({ length: 20 }, (_, i) => ({ id: i + 20, label: `別項目${i}`, required: i === 0, max_length: i === 0 ? 5 : 0 })) }
-    ]);
-    ids['template-id'].value = '1';
+    const ids = Object.fromEntries(['study-form', 'add_btn', 'submission-status',
+        'group-submission-panel', 'chat-group-id'].map(id => [id, new Element()]));
     const form = ids['study-form'];
-    form.elements = { registration_type: { value: 'pdf' } };
     form.action = '/addform';
     form.reportValidity = () => true;
-    const radios = [new Element(), new Element()];
-    form.querySelectorAll = () => radios;
+    let submissionKind = 'individual';
+    form.querySelector = () => ({ value: submissionKind });
+    const sentBodies = [];
     const context = vm.createContext({
         document: { getElementById: id => ids[id], createElement: tag => new Element(tag), createTextNode: text => text },
-        FormData: class {}, fetch
+        FormData: class { constructor(source) { this.source = source; sentBodies.push(this); } },
+        fetch
     });
     vm.runInContext(fs.readFileSync('static/addform.js', 'utf8'), context);
-    return { ids, radios, form, submit: () => form.listeners.submit({ preventDefault() {} }) };
+    const changeKind = kind => {
+        submissionKind = kind;
+        form.listeners.change({ target: { matches: selector => selector === '[name="submission_kind"]' } });
+    };
+    return { ids, form, sentBodies, changeKind, submit: () => form.listeners.submit({ preventDefault() {} }) };
 }
 
-test('PDF/template switching and arbitrary DB field counts', () => {
-    const { ids, radios, form } = setup();
-    assert.equal(ids['template-fields'].children.length, 18);
-    assert.equal(ids['template-panel'].hidden, true);
-    assert.equal(ids['pdf_file'].disabled, false);
-    form.elements.registration_type.value = 'template';
-    radios[1].listeners.change();
-    assert.equal(ids['pdf-panel'].hidden, true);
-    assert.equal(ids['pdf_file'].disabled, true);
-    assert.equal(ids['template-id'].disabled, false);
-    ids['template-id'].value = '2';
-    ids['template-id'].listeners.change();
-    const inputs = ids['template-fields'].querySelectorAll('textarea');
-    assert.equal(inputs.length, 20);
-    assert.equal(inputs[0].required, true);
-    assert.equal(inputs[1].required, false);
+test('template mode is gone from the script and page', () => {
+    const script = fs.readFileSync('static/addform.js', 'utf8');
+    const html = fs.readFileSync('templates/addform.html', 'utf8');
+    for (const source of [script, html]) {
+        assert.doesNotMatch(source, /template-fields|template-panel|study-templates|registration_type/);
+    }
+    assert.match(html, /<h1>PDFを提出<\/h1>/);
+    assert.match(html, /accept="\.pdf,application\/pdf" required/);
 });
 
-test('field limit counts codepoints and normalizes CRLF', () => {
-    const {ids} = setup();
-    ids['template-id'].value = '2';
-    ids['template-id'].listeners.change();
-    const input = ids['template-fields'].querySelectorAll('textarea')[0];
-    input.value = 'あ😀\r\n b'; input.listeners.input();
-    assert.equal(input.validationMessage, '');
-    input.value += 'c'; input.listeners.input();
-    assert.notEqual(input.validationMessage, '');
+test('group selector is shown and required only for group submission', () => {
+    const { ids, changeKind } = setup();
+    assert.equal(ids['group-submission-panel'].hidden, true);
+    assert.equal(ids['chat-group-id'].disabled, true);
+    assert.equal(ids['chat-group-id'].required, false);
+    changeKind('group');
+    assert.equal(ids['group-submission-panel'].hidden, false);
+    assert.equal(ids['chat-group-id'].disabled, false);
+    assert.equal(ids['chat-group-id'].required, true);
+    changeKind('individual');
+    assert.equal(ids['group-submission-panel'].hidden, true);
+    assert.equal(ids['chat-group-id'].required, false);
 });
 
-for (const mode of ['pdf', 'template']) {
-    test(`${mode}: success is shown only after response; double submit blocked`, async () => {
-        let resolve;
-        let calls = 0;
-        const { ids, form, submit } = setup(() => { calls++; return new Promise(done => { resolve = done; }); });
-        form.elements.registration_type.value = mode;
-        const pending = submit();
-        assert.equal(ids.add_btn.disabled, true);
-        assert.equal(ids['submission-status'].textContent, '登録しています…');
-        await submit();
-        assert.equal(calls, 1);
-        resolve({ ok: true, json: async () => ({ ok: true }) });
-        await pending;
-        assert.equal(ids['submission-status'].textContent, '研究成果を追加しました。');
-        assert.equal(ids.add_btn.disabled, true);
-        await submit();
-        assert.equal(calls, 1);
-    });
-}
+test('success is shown only after response; double submit blocked', async () => {
+    let resolve;
+    let calls = 0;
+    const { ids, form, sentBodies, submit } = setup(() => { calls++; return new Promise(done => { resolve = done; }); });
+    const pending = submit();
+    assert.equal(ids.add_btn.disabled, true);
+    assert.equal(ids['submission-status'].textContent, '提出しています…');
+    await submit();
+    assert.equal(calls, 1);
+    assert.equal(sentBodies.length, 1);
+    assert.equal(sentBodies[0].source, form);
+    resolve({ ok: true, json: async () => ({ ok: true }) });
+    await pending;
+    assert.equal(ids['submission-status'].textContent, 'PDFを提出しました。');
+    assert.equal(ids.add_btn.textContent, '提出済み');
+    assert.equal(ids.add_btn.disabled, true);
+    await submit();
+    assert.equal(calls, 1);
+});
 
 test('server failure allows retry and never displays success', async () => {
-    const { ids, submit } = setup(async () => ({ ok: false, json: async () => ({ detail: '登録失敗' }) }));
+    const { ids, submit } = setup(async () => ({ ok: false, json: async () => ({ detail: 'PDFファイルを選択してください。' }) }));
     await submit();
-    assert.equal(ids['submission-status'].textContent, '登録失敗');
+    assert.equal(ids['submission-status'].textContent, 'PDFファイルを選択してください。');
     assert.equal(ids.add_btn.disabled, false);
 });
 
@@ -98,7 +90,7 @@ test('login redirect or network failure never displays success', async () => {
                          async () => { throw new Error('通信失敗'); }]) {
         const { ids, submit } = setup(fetch);
         await submit();
-        assert.notEqual(ids['submission-status'].textContent, '研究成果を追加しました。');
+        assert.notEqual(ids['submission-status'].textContent, 'PDFを提出しました。');
         assert.equal(ids.add_btn.disabled, false);
     }
 });

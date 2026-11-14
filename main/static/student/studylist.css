@@ -5,75 +5,77 @@
     font-weight: 700;
 }
 
-.studylist-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 16px;
+/* 提出物はリスト（表）形式で1行に1件ずつ並べる */
+.studylist-panel { padding: 0; overflow: hidden; }
+
+.studylist-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
 }
 
-.studylist-grid .student-panel + .student-panel { margin-top: 0; }
-
-.study-card {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 20px;
-    transition: border-color .15s, box-shadow .15s;
+.studylist-table th {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-soft);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-align: left;
+    white-space: nowrap;
 }
 
-.study-card:hover { border-color: var(--border-strong); box-shadow: 0 8px 24px rgba(15, 23, 42, .08); }
-
-.study-card-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
+.studylist-table td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
 }
 
-.study-card-head time { color: var(--text-muted); font-size: 12px; }
+.studylist-table tbody tr:last-child td { border-bottom: 0; }
+.studylist-table tbody tr:hover { background: var(--surface-soft); }
+
+.studylist-time { width: 1%; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+
+.studylist-title strong {
+    display: block;
+    color: var(--text-strong);
+    font-size: 15px;
+    overflow-wrap: anywhere;
+}
+
+.studylist-summary {
+    display: -webkit-box;
+    margin-top: 4px;
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: 13px;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow-wrap: anywhere;
+}
+
+.studylist-submitter { min-width: 7em; overflow-wrap: anywhere; }
+
+.studylist-file { max-width: 16em; }
+.studylist-file a {
+    color: var(--primary-strong);
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+.studylist-file a:hover { text-decoration: underline; }
 
 .study-card-badge {
+    display: inline-block;
     padding: 2px 10px;
     border-radius: 999px;
     background: var(--primary-soft);
     color: var(--primary-strong);
     font-size: 12px;
     font-weight: 700;
+    white-space: nowrap;
 }
 
 .study-card-badge.is-group { background: #eaf8ef; color: #15803d; }
-
-.study-card h2 {
-    margin: 0 !important;
-    font-size: 17px !important;
-    line-height: 1.5;
-    overflow-wrap: anywhere;
-}
-
-.study-card-summary {
-    display: -webkit-box;
-    margin: 0;
-    overflow: hidden;
-    color: var(--text-muted);
-    font-size: 14px;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
-    overflow-wrap: anywhere;
-}
-
-.study-card-meta { margin: 0; padding-top: 10px; border-top: 1px solid var(--border); }
-.study-card-meta div { display: flex; gap: 10px; font-size: 13px; }
-.study-card-meta dt { flex: none; color: var(--text-muted); font-weight: 700; }
-.study-card-meta dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-
-.study-card-actions { margin-top: auto; padding-top: 6px; }
-
-.study-card-actions a {
-    width: 100%;
-    min-height: 40px;
-    font-size: 13px;
-    overflow-wrap: anywhere;
-}
 
 .studylist-empty {
     display: grid;
@@ -87,6 +89,22 @@
 .studylist-empty .studylist-empty-title { color: var(--text-strong); font-size: 17px; font-weight: 700; }
 .studylist-empty .student-primary-button { margin-top: 14px; }
 
-@media (max-width: 480px) {
-    .studylist-grid { grid-template-columns: 1fr; }
+/* 狭い画面では1件ごとに縦に並べ、各項目に見出しを付ける */
+@media (max-width: 760px) {
+    .studylist-table thead { display: none; }
+    .studylist-table, .studylist-table tbody, .studylist-table tr, .studylist-table td { display: block; width: auto; }
+    .studylist-table tr { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    .studylist-table tbody tr:last-child { border-bottom: 0; }
+    .studylist-table td { display: flex; gap: 10px; padding: 4px 0; border-bottom: 0; }
+    .studylist-table td::before {
+        content: attr(data-label);
+        flex: 0 0 6.5em;
+        color: var(--text-muted);
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .studylist-table td.studylist-title { display: block; padding-bottom: 6px; }
+    .studylist-table td.studylist-title::before { content: none; }
+    .studylist-time, .studylist-file { max-width: none; }
+    .studylist-table td > * { min-width: 0; }
 }

@@ -28,10 +28,10 @@
     {% endif %}
 
     {% set quick_links = [] %}
-    {% if student_features.studies_add %}{% set _ = quick_links.append(('/addform', 'file-plus', '研究成果を追加', 'ファイルやテンプレートで提出', 'blue')) %}{% endif %}
+    {% if student_features.studies_add %}{% set _ = quick_links.append(('/addform', 'file-plus', 'PDFを提出', '研究成果をPDFで提出', 'blue')) %}{% endif %}
     {% if student_features.studies_list %}{% set _ = quick_links.append(('/studylist', 'list', '提出物一覧', '提出した研究成果を確認', 'indigo')) %}{% endif %}
     {% if student_features.community %}{% set _ = quick_links.append(('/community', 'users', 'TEKNEコミュニティ', 'みんなの投稿を見る・書く', 'teal')) %}{% endif %}
-    {% set _ = quick_links.append(('/tekne-chat', 'chat', 'TEKNEチャット', 'グループで会話・ファイル共有', 'green')) %}
+    {% set _ = quick_links.append(('/tekne-chat', 'briefcase', 'ワークスペース', 'レポート記入・ファイル保存・グループでの会話', 'green')) %}
     {% if student_features.workshop_reservation %}{% set _ = quick_links.append(('/reservation', 'tool', 'TEKNE工作室', '工作室の利用を予約', 'amber')) %}{% endif %}
     {% if student_features.mentor_reservation %}{% set _ = quick_links.append(('/mentor-reservation', 'mentor', '大学生メンター', 'メンターに相談を予約', 'violet')) %}{% endif %}
     {% if student_features.equipment_reservation %}{% set _ = quick_links.append(('/equipment-reservation', 'flask', '実験器具の貸し出し', '器具の貸出を予約', 'rose')) %}{% endif %}

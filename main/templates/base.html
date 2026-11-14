@@ -36,18 +36,18 @@
                         {{ nav_link('/dashboard', 'ダッシュボード', 'home') }}
                     </div>
                     {% endif %}
-                    {% if student_features.studies_add or student_features.studies_list %}
                     <div class="student-nav-group">
                         <p class="student-nav-heading">研究</p>
-                        {% if student_features.studies_add %}{{ nav_link('/addform', '研究成果を追加', 'file-plus') }}{% endif %}
-                        {% if student_features.studies_list %}{{ nav_link('/studylist', '提出物一覧', 'list') }}{% endif %}
+                        {% if student_features.studies_add %}{{ nav_link('/addform', 'PDFを提出', 'file-plus') }}{% endif %}
+                        {{ nav_link('/tekne-chat', 'ワークスペース', 'briefcase') }}
                     </div>
-                    {% endif %}
+                    {% if student_features.community or student_features.studies_list %}
                     <div class="student-nav-group">
                         <p class="student-nav-heading">交流</p>
                         {% if student_features.community %}{{ nav_link('/community', 'TEKNEコミュニティ', 'users') }}{% endif %}
-                        {{ nav_link('/tekne-chat', 'TEKNEチャット', 'chat') }}
+                        {% if student_features.studies_list %}{{ nav_link('/studylist', '提出物一覧', 'list') }}{% endif %}
                     </div>
+                    {% endif %}
                     {% if student_features.workshop_reservation or student_features.mentor_reservation or student_features.equipment_reservation %}
                     <div class="student-nav-group">
                         <p class="student-nav-heading">予約</p>
@@ -74,10 +74,10 @@
                     {#- サイドバーにある項目が最上位の階層。その下のURLは子ページとして1段ずつ増やす -#}
                     {%- set top_pages = [
                         ('/dashboard', 'ダッシュボード'),
-                        ('/addform', '研究成果を追加'),
+                        ('/addform', 'PDFを提出'),
                         ('/studylist', '提出物一覧'),
                         ('/community', 'TEKNEコミュニティ'),
-                        ('/tekne-chat', 'TEKNEチャット'),
+                        ('/tekne-chat', 'ワークスペース'),
                         ('/reservation', 'TEKNE工作室'),
                         ('/mentor-reservation', '大学生メンター'),
                         ('/equipment-reservation', '実験器具の貸し出し'),

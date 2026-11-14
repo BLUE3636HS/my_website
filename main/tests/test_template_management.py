@@ -21,6 +21,7 @@ class TemplateManagementTests(unittest.TestCase):
     rows = fixtures.StudyTests.rows
     token = fixtures.StudyTests.token
     submit = fixtures.StudyTests.submit
+    insert_template_study = fixtures.StudyTests.insert_template_study
 
     def endpoint(self, path, method):
         router = create_template_router(lambda: self.path, main.templates)
@@ -38,7 +39,7 @@ class TemplateManagementTests(unittest.TestCase):
     def test_create_and_schema_defaults(self):
         self.assertEqual(self.create().status_code, 201)
         self.assertEqual(self.rows('SELECT seed_key,active FROM study_template WHERE id=2'), [(None, 1)])
-        self.assertEqual(self.rows('SELECT label,position,heading_font_size,body_font_size,hide_heading,max_length,required FROM study_template_field WHERE template_id=2'),
+        self.assertEqual(self.rows('SELECT label,position,heading_font_size,body_font_size,hide_heading,max_length,required FROM study_template_field WHERE template_id=2 ORDER BY position'),
                          [('先頭', 0, 24, 16, 1, 5, 0), ('次の項目', 1, 11, 10, 0, 0, 0)])
         with closing(connect_studies(self.path)) as db:
             self.assertEqual(len(get_templates(db)), 2)
@@ -117,7 +118,7 @@ class TemplateManagementTests(unittest.TestCase):
             fields = get_templates(db)[1]['fields']
         self.assertEqual([(f['heading_alignment'], f['body_alignment'], f['heading_bold'], f['body_bold']) for f in fields],
                          [('center', 'right', True, False), ('left', 'center', False, True)])
-        self.submit(template_id='2', **{f"field_{f['id']}": '本文' for f in fields})
+        self.insert_template_study(template_id=2, values={f['id']: '本文' for f in fields})
         response = asyncio.run(main.pdf(1, fixtures.request('/uploads/1.pdf', self.session)))
         reader = PdfReader(io.BytesIO(response.body))
         fonts = []
@@ -134,7 +135,7 @@ class TemplateManagementTests(unittest.TestCase):
                        {'heading_bold': 1}, {'body_bold': 'true'}):
             with self.subTest(change=change), self.assertRaises(ValidationError):
                 TemplateCreate(csrf_token='token', name='テスト', fields=[{'label': '項目', **change}])
-        self.submit(field_1='保持する本文')
+        self.insert_template_study(values={1: '保持する本文'})
         with closing(connect_studies(self.path)) as db:
             before = db.execute('SELECT * FROM study_field_value').fetchall()
             initialize_studies(db)
@@ -191,29 +192,18 @@ class TemplateManagementTests(unittest.TestCase):
         self.assertEqual(self.rows('SELECT id FROM study_template'), [(1,)])
         self.assertEqual(len(self.rows('SELECT id FROM study_template_field')), 9)
 
-    def test_hide_disallows_new_submission_but_preserves_pdf(self):
-        self.submit(field_1='既存の本文')
+    def test_hidden_template_still_renders_existing_submission(self):
+        self.insert_template_study(values={1: '既存の本文'})
         toggle = self.endpoint('/admin/study-templates/{template_id}/visibility', 'POST')
         asyncio.run(toggle(self.admin_request(), 1, Visibility(csrf_token='token', active=False)))
         with closing(connect_studies(self.path)) as db:
             self.assertEqual(get_templates(db), [])
             self.assertEqual(len(get_templates(db, include_inactive=True)), 1)
-        with self.assertRaises(HTTPException):
-            self.submit()
         response = asyncio.run(main.pdf(1, fixtures.request('/uploads/1.pdf', self.session)))
         self.assertIn('既存の本文', PdfReader(io.BytesIO(response.body)).pages[0].extract_text())
         asyncio.run(toggle(self.admin_request(), 1, Visibility(csrf_token='token', active=True)))
-        self.assertEqual(self.submit().status_code, 201)
-
-    def test_character_limits_codepoints_and_lf_normalization(self):
-        self.create()
-        field_id = self.rows('SELECT id FROM study_template_field WHERE template_id=2 ORDER BY position')[0][0]
-        key = f'field_{field_id}'
-        self.assertEqual(self.submit(template_id='2', **{key: 'あ😀\r\n b'}).status_code, 201)
-        self.assertEqual(self.rows('SELECT value FROM study_field_value WHERE field_id=?', (field_id,)), [('あ😀\n b',)])
-        for value in ('あ😀\r\n bc', '', '  '):
-            with self.subTest(value=value), self.assertRaises(HTTPException):
-                self.submit(template_id='2', **{key: value})
+        with closing(connect_studies(self.path)) as db:
+            self.assertEqual(len(get_templates(db)), 1)
 
     def test_pages_render_and_escape_definition(self):
         self.create([{'label': '<script>test</script>'}])

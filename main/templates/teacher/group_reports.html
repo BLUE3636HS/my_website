@@ -6,7 +6,7 @@
     <header class="staff-page-hero">
         <p class="teacher-eyebrow">研究</p>
         <h1>{{ school }}：成果レポート履歴</h1>
-        <p>グループごとに保存されたレポートの版をPDFで確認・ダウンロードできます。</p>
+        <p>グループ・個人スペースごとに保存されたレポートの版をPDFで確認・ダウンロードできます。</p>
     </header>
     {% if not groups %}
     <div class="staff-panel"><div class="staff-empty">{{ icons.icon("inbox") }}<p>保存済みレポートはありません。</p></div></div>
@@ -14,7 +14,11 @@
     <div class="teacher-report-list">
     {% for group in groups %}
         <section class="staff-panel teacher-report-group report-field">
+            {% if group.kind == 'personal' %}
+            <h2>{{ icons.icon("user") }}個人：{{ group.owner or '不明な生徒' }}（{{ group.name }}）</h2>
+            {% else %}
             <h2>{{ icons.icon("users") }}{{ group.name }}</h2>
+            {% endif %}
             <ul class="teacher-report-versions">
                 {% for v in group.versions %}
                 <li>

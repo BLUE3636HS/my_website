@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}TEKNEチャット{% endblock %}
-{% block page_title %}TEKNEチャット{% endblock %}
+{% block title %}ワークスペース{% endblock %}
+{% block page_title %}ワークスペース{% endblock %}
 {% block css %}
-<link rel="stylesheet" href="/static/student/chat.css">
+<link rel="stylesheet" href="/static/student/chat.css?v=icon-order-1">
 {% endblock %}
 
 {% block content %}
@@ -14,9 +14,9 @@
      data-initial-folder="{{ initial_folder_id }}"
      data-current-user="{{ request.session.get('user_id', '') }}">
     <aside class="tc-groups">
-        <div class="tc-group-heading"><h1>チャット</h1><button id="tc-create-group" type="button" aria-label="グループを作成">＋</button></div>
-        <label class="tc-search-label" for="tc-group-search">グループを検索</label>
-        <input id="tc-group-search" type="search" placeholder="グループ名">
+        <div class="tc-group-heading"><h1>ワークスペース</h1><button id="tc-create-group" type="button" aria-label="個人スペース・グループを作成" title="個人スペース・グループを作成">＋</button></div>
+        <label class="tc-search-label" for="tc-group-search">個人スペース・グループを検索</label>
+        <input id="tc-group-search" type="search" placeholder="名前">
         <div id="tc-group-list" class="tc-group-list" aria-live="polite"></div>
     </aside>
     <main class="tc-conversation">
@@ -79,15 +79,29 @@
 </div>
 <dialog id="tc-create-dialog" class="tc-dialog">
     <form method="dialog" id="tc-create-form">
-        <h2>グループを作成</h2><label for="tc-new-group-name">グループ名</label>
-        <input id="tc-new-group-name" maxlength="100" pattern="[\p{L}\p{M}\p{N} 　_\(\)（）・ー\-]{1,100}" title="日本語・英数字・空白・一部の記号（_ - ( ) ・ ー）が使用できます。スラッシュや制御文字は使用できません。" required>
+        <h2>新しく作成</h2>
+        <fieldset class="tc-kind-options">
+            <legend>種類</legend>
+            <label><input type="radio" name="tc-new-kind" value="personal" checked> 個人スペース<small>自分だけで使うスペース。レポート記入・ファイル保存・メモに使えます。</small></label>
+            <label><input type="radio" name="tc-new-kind" value="group"> グループ<small>同じ学校の生徒を招待して一緒に作業します。</small></label>
+        </fieldset>
+        <label id="tc-new-group-name-label" for="tc-new-group-name">個人スペース名</label>
+        <input id="tc-new-group-name" maxlength="100" pattern="[\p{L}\p{M}\p{N} 　_\(\)（）・ー\-]{1,100}" title="日本語・英数字・空白・一部の記号（_ - ( ) ・ ー）が使用できます。スラッシュや制御文字は使用できません。" placeholder="例：植物の成長の研究" required>
         <div class="tc-dialog-actions"><button value="cancel" type="button" class="tc-dialog-cancel">キャンセル</button><button id="tc-confirm-create" type="submit">作成</button></div>
     </form>
 </dialog>
 <dialog id="tc-icon-dialog" class="tc-dialog">
     <form id="tc-icon-form">
-        <h2>グループ設定</h2><label for="tc-edit-group-name">グループ名</label><input id="tc-edit-group-name" maxlength="100" pattern="[\p{L}\p{M}\p{N} 　_\(\)（）・ー\-]{1,100}" title="日本語・英数字・空白・一部の記号（_ - ( ) ・ ー）が使用できます。スラッシュや制御文字は使用できません。" required>
-        <label for="tc-group-icon-file">グループアイコン（任意）</label><input id="tc-group-icon-file" type="file" accept="image/*">
+        <h2 id="tc-settings-title">グループ設定</h2><label id="tc-edit-group-name-label" for="tc-edit-group-name">グループ名</label><input id="tc-edit-group-name" maxlength="100" pattern="[\p{L}\p{M}\p{N} 　_\(\)（）・ー\-]{1,100}" title="日本語・英数字・空白・一部の記号（_ - ( ) ・ ー）が使用できます。スラッシュや制御文字は使用できません。" required>
+        <label id="tc-group-icon-label" for="tc-group-icon-file">グループアイコン（任意）</label>
+        <div class="tc-icon-setting">
+            <div id="tc-icon-preview" class="tc-avatar tc-icon-preview" aria-hidden="true"></div>
+            <div class="tc-icon-controls">
+                <input id="tc-group-icon-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+                <p class="tc-icon-hint">JPEG・PNG・WebP・GIF、2MBまで。</p>
+                <label id="tc-remove-icon-row" class="tc-remove-icon"><input id="tc-remove-icon" type="checkbox"> アイコンを外す</label>
+            </div>
+        </div>
         <div class="tc-dialog-actions"><button type="button" class="tc-dialog-cancel">キャンセル</button><button type="submit">保存</button></div>
     </form>
 </dialog>
@@ -110,5 +124,5 @@
 {% endblock %}
 
 {% block script %}
-<script src="/static/tekne_chat/chat.js" defer></script>
+<script src="/static/tekne_chat/chat.js?v=icon-order-1" defer></script>
 {% endblock %}

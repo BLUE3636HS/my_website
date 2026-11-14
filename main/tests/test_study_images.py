@@ -13,6 +13,7 @@ from starlette.datastructures import FormData, UploadFile
 import main
 import test_studies as fixtures
 from studies import connect_studies, get_templates
+from study_images import normalize_study_image
 
 
 def png_bytes(size=(80, 60), color=(30, 120, 200, 180)):
@@ -46,74 +47,67 @@ class StudyImageTests(unittest.TestCase):
         self.addCleanup(patcher.stop)
         return template_id, field_id
 
-    def submit_images(self, template_id, field_id, images, captions):
-        entries = [('registration_type', 'template'), ('template_id', str(template_id)),
-                   ('name', '画像研究'), ('introduce', '画像を含む研究'),
-                   ('csrf_token', 'csrf'), ('submission_token', self.token())]
-        entries.extend((f'image_{field_id}', UploadFile(io.BytesIO(content), filename=name))
-                       for name, content in images)
-        entries.extend((f'caption_{field_id}', caption) for caption in captions)
-        req = fixtures.request('/addform', self.session)
-        req._form = FormData(entries)
-        return asyncio.run(main.Add(req))
+    def insert_image_study(self, template_id, field_id, images):
+        """テンプレート提出は廃止したので、過去に提出された画像付きの研究を直接DBに作る。"""
+        with closing(connect_studies(self.path)) as db, db:
+            study_id = db.execute("""INSERT INTO study
+                (name, introduce, filename, pdfpath, userid, time, registration_type, template_id)
+                VALUES ('画像研究', '画像を含む研究', '', '', 'a', '2026-10-01 10:00:00', 'template', ?)""",
+                (template_id,)).lastrowid
+            for position, (caption, content) in enumerate(images):
+                stored_name = f'{study_id}-{position}.png'
+                (self.image_dir / stored_name).write_bytes(content)
+                db.execute("""INSERT INTO study_field_image
+                    (study_id,field_id,position,stored_name,original_name,caption,image_format,width,height)
+                    VALUES (?,?,?,?,?,?,'PNG',80,60)""",
+                    (study_id, field_id, position, stored_name, f'{position}.png', caption))
+        return study_id
 
-    def test_upload_order_pdf_and_admin_cleanup(self):
+    def test_legacy_image_study_pdf_order_and_admin_cleanup(self):
         template_id, field_id = self.configure_image_template()
-        response = self.submit_images(template_id, field_id,
-            [('one.png', png_bytes(color=(255, 0, 0, 255))), ('two.png', png_bytes(color=(0, 0, 255, 255))),
-             ('three.png', png_bytes(color=(0, 255, 0, 255)))],
-            ['赤い画像', '青い画像', '緑の画像'])
-        self.assertEqual(response.status_code, 201)
-        records = self.rows('SELECT position,caption,stored_name,width,height FROM study_field_image ORDER BY position')
-        self.assertEqual([row[:2] for row in records], [(0, '赤い画像'), (1, '青い画像'), (2, '緑の画像')])
-        self.assertTrue(all((self.image_dir / row[2]).is_file() for row in records))
+        self.insert_image_study(template_id, field_id, [
+            ('赤い画像', png_bytes(color=(255, 0, 0, 255))), ('青い画像', png_bytes(color=(0, 0, 255, 255))),
+            ('緑の画像', png_bytes(color=(0, 255, 0, 255)))])
         pdf = asyncio.run(main.pdf(1, fixtures.request('/uploads/1.pdf', self.session)))
         self.assertEqual(pdf.media_type, 'application/pdf')
         text = ''.join(page.extract_text() for page in PdfReader(io.BytesIO(pdf.body)).pages)
         self.assertIn('実験写真', text)
-        self.assertIn('赤い画像', text)
+        self.assertLess(text.index('赤い画像'), text.index('青い画像'))
+        self.assertLess(text.index('青い画像'), text.index('緑の画像'))
         asyncio.run(main.AdminDeleteStudy(fixtures.request('/admin/studies', {'admin_login': True}), 1))
         self.assertEqual(self.rows('SELECT id FROM study_field_image'), [])
         self.assertEqual(list(self.image_dir.iterdir()), [])
 
-    def test_image_fields_are_optional_but_uploads_are_validated(self):
+    def test_template_image_upload_is_rejected_without_saving_files(self):
         template_id, field_id = self.configure_image_template()
-        empty = self.submit_images(template_id, field_id, [], [])
-        self.assertEqual(empty.status_code, 201)
-        with closing(connect_studies(self.path)) as db, db:
-            db.execute('DELETE FROM study')
-        cases = [
-            ([('a.png', png_bytes())], [], '数が一致'),
-            ([('a.png', png_bytes())], [''], '画像説明'),
-            ([('a.png', png_bytes())], ['あ' * 51], '50文字以内'),
-            ([('bad.png', b'not an image')], ['説明'], '正常なJPEGまたはPNG'),
-            ([('large.png', b'x' * (5 * 1024 * 1024 + 1))], ['説明'], '5MB以下'),
-            ([('pixels.png', oversized_pixel_png())], ['説明'], '解像度が大きすぎ'),
-            ([(f'{i}.png', png_bytes()) for i in range(5)], ['説明'] * 5, '最大4枚'),
-        ]
-        for images, captions, message in cases:
-            with self.subTest(message=message), self.assertRaises(HTTPException) as error:
-                self.submit_images(template_id, field_id, images, captions)
-            self.assertEqual(error.exception.status_code, 422)
-            self.assertIn(message, error.exception.detail)
-            self.assertEqual(self.rows('SELECT id FROM study'), [])
-            self.assertEqual(list(self.image_dir.iterdir()), [])
-
-    def test_database_failure_cleans_images(self):
-        template_id, field_id = self.configure_image_template()
-        with closing(connect_studies(self.path)) as db:
-            db.execute("""CREATE TRIGGER fail_study_image BEFORE INSERT ON study_field_image
-                BEGIN SELECT RAISE(ABORT,'failure'); END""")
-            db.commit()
-        with self.assertLogs(level='ERROR'), self.assertRaises(HTTPException) as error:
-            self.submit_images(template_id, field_id, [('one.png', png_bytes())], ['説明'])
-        self.assertEqual(error.exception.status_code, 500)
+        entries = [('registration_type', 'template'), ('template_id', str(template_id)),
+                   ('name', '画像研究'), ('introduce', '画像を含む研究'),
+                   ('csrf_token', 'csrf'), ('submission_token', self.token()),
+                   (f'image_{field_id}', UploadFile(io.BytesIO(png_bytes()), filename='one.png')),
+                   (f'caption_{field_id}', '説明')]
+        req = fixtures.request('/addform', self.session)
+        req._form = FormData(entries)
+        with self.assertRaises(HTTPException) as error:
+            asyncio.run(main.Add(req))
+        self.assertEqual(error.exception.status_code, 422)
         self.assertEqual(self.rows('SELECT id FROM study'), [])
         self.assertEqual(list(self.image_dir.iterdir()), [])
 
+    def test_image_normalization_rejects_invalid_images(self):
+        # グループレポートの画像アップロードで引き続き使う検証処理
+        cases = [
+            ('bad.png', b'not an image', '正常なJPEGまたはPNG'),
+            ('large.png', b'x' * (5 * 1024 * 1024 + 1), '5MB以下'),
+            ('pixels.png', oversized_pixel_png(), '解像度が大きすぎ'),
+        ]
+        for name, content, message in cases:
+            with self.subTest(message=message), self.assertRaises(ValueError) as error:
+                normalize_study_image(UploadFile(io.BytesIO(content), filename=name))
+            self.assertIn(message, str(error.exception))
+
     def test_teacher_delete_removes_image_file(self):
         template_id, field_id = self.configure_image_template()
-        self.submit_images(template_id, field_id, [('one.png', png_bytes())], ['説明'])
+        self.insert_image_study(template_id, field_id, [('説明', png_bytes())])
         session = {'teacher_login': True, 'teacher_id': 'teacher1',
                    'teacher_studylist_csrf_token': 'token'}
         asyncio.run(main.TeacherDeleteStudy(fixtures.request('/teacher/studylist', session), 1, 'token'))

@@ -43,6 +43,13 @@ def run_scheduled_snapshots(database_path, now=None):
     return created
 
 
+def draft_state(row):
+    """下書きの行を画面用の形にする。template_key は表示中のテンプレートが古くないかを確かめるための値。"""
+    return {'template_id': row[0], 'template': json.loads(row[1]), 'data': json.loads(row[2]),
+            'revision': row[3], 'updated_at': row[4],
+            'template_key': hashlib.sha256(row[1].encode('utf-8')).hexdigest()[:16]}
+
+
 def version_rows(db, group_id):
     # saved_by_name: 保存した生徒の名前（自動保存や退会済みの生徒は saved_by の値をそのまま使う）
     return [dict(zip(('id', 'version_number', 'saved_at', 'saved_by', 'kind', 'scheduled_date', 'saved_by_name'), r)) for r in db.execute(
@@ -129,7 +136,7 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
         return user,group
     def draft(db,group):
         row=db.execute('SELECT template_id,template_snapshot,report_data,revision,updated_at FROM group_report_draft WHERE group_id=?',(group['id'],)).fetchone()
-        if row: return {'template_id':row[0],'template':json.loads(row[1]),'data':json.loads(row[2]),'revision':row[3],'updated_at':row[4]}
+        if row: return draft_state(row)
         setting=db.execute('SELECT s.template_id,t.name FROM school_report_template s JOIN study_template t ON t.id=s.template_id WHERE s.school=? AND t.active=1',(group['school_name'],)).fetchone()
         if not setting: return None
         template=next(x for x in get_templates(db) if x['id']==setting[0])
@@ -140,7 +147,7 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
         db.execute('INSERT OR IGNORE INTO group_report_draft(group_id,school_id,school_name,template_id,template_snapshot,report_data,updated_at,revision) VALUES(?,?,?,?,?,?,?,0)',
                    (group['id'],group['school_id'],group['school_name'],template['id'],json.dumps(snapshot,ensure_ascii=False),json.dumps(data,ensure_ascii=False),now()))
         row=db.execute('SELECT template_id,template_snapshot,report_data,revision,updated_at FROM group_report_draft WHERE group_id=?',(group['id'],)).fetchone()
-        return {'template_id':row[0],'template':json.loads(row[1]),'data':json.loads(row[2]),'revision':row[3],'updated_at':row[4]}
+        return draft_state(row)
     def validate_patch(db,incoming,state,group_id):
         fields={f['stable_key']:f for f in state['template']['fields']}
         if not isinstance(incoming,dict) or not set(incoming)<=set(fields): raise HTTPException(422,'レポート項目が不正です。')
@@ -186,12 +193,18 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
         with closing(connect_studies(database_path)) as db, db:
             db.execute('BEGIN IMMEDIATE'); state=draft(db,group)
             if state is None: raise HTTPException(409,'学校用テンプレートが設定されていません。')
+            # 個人スペースはWebSocketでテンプレート変更の通知を受けないので、保存時に表示中のテンプレートと比べる
+            sent_key=body.get('template_key')
+            if sent_key is not None and sent_key!=state['template_key']:
+                raise HTTPException(412,'先生がテンプレートを更新しました。書きかけの内容は残したまま画面を読み込み直します。')
             incoming=body.get('data')
             validate_patch(db,incoming,state,group_id)
             locks={r[0]:r[1] for r in db.execute('SELECT field_key,student_id FROM group_report_lock WHERE group_id=?',(group_id,))}
             if any(owner!=user for key,owner in locks.items() if key in incoming): raise HTTPException(423,'他のメンバーが編集中の項目があります。')
             merged={**state['data'],**incoming}
             db.execute('UPDATE group_report_draft SET report_data=?,updated_at=?,revision=revision+1 WHERE group_id=?',(json.dumps(merged,ensure_ascii=False),now(),group_id))
+            # レポートの記入も「更新」として扱い、チャットの一覧で新しい順に並ぶようにする
+            db.execute('UPDATE tekne_chat_group SET updated_at=? WHERE id=?',(now(),group_id))
             state['data']=merged; state['revision']+=1
         await broadcast(group_id,{'type':'draft.updated','state':state,'by':user})
         return {'ok':True,'revision':state['revision']}
@@ -201,6 +214,10 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
         with closing(connect_studies(database_path)) as db, db:
             db.execute('BEGIN IMMEDIATE'); state=draft(db,group)
             if state is None: raise HTTPException(409,'学校用テンプレートが設定されていません。')
+            # 個人スペースはWebSocketでテンプレート変更の通知を受けないので、保存時に表示中のテンプレートと比べる
+            sent_key=body.get('template_key')
+            if sent_key is not None and sent_key!=state['template_key']:
+                raise HTTPException(412,'先生がテンプレートを更新しました。書きかけの内容は残したまま画面を読み込み直します。')
             incoming=body.get('data')
             validate_patch(db,incoming,state,group_id)
             if db.execute('SELECT 1 FROM group_report_lock WHERE group_id=? AND student_id<>? LIMIT 1',(group_id,user)).fetchone():
@@ -209,6 +226,8 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
             if any(owner!=user for key,owner in locks.items() if key in incoming): raise HTTPException(423,'他のメンバーが編集中の項目があります。')
             merged={**state['data'],**incoming}
             db.execute('UPDATE group_report_draft SET report_data=?,updated_at=?,revision=revision+1 WHERE group_id=?',(json.dumps(merged,ensure_ascii=False),now(),group_id))
+            # レポートの記入も「更新」として扱い、チャットの一覧で新しい順に並ぶようにする
+            db.execute('UPDATE tekne_chat_group SET updated_at=? WHERE id=?',(now(),group_id))
             state['data']=merged
             version=db.execute('SELECT COALESCE(MAX(version_number),0)+1 FROM group_report_version WHERE group_id=?',(group_id,)).fetchone()[0]
             context=json.dumps(group_context_snapshot(db,group_id,group['school_name']),ensure_ascii=False)
@@ -264,10 +283,15 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
         with closing(connect_studies(database_path)) as db:
             teacher=db.execute('SELECT school,role FROM teacher WHERE id=?',(teacher_id,)).fetchone()
             if teacher is None: raise HTTPException(403,'先生アカウントが確認できません。')
-            groups=db.execute('SELECT DISTINCT v.group_id,v.school_name,g.name FROM group_report_version v LEFT JOIN tekne_chat_group g ON g.id=v.group_id WHERE v.school_name=? ORDER BY g.name,v.group_id',(teacher[0],)).fetchall()
+            # 個人スペースは作成者（本人）の名前も表示して、グループと区別する
+            groups=db.execute('''SELECT DISTINCT v.group_id,v.school_name,g.name,COALESCE(g.kind,'group'),COALESCE(st.name,i.login_id)
+                FROM group_report_version v LEFT JOIN tekne_chat_group g ON g.id=v.group_id
+                LEFT JOIN tekne_student_identity i ON i.id=g.created_by LEFT JOIN student st ON st.id=i.login_id
+                WHERE v.school_name=? ORDER BY COALESCE(g.kind,'group'),g.name,v.group_id''',(teacher[0],)).fetchall()
             records=[]
             for item in groups:
-                records.append({'id':item[0],'name':item[2] or item[0],'versions':version_rows(db,item[0])})
+                records.append({'id':item[0],'name':item[2] or item[0],'kind':item[3],'owner':item[4] or '',
+                                'versions':version_rows(db,item[0])})
         return templates.TemplateResponse(request=request,name='teacher/group_reports.html',context={'request':request,'groups':records,'school':teacher[0],'teacher_id':teacher_id,'teacher_role':teacher[1]})
     @router.get('/teacher/reports/{group_id}/versions/{version_id}.pdf')
     async def teacher_version_pdf(request:Request,group_id:str,version_id:int):
@@ -284,6 +308,8 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
         session=websocket.scope.get('session',{})
         try: user,group=await asyncio.to_thread(group_access,session,group_id)
         except HTTPException: await websocket.close(code=4403); return
+        # 個人スペースのレポートはHTTPだけで保存する（編集ロックや同時編集の反映が不要なため）
+        if group.get('kind')=='personal': await websocket.close(code=4403); return
         await websocket.accept()
         async with socket_lock:
             first=not sockets.get(group_id)

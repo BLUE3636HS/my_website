@@ -28,6 +28,7 @@
     function showError(error) { notice.textContent = error?.message || "処理に失敗しました。"; }
     function clearError() { notice.textContent = ""; }
     function newEventId() { return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+    const isPersonal = (group) => group?.kind === "personal";
     function setEnabled(enabled) {
         for (const id of ["tc-message-input", "tc-send-message", "tc-rename-group", "tc-toggle-members", "tc-toggle-files", "tc-new-folder", "tc-upload-file", "tc-leave-group", "tc-selected-download", "tc-selected-rename", "tc-selected-move", "tc-selected-delete"]) $(id).disabled = !enabled;
     }
@@ -37,7 +38,7 @@
         if (group.icon_key) {
             const image = document.createElement("img");
             image.alt = "";
-            image.src = `/tekne-chat/api/groups/${encodeURIComponent(group.id)}/icon`;
+            image.src = `/tekne-chat/api/groups/${encodeURIComponent(group.id)}/icon?v=${encodeURIComponent(group.icon_key)}`;
             avatar.append(image);
         } else avatar.textContent = (group.name || "T").slice(0, 1);
         return avatar;
@@ -47,16 +48,22 @@
         groupsEl.replaceChildren();
         const visible = state.groups.filter((group) => !query || group.name.toLocaleLowerCase().includes(query));
         if (!visible.length) {
-            const empty = document.createElement("p"); empty.className = "tc-empty"; empty.textContent = "グループはありません"; groupsEl.append(empty); return;
+            const empty = document.createElement("p"); empty.className = "tc-empty"; empty.textContent = "個人スペース・グループはありません"; groupsEl.append(empty); return;
         }
-        for (const group of visible) {
-            const button = document.createElement("button"); button.type = "button"; button.className = "tc-group-item";
-            button.setAttribute("aria-current", state.group?.id === group.id ? "true" : "false");
-            const copy = document.createElement("div"); copy.className = "tc-group-copy";
-            const title = document.createElement("strong"); title.textContent = group.name;
-            const last = document.createElement("span"); last.textContent = group.last_message || `${group.member_count}人`;
-            copy.append(title, last); button.append(groupIcon(group), copy);
-            button.addEventListener("click", () => openGroup(group.id)); groupsEl.append(button);
+        // 個人スペースを上、グループを下に分けて表示する
+        const sections = [["個人スペース", visible.filter(isPersonal)], ["グループ", visible.filter((group) => !isPersonal(group))]];
+        for (const [heading, groups] of sections) {
+            if (!groups.length) continue;
+            const label = document.createElement("h2"); label.className = "tc-group-section"; label.textContent = heading; groupsEl.append(label);
+            for (const group of groups) {
+                const button = document.createElement("button"); button.type = "button"; button.className = "tc-group-item";
+                button.setAttribute("aria-current", state.group?.id === group.id ? "true" : "false");
+                const copy = document.createElement("div"); copy.className = "tc-group-copy";
+                const title = document.createElement("strong"); title.textContent = group.name;
+                const last = document.createElement("span"); last.textContent = group.last_message || (isPersonal(group) ? "個人スペース" : `${group.member_count}人`);
+                copy.append(title, last); button.append(groupIcon(group), copy);
+                button.addEventListener("click", () => openGroup(group.id)); groupsEl.append(button);
+            }
         }
     }
     function linkify(container, text) {
@@ -90,7 +97,7 @@
         const wasNearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 90;
         messagesEl.replaceChildren();
         const ordered = [...state.messages.values()].sort((a, b) => a.id - b.id);
-        if (!ordered.length) { const p = document.createElement("p"); p.className = "tc-empty"; p.textContent = "最初のメッセージを送ってみましょう"; messagesEl.append(p); }
+        if (!ordered.length) { const p = document.createElement("p"); p.className = "tc-empty"; p.textContent = isPersonal(state.group) ? "メモやファイルを残しておけます" : "最初のメッセージを送ってみましょう"; messagesEl.append(p); }
         for (const message of ordered) {
             const card = document.createElement("article");
             if (message.type === "file_upload") {
@@ -166,7 +173,7 @@
         socket.addEventListener("open", () => { state.retry = 0; catchUp(); });
         socket.addEventListener("message", (event) => {
             let payload; try { payload = JSON.parse(event.data); } catch { return; }
-            if (payload.type === "message.created") addMessage(payload.message, { scroll: true });
+            if (payload.type === "message.created") { addMessage(payload.message, { scroll: true }); scheduleGroupRefresh(); }
             else if (payload.type === "message.updated") updateMessage(payload.message);
             else if (["files.updated", "members.updated", "group.updated"].includes(payload.type)) refreshCurrentData();
             else if (payload.type === "member.left") refreshGroups();
@@ -177,6 +184,11 @@
             const wait = Math.min(30000, 600 * (2 ** Math.min(state.retry++, 6)));
             state.reconnectTimer = setTimeout(() => { if (state.group?.id === groupId) connectSocket(groupId); }, wait);
         });
+    }
+    // 更新があったら一覧を取り直して、新しい順に並べ直す（連続した更新はまとめて1回にする）
+    function scheduleGroupRefresh() {
+        clearTimeout(state.groupRefreshTimer);
+        state.groupRefreshTimer = setTimeout(() => refreshGroups().catch(() => {}), 400);
     }
     async function refreshGroups() {
         const result = await api("/tekne-chat/api/groups");
@@ -190,6 +202,7 @@
                 messagesEl.replaceChildren();
             } else {
                 state.group = refreshed;
+                applyKind(refreshed);
                 $("tc-current-name").textContent = refreshed.name;
                 const avatar = groupIcon(refreshed); avatar.id = "tc-current-icon"; $("tc-current-icon").replaceWith(avatar);
             }
@@ -207,7 +220,7 @@
         const currentIcon = groupIcon(group); currentIcon.id = "tc-current-icon";
         $("tc-current-icon").replaceWith(currentIcon);
         $("tc-current-members").textContent = "";
-        setEnabled(true); renderSelectionActions(); renderGroups();
+        setEnabled(true); applyKind(group); renderSelectionActions(); renderGroups();
         state.messages.clear(); state.lastId = 0; state.historyBeforeId = null; messagesEl.replaceChildren();
         await loadMessages({ replace: true });
         if (state.group?.id !== groupId) return;
@@ -217,8 +230,28 @@
         else if (options.folderId) { state.folderId = options.folderId; await openPanel("files"); }
         else if (!sidePanel.hidden && state.panel === "files") await loadFiles();
     }
+    // 個人スペースではメンバー関係の操作を出さず、チャット欄を自分用メモとして使う
+    function applyKind(group) {
+        const personal = isPersonal(group);
+        $("tc-toggle-members").hidden = personal;
+        $("tc-toggle-members").disabled = personal || !group;
+        $("tc-leave-group").hidden = personal;
+        $("tc-toggle-files").setAttribute("aria-label", personal ? "フォルダ" : "共有フォルダ");
+        $("tc-toggle-files").title = personal ? "フォルダ" : "共有フォルダ";
+        $("tc-rename-group").setAttribute("aria-label", personal ? "個人スペース設定" : "グループ設定");
+        $("tc-rename-group").title = personal ? "個人スペース設定" : "グループ設定";
+        $("tc-message-input").placeholder = personal
+            ? "メモを入力（Enterで保存、Shift+Enterで改行）"
+            : "メッセージを入力（Enterで送信、Shift+Enterで改行）";
+        $("tc-send-message").textContent = personal ? "保存" : "送信";
+        $("tc-file-search").placeholder = personal ? "個人スペース内を検索" : "グループ内を検索";
+        if (personal) {
+            $("tc-current-members").textContent = "個人スペース";
+            if (!sidePanel.hidden && state.panel === "members") { sidePanel.hidden = true; app.classList.remove("tc-show-files"); }
+        }
+    }
     async function loadMembers() {
-        if (!state.group) return;
+        if (!state.group || isPersonal(state.group)) return;
         const result = await api(`/tekne-chat/api/groups/${encodeURIComponent(state.group.id)}/members`);
         state.members = result.members;
         $("tc-current-members").textContent = `${state.members.length}人`;
@@ -402,11 +435,17 @@
     }
 
     $("tc-group-search").addEventListener("input", renderGroups);
-    $("tc-create-group").addEventListener("click", () => $("tc-create-dialog").showModal());
+    const newKind = () => document.querySelector('input[name="tc-new-kind"]:checked')?.value || "personal";
+    function updateCreateLabel() {
+        $("tc-new-group-name-label").textContent = newKind() === "personal" ? "個人スペース名" : "グループ名";
+        $("tc-new-group-name").placeholder = newKind() === "personal" ? "例：植物の成長の研究" : "例：1班 植物チーム";
+    }
+    document.querySelectorAll('input[name="tc-new-kind"]').forEach((input) => input.addEventListener("change", updateCreateLabel));
+    $("tc-create-group").addEventListener("click", () => { updateCreateLabel(); $("tc-create-dialog").showModal(); });
     $("tc-create-form").addEventListener("submit", async (event) => {
         event.preventDefault();
         try {
-            const result = await api("/tekne-chat/api/groups", { method: "POST", body: form({ name: $("tc-new-group-name").value }) });
+            const result = await api("/tekne-chat/api/groups", { method: "POST", body: form({ name: $("tc-new-group-name").value, kind: newKind() }) });
             $("tc-create-dialog").close(); $("tc-new-group-name").value = ""; await refreshGroups(); await openGroup(result.id);
         } catch (error) { showError(error); }
     });
@@ -425,6 +464,7 @@
                 addMessage(result.message, { scroll: true });
             }
             $("tc-message-input").value = "";
+            scheduleGroupRefresh();
         } catch (error) { showError(error); }
         finally {
             state.sending = false;
@@ -442,8 +482,34 @@
     });
     $("tc-rename-group").addEventListener("click", () => {
         if (!state.group) return;
+        const personal = isPersonal(state.group);
+        $("tc-settings-title").textContent = personal ? "個人スペース設定" : "グループ設定";
+        $("tc-edit-group-name-label").textContent = personal ? "個人スペース名" : "グループ名";
+        $("tc-group-icon-label").textContent = personal ? "アイコン（任意）" : "グループアイコン（任意）";
         $("tc-edit-group-name").value = state.group.name;
+        $("tc-group-icon-file").value = ""; $("tc-remove-icon").checked = false;
+        $("tc-remove-icon-row").hidden = !state.group.icon_key;
+        showIconPreview(state.group);
         $("tc-icon-dialog").showModal();
+    });
+    function showIconPreview(group, file = null) {
+        const preview = $("tc-icon-preview"); preview.replaceChildren();
+        if (file) {
+            const image = document.createElement("img"); image.alt = "";
+            const url = URL.createObjectURL(file); image.src = url;
+            image.addEventListener("load", () => URL.revokeObjectURL(url), { once: true });
+            preview.append(image);
+        } else if (group.icon_key && !$("tc-remove-icon").checked) preview.append(...groupIcon(group).childNodes);
+        else preview.textContent = (group.name || "T").slice(0, 1);
+    }
+    $("tc-group-icon-file").addEventListener("change", () => {
+        const file = $("tc-group-icon-file").files[0];
+        if (file) $("tc-remove-icon").checked = false;
+        if (state.group) showIconPreview(state.group, file || null);
+    });
+    $("tc-remove-icon").addEventListener("change", () => {
+        if ($("tc-remove-icon").checked) $("tc-group-icon-file").value = "";
+        if (state.group) showIconPreview(state.group);
     });
     $("tc-icon-form").addEventListener("submit", async (event) => {
         event.preventDefault(); if (!state.group) return;
@@ -451,6 +517,7 @@
             await api(`/tekne-chat/api/groups/${state.group.id}`, { method: "PATCH", body: form({ name: $("tc-edit-group-name").value }) });
             const upload = new FormData(); upload.set("csrf", csrf);
             const icon = $("tc-group-icon-file").files[0]; if (icon) upload.set("file", icon);
+            else if ($("tc-remove-icon").checked) upload.set("remove_icon", "true");
             await api(`/tekne-chat/api/groups/${state.group.id}/icon`, { method: "POST", body: upload });
             $("tc-icon-dialog").close(); $("tc-group-icon-file").value = ""; await refreshCurrentData(); await openGroup(state.group.id);
         } catch (error) { showError(error); }
@@ -458,7 +525,7 @@
     function openPanel(panel) {
         state.panel = panel; sidePanel.hidden = false;
         const members = panel === "members";
-        $("tc-panel-title").textContent = members ? "メンバー" : "共有フォルダ";
+        $("tc-panel-title").textContent = members ? "メンバー" : (isPersonal(state.group) ? "フォルダ" : "共有フォルダ");
         $("tc-close-panel").setAttribute("aria-label", members ? "閉じる" : "チャットに戻る");
         app.classList.toggle("tc-show-files", !members);
         $("tc-members-panel").hidden = !members; $("tc-files-panel").hidden = members;
@@ -563,11 +630,14 @@
     $("tc-upload-file").addEventListener("change", async (event) => {
         const file = event.target.files[0]; if (!file || !state.group) return;
         const data = form({ folder_id: state.folderId || "" }); data.set("file", file);
-        try { await api(`/tekne-chat/api/groups/${state.group.id}/files`, { method: "POST", body: data }); clearError(); await loadFiles(); }
+        try { await api(`/tekne-chat/api/groups/${state.group.id}/files`, { method: "POST", body: data }); clearError(); await loadFiles(); scheduleGroupRefresh(); }
         catch (error) { showError(error); }
         finally { event.target.value = ""; }
     });
 
+    // 他のグループでの更新（レポート記入など）も一覧の並び順に反映する
+    window.addEventListener("focus", scheduleGroupRefresh);
+    setInterval(() => { if (!document.hidden) scheduleGroupRefresh(); }, 60000);
     (async () => {
         try {
             await refreshGroups();

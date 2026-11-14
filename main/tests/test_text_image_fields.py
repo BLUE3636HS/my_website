@@ -83,27 +83,33 @@ class TemplateApiTests(unittest.TestCase):
         self.assertEqual(SchoolReportTemplate(csrf_token='x', fields=[field('a', 'both')]).fields[0].field_type, 'both')
 
 
-class IndividualSubmissionTests(unittest.TestCase):
+class LegacyIndividualSubmissionTests(unittest.TestCase):
+    """テンプレート提出は廃止。過去に提出された研究のPDF表示を確認する。"""
     setUp = fixtures.StudyTests.setUp
     rows = fixtures.StudyTests.rows
-    token = fixtures.StudyTests.token
 
-    def test_text_and_images_are_saved_and_printed_under_the_text(self):
+    def insert_study(self, template_id, value, field_id, images=()):
+        with closing(connect_studies(self.path)) as db, db:
+            study_id = db.execute("""INSERT INTO study
+                (name, introduce, filename, pdfpath, userid, time, registration_type, template_id)
+                VALUES ('研究', '紹介', '', '', 'a', '2026-10-01 10:00:00', 'template', ?)""", (template_id,)).lastrowid
+            db.execute('INSERT INTO study_field_value(study_id, field_id, value) VALUES (?, ?, ?)', (study_id, field_id, value))
+            for position, (stored_name, caption) in enumerate(images):
+                db.execute("""INSERT INTO study_field_image
+                    (study_id,field_id,position,stored_name,original_name,caption,image_format,width,height)
+                    VALUES (?,?,?,?,?,?,'PNG',80,60)""", (study_id, field_id, position, stored_name, stored_name, caption))
+        return study_id
+
+    def test_text_and_images_are_printed_under_the_text(self):
         with closing(connect_studies(self.path)) as db, db:
             initialize_school_feature_settings(db)
             template_id = db.execute("INSERT INTO study_template(name,active) VALUES ('文字と画像',1)").lastrowid
             field_id = db.execute("""INSERT INTO study_template_field(template_id,label,position,required,field_type,with_images,max_length)
                 VALUES (?,'観察',0,0,'text',1,100)""", (template_id,)).lastrowid
         image_dir = self.root / 'study-images'; image_dir.mkdir()
+        (image_dir / 'a.png').write_bytes(png_bytes())
         with patch.object(main, 'STUDY_IMAGE_UPLOADS_DIR', image_dir):
-            entries = [('registration_type', 'template'), ('template_id', str(template_id)), ('name', '研究'),
-                       ('introduce', '紹介'), ('csrf_token', 'csrf'), ('submission_token', self.token()),
-                       (f'field_{field_id}', '観察した文章'), (f'image_{field_id}', UploadFile(io.BytesIO(png_bytes()), filename='a.png')),
-                       (f'caption_{field_id}', '実験の様子')]
-            req = fixtures.request('/addform', self.session); req._form = FormData(entries)
-            self.assertEqual(asyncio.run(main.Add(req)).status_code, 201)
-            self.assertEqual(self.rows('SELECT value FROM study_field_value'), [('観察した文章',)])
-            self.assertEqual(self.rows('SELECT caption FROM study_field_image'), [('実験の様子',)])
+            self.insert_study(template_id, '観察した文章', field_id, [('a.png', '実験の様子')])
             pdf = asyncio.run(main.pdf(1, fixtures.request('/uploads/1.pdf', self.session)))
         text = ''.join(page.extract_text() for page in PdfReader(io.BytesIO(pdf.body)).pages)
         self.assertEqual(text.count('観察'), 2)  # 見出しは1回（「観察」＋本文「観察した文章」）
@@ -115,10 +121,7 @@ class IndividualSubmissionTests(unittest.TestCase):
             template_id = db.execute("INSERT INTO study_template(name,active) VALUES ('文字と画像',1)").lastrowid
             field_id = db.execute("""INSERT INTO study_template_field(template_id,label,position,required,field_type,with_images)
                 VALUES (?,'観察',0,0,'text',1)""", (template_id,)).lastrowid
-        entries = [('registration_type', 'template'), ('template_id', str(template_id)), ('name', '研究'),
-                   ('introduce', '紹介'), ('csrf_token', 'csrf'), ('submission_token', self.token()), (f'field_{field_id}', '')]
-        req = fixtures.request('/addform', self.session); req._form = FormData(entries)
-        self.assertEqual(asyncio.run(main.Add(req)).status_code, 201)
+        self.insert_study(template_id, '', field_id)
         pdf = asyncio.run(main.pdf(1, fixtures.request('/uploads/1.pdf', self.session)))
         text = ''.join(page.extract_text() for page in PdfReader(io.BytesIO(pdf.body)).pages)
         self.assertIn('(未入力)', text)

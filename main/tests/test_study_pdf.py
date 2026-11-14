@@ -44,12 +44,13 @@ class PdfRouteTests(unittest.TestCase):
     rows = fixtures.StudyTests.rows
     token = fixtures.StudyTests.token
     submit = fixtures.StudyTests.submit
+    insert_template_study = fixtures.StudyTests.insert_template_study
 
     def get(self, study_id, session):
         return asyncio.run(main.pdf(study_id, request(f'/uploads/{study_id}.pdf', session)))
 
     def test_all_roles_and_unauthenticated_or_expired(self):
-        self.submit()
+        self.insert_template_study()
         self.submit(mode='pdf', pdf=UploadFile(io.BytesIO(sample_pdf()), filename='sample.pdf'))
         for study_id in (1, 2):
             for role in ('user', 'teacher', 'admin'):
@@ -73,7 +74,7 @@ class PdfRouteTests(unittest.TestCase):
         self.assertEqual(error.exception.status_code, 404)
 
     def test_current_order_content_only_no_writes_and_render_failure(self):
-        self.submit(name='非掲載の名前', introduce='非掲載の紹介文', field_1='テーマ本文', field_2='背景本文')
+        self.insert_template_study(name='非掲載の名前', values={1: 'テーマ本文', 2: '背景本文'})
         before = self.path.read_bytes()
         response = self.get(1, self.session)
         text = PdfReader(io.BytesIO(response.body)).pages[0].extract_text()
@@ -95,14 +96,14 @@ class PdfRouteTests(unittest.TestCase):
         self.assertEqual(before, self.path.read_bytes())
 
     def test_threadpool_is_used(self):
-        self.submit()
+        self.insert_template_study()
         from unittest.mock import AsyncMock
         with patch.object(main, 'run_in_threadpool', new_callable=AsyncMock, return_value=b'%PDF-test') as run:
             self.get(1, self.session)
             run.assert_awaited_once()
 
     def test_middleware_allows_pdf_for_roles_and_expires_sessions(self):
-        self.submit()
+        self.insert_template_study()
         middleware = main.LoginCheckMiddleware(main.app)
         async def next_response(req):
             return await main.pdf(1, req)
