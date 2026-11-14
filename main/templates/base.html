@@ -11,7 +11,7 @@
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@300;400;500;700&display=swap">
-        <link rel="stylesheet" href="/static/student/theme.css">
+        <link rel="stylesheet" href="/static/student/theme.css?v=logo-3">
         <link rel="icon" href="/static/icon.ico">
         {% block css %}
         {% endblock %}
@@ -27,7 +27,7 @@
         <div class="student-layout" id="student-layout">
             <aside class="student-sidebar" id="student-sidebar" aria-label="生徒用メニュー">
                 <div class="student-brand">
-                    <a class="aoharu-brand" href="/dashboard" aria-label="工作室テクネ ダッシュボードへ"><img class="aoharu-brand-mark" src="/static/aoharu/logo-scissors.svg" alt=""><span class="aoharu-brand-text">工作室　テクネ</span></a>
+                    <a class="student-brand-logo" href="/dashboard" aria-label="TEKNE KeyNote 生徒用 ダッシュボードへ"><img src="/static/top-logo.png" alt="TEKNE KeyNote" width="330" height="160"><span class="student-brand-role">生徒用</span></a>
                     <button class="student-icon-button student-sidebar-close" type="button" data-nav-close aria-label="メニューを閉じる">{{ icons.icon("close") }}</button>
                 </div>
                 <nav class="student-nav" aria-label="生徒用メニュー">
@@ -39,13 +39,13 @@
                     <div class="student-nav-group">
                         <p class="student-nav-heading">研究</p>
                         {% if student_features.studies_add %}{{ nav_link('/addform', 'PDFを提出', 'file-plus') }}{% endif %}
+                        {% if student_features.studies_list %}{{ nav_link('/studylist', '提出物一覧', 'list') }}{% endif %}
                         {{ nav_link('/tekne-chat', 'ワークスペース', 'briefcase') }}
                     </div>
-                    {% if student_features.community or student_features.studies_list %}
+                    {% if student_features.community %}
                     <div class="student-nav-group">
                         <p class="student-nav-heading">交流</p>
-                        {% if student_features.community %}{{ nav_link('/community', 'TEKNEコミュニティ', 'users') }}{% endif %}
-                        {% if student_features.studies_list %}{{ nav_link('/studylist', '提出物一覧', 'list') }}{% endif %}
+                        {{ nav_link('/community', 'TEKNEコミュニティ', 'users') }}
                     </div>
                     {% endif %}
                     {% if student_features.workshop_reservation or student_features.mentor_reservation or student_features.equipment_reservation %}

@@ -36,6 +36,13 @@ body.auth-body {
 .auth-top .aoharu-brand-mark { width: 64px; height: 64px; }
 .auth-top .aoharu-brand-text { padding: 0 64px 14px 18px; font-size: clamp(28px, 3.4vw, 46px); }
 
+/* ロゴ画像（static/top.png を縮小した top-logo.png） */
+.auth-brand-logo { display: inline-flex; align-items: flex-end; gap: 12px; max-width: 100%; text-decoration: none; }
+.auth-brand-logo img { display: block; width: auto; height: 96px; max-width: 100%; object-fit: contain; }
+/* 「先生」タブを選んでいる間だけロゴの横に出す */
+.auth-brand-mode { margin-bottom: 10px; padding: 4px 12px; border-radius: 999px; background: #fff; color: #6b4f2a; font-size: 15px; font-weight: 700; white-space: nowrap; }
+.auth-brand-mode[hidden] { display: none; }
+
 /* ---------- 水色の面 ---------- */
 
 .auth-stage {
@@ -360,6 +367,8 @@ body.auth-body {
     .auth-top { padding: 16px 16px 0; }
     .auth-top .aoharu-brand-mark { width: 44px; height: 44px; }
     .auth-top .aoharu-brand-text { padding: 0 32px 10px 10px; font-size: 26px; }
+    .auth-brand-logo img { height: 64px; }
+    .auth-brand-mode { margin-bottom: 6px; font-size: 13px; }
     .auth-stage { padding: 8px 16px 48px; }
     .auth-ground { padding: 40px 16px 48px; }
     .auth-ground-button { min-height: 64px; font-size: 24px; border-width: 5px; }

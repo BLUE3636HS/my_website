@@ -108,7 +108,9 @@
     .student-layout:has(.mypage-page) { display: block; overflow-y: auto; }
     .student-layout:has(.mypage-page) .student-sidebar { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; height: auto; padding: 10px 12px; }
     .student-layout:has(.mypage-page) .student-brand { padding: 0; margin-right: auto; }
-    .student-layout:has(.mypage-page) .student-brand img { width: 90px; }
+    .student-layout:has(.mypage-page) .student-brand img { width: 90px; height: auto; }
+    .student-layout:has(.mypage-page) .student-brand-logo { height: auto; padding: 0; gap: 8px; }
+    .student-layout:has(.mypage-page) .student-brand-role { font-size: 13px; }
     .student-layout:has(.mypage-page) .student-nav { display: flex; order: 1; flex-basis: 100%; overflow-x: auto; padding-top: 6px; }
     .student-layout:has(.mypage-page) .student-nav-link { flex-shrink: 0; padding: 8px 10px; font-size: .8rem; }
     .student-layout:has(.mypage-page) .student-mypage-link,

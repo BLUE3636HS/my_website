@@ -168,6 +168,12 @@ a { color: var(--primary); }
 
 .student-brand .aoharu-brand-text { font-size: 24px; }
 
+/* 左上のロゴ画像（static/top.png を表示用に縮小した top-logo.png） */
+/* 左にロゴ、右に「生徒用」の文字を並べる */
+.student-brand-logo { display: flex; flex: 1; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; height: 100%; padding: 8px 4px 8px 0; box-sizing: border-box; color: #fff; text-decoration: none; }
+.student-brand-logo img { display: block; width: auto; height: 100%; min-width: 0; max-width: 100%; object-fit: contain; }
+.student-brand-role { flex: none; font-size: 20px; font-weight: 700; letter-spacing: .12em; white-space: nowrap; }
+
 .student-brand .student-sidebar-close { display: none; color: #fff; }
 .student-brand .student-sidebar-close:hover { background: rgba(255, 255, 255, .2); color: #fff; }
 

@@ -29,8 +29,12 @@ def run_scheduled_snapshots(database_path, now=None):
     with closing(connect_studies(database_path)) as db, db:
         db.execute('BEGIN IMMEDIATE')
         days = db.execute('SELECT school,day FROM group_report_snapshot_day WHERE processed_at IS NULL AND day<? ORDER BY day,school', (today,)).fetchall()
+        chat_ready = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tekne_chat_group'").fetchone() is not None
         for school, day in days:
-            drafts = db.execute('SELECT group_id,school_id,school_name,template_snapshot,report_data FROM group_report_draft WHERE school_name=? ORDER BY group_id', (school,)).fetchall()
+            # 削除されたグループの下書きは残っていても保存しない（チャット未初期化のDBでは絞り込まない）
+            only_existing = ' AND EXISTS (SELECT 1 FROM tekne_chat_group g WHERE g.id=d.group_id)' if chat_ready else ''
+            drafts = db.execute('SELECT d.group_id,d.school_id,d.school_name,d.template_snapshot,d.report_data FROM group_report_draft d '
+                                'WHERE d.school_name=?' + only_existing + ' ORDER BY d.group_id', (school,)).fetchall()
             for group_id, school_id, school_name, template_snapshot, report_data in drafts:
                 if db.execute("SELECT 1 FROM group_report_version WHERE group_id=? AND kind='scheduled' AND scheduled_date=?", (group_id, day)).fetchone():
                     continue
@@ -285,7 +289,7 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
             if teacher is None: raise HTTPException(403,'先生アカウントが確認できません。')
             # 個人スペースは作成者（本人）の名前も表示して、グループと区別する
             groups=db.execute('''SELECT DISTINCT v.group_id,v.school_name,g.name,COALESCE(g.kind,'group'),COALESCE(st.name,i.login_id)
-                FROM group_report_version v LEFT JOIN tekne_chat_group g ON g.id=v.group_id
+                FROM group_report_version v JOIN tekne_chat_group g ON g.id=v.group_id  -- 削除されたグループは表示しない
                 LEFT JOIN tekne_student_identity i ON i.id=g.created_by LEFT JOIN student st ON st.id=i.login_id
                 WHERE v.school_name=? ORDER BY COALESCE(g.kind,'group'),g.name,v.group_id''',(teacher[0],)).fetchall()
             records=[]
@@ -299,7 +303,8 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
         with closing(connect_studies(database_path)) as db:
             teacher=db.execute('SELECT school FROM teacher WHERE id=?',(request.session.get('teacher_id'),)).fetchone()
             row=load_version(db,group_id,version_id)
-        if teacher is None or row is None or row['school_name']!=teacher[0]: raise HTTPException(404,'保存履歴が見つかりません。')
+            group_exists=db.execute('SELECT 1 FROM tekne_chat_group WHERE id=?',(group_id,)).fetchone()
+        if teacher is None or row is None or not group_exists or row['school_name']!=teacher[0]: raise HTTPException(404,'保存履歴が見つかりません。')
         sections=pdf_sections(database_path,image_dir,json.loads(row['template_snapshot']),json.loads(row['report_snapshot']),row['header'],row['header_style'])
         return Response(await asyncio.to_thread(render_study_pdf,sections),media_type='application/pdf',headers={'Content-Disposition':f'inline; filename="report-v{row["version_number"]}.pdf"'})
     @router.websocket('/ws/group-reports/{group_id}')

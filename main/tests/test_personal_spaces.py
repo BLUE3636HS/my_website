@@ -9,6 +9,7 @@ from contextlib import closing
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import bcrypt
 from fastapi import HTTPException, WebSocketDisconnect
 from starlette.datastructures import FormData, UploadFile
 from starlette.requests import Request
@@ -347,6 +348,40 @@ class PersonalReportTests(unittest.TestCase):
         key = state['template']['fields'][0]['stable_key']
         self.save(self.space['id'], {'data': {key: {'value': '更新', 'images': []}}, 'template_key': state['template_key']})
         self.assertEqual([g['id'] for g in self.chat.groups(self.session)], [self.space['id'], self.group['id']])
+
+    def test_deleted_group_is_hidden_from_teacher_reports_and_snapshots(self):
+        for group_id in (self.space['id'], self.group['id']):
+            self.page(group_id)  # 下書きを作る
+            with closing(connect_studies(self.path)) as db, db:
+                db.execute("""INSERT INTO group_report_version
+                    (group_id,school_id,school_name,version_number,template_snapshot,report_snapshot,saved_by,saved_at)
+                    VALUES (?, 's', 'school1', 1, ?, '{}', 'a', '2026-11-01T00:00:00+00:00')""",
+                    (group_id, json.dumps({'fields': []})))
+        version_id = self.rows('SELECT id FROM group_report_version WHERE group_id=?', (self.group['id'],))[0][0]
+        with closing(connect_studies(self.path)) as db, db:
+            db.execute('ALTER TABLE teacher ADD COLUMN role TEXT')
+            db.execute("INSERT OR REPLACE INTO admin VALUES ('person', ?, 'Person', 'admin', NULL, 0)",
+                       (bcrypt.hashpw(b'secret', bcrypt.gensalt(4)).decode(),))
+        teacher = {'teacher_login': True, 'teacher_id': 'teacher1',
+                   'teacher_time': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        reports = self.endpoint('/teacher/reports')
+        pdf = self.endpoint('/teacher/reports/{group_id}/versions/{version_id}.pdf')
+        before = asyncio.run(reports(fixtures.request('/teacher/reports', teacher))).context['groups']
+        self.assertEqual({g['id'] for g in before}, {self.space['id'], self.group['id']})
+
+        self.chat.admin_delete_group('person', self.group['id'], 'person', 'secret')
+
+        after = asyncio.run(reports(fixtures.request('/teacher/reports', teacher)))
+        self.assertEqual([g['id'] for g in after.context['groups']], [self.space['id']])
+        self.assertNotIn(self.group['id'], after.body.decode())
+        with self.assertRaises(HTTPException) as error:
+            asyncio.run(pdf(fixtures.request('/pdf', teacher), self.group['id'], version_id))
+        self.assertEqual(error.exception.status_code, 404)
+        # 残った下書きから定期保存の版が作られない
+        with closing(connect_studies(self.path)) as db, db:
+            db.execute("INSERT INTO group_report_snapshot_day(school,day,created_by,created_at) VALUES ('school1','2026-11-01','teacher1','now')")
+        run_scheduled_snapshots(self.path, datetime.datetime(2026, 11, 3, 12, 0, tzinfo=datetime.timezone.utc))
+        self.assertEqual(self.rows("SELECT group_id FROM group_report_version WHERE kind='scheduled'"), [(self.space['id'],)])
 
     def test_websocket_is_refused_for_personal_space_but_allowed_for_group(self):
         socket = self.endpoint('/ws/group-reports/{group_id}')
