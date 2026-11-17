@@ -30,3 +30,49 @@
 .report-version-pdf:hover { background: var(--primary); color: #fff; }
 .report-version-empty { padding: 18px 16px; color: var(--text-muted); font-size: 14px; text-align: center; }
 @media (max-width: 700px) { #group-report { padding: 24px 16px 56px; } #group-report header { flex-wrap: wrap; } .report-version { gap: 10px; padding: 12px; } }
+/* 提出・先生からのフィードバック */
+.report-submission { margin: 20px 0 8px; padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+.report-submit-target { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 16px; margin-bottom: 12px; border: 1px solid var(--primary); border-radius: var(--radius); background: var(--primary-soft); }
+.report-submit-target p { margin: 0; }
+.report-submit-name { color: var(--text-strong); font-weight: 800; }
+.report-submit-due { margin-top: 4px !important; color: var(--text); font-size: 14px; }
+.report-submit-done { color: var(--success); font-weight: 700; }
+.report-submit-yet { color: var(--warning); font-weight: 700; }
+.report-submit-note { margin-top: 6px !important; color: var(--text-muted); font-size: 12px; line-height: 1.6; }
+.report-submit { flex: none; min-height: 42px; padding: 0 22px; border: 0; border-radius: 10px; background: var(--primary); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.report-submit:hover { background: var(--primary-strong); }
+.report-submit:disabled { opacity: .6; cursor: wait; }
+.report-submission-records { margin: 0; padding: 0; list-style: none; }
+.report-submission-record { padding: 12px 0; }
+.report-submission-record + .report-submission-record { border-top: 1px solid var(--border); }
+.report-submission-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.report-submission-title { color: var(--text-strong); font-weight: 700; }
+.report-submission-status { padding: 2px 10px; border-radius: 999px; background: var(--surface-soft); color: var(--text); font-size: 12px; font-weight: 700; }
+.report-submission-record.has-feedback .report-submission-status { background: var(--success-soft); color: var(--success); }
+.report-submission-time { color: var(--text-muted); font-size: 13px; }
+.report-feedback { margin-top: 10px; padding: 12px 14px; border-left: 4px solid var(--primary); background: var(--surface-soft); border-radius: 0 var(--radius) var(--radius) 0; }
+.report-feedback summary { cursor: pointer; color: var(--text-strong); font-weight: 700; }
+#group-report .report-feedback h3 { margin: 12px 0 4px; color: var(--text-strong); font-size: 14px; }
+.report-feedback-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); font-size: 14px; line-height: 1.7; }
+.report-feedback-resubmit { margin: 10px 0 0; color: var(--warning); font-weight: 700; }
+.report-feedback-editors { margin: 12px 0 0; color: var(--text-muted); font-size: 12px; }
+.report-version.is-submission .report-version-badge { background: var(--success-soft); color: var(--success); }
+@media (max-width: 700px) { .report-submit-target { flex-direction: column; align-items: stretch; } }
+
+/* 画像の追加：ドラッグ＆ドロップの場所と「画像を選ぶ」ボタン */
+.report-dropzone { margin-top: 10px; padding: 16px; border: 2px dashed var(--border-strong); border-radius: 12px; background: var(--surface-soft, #f7f9fb); text-align: center; transition: border-color .15s, background .15s; }
+.report-dropzone.is-dragover { border-color: var(--primary, #2684ff); background: var(--primary-soft, #eaf2ff); }
+.report-drop-text { margin: 0; font-size: 14px; font-weight: 700; }
+.report-drop-note { margin: 4px 0 10px; color: var(--text-muted, #667085); font-size: 12px; }
+.report-drop-button { position: relative; display: inline-flex; align-items: center; min-height: 38px; padding: 0 16px; border: 1px solid var(--primary, #2684ff); border-radius: 999px; background: #fff; color: var(--primary, #2684ff); font-size: 14px; font-weight: 700; cursor: pointer; }
+.report-drop-button:focus-within { outline: 2px solid var(--primary, #2684ff); outline-offset: 2px; }
+.report-drop-button input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.report-drop-button:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+.report-images { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+/* 図とキャプション */
+.report-figure { display: grid; gap: 4px; width: 180px; margin: 0; }
+.report-figure img { width: 100%; height: 130px; object-fit: contain; border: 1px solid var(--border, #d7dce3); border-radius: 8px; background: #fff; }
+.report-figure figcaption { color: var(--text-muted, #667085); font-size: 12px; font-weight: 700; }
+.report-caption { box-sizing: border-box; width: 100%; padding: 6px 8px; border: 1px solid var(--border-strong, #c7ced8); border-radius: 8px; font: inherit; font-size: 13px; }
+.report-caption[readonly] { background: var(--surface-soft, #f7f9fb); }

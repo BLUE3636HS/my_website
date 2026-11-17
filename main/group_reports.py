@@ -18,23 +18,33 @@ SCHEDULED_SAVED_BY = '自動保存'
 
 
 def run_scheduled_snapshots(database_path, now=None):
-    """終わった自動保存日（指定日の23:59を過ぎた日）について、学校の全グループの下書きを永久保存する。
+    """終わった自動保存日（指定日の23:59を過ぎた日）について、その枠の全ワークスペースの下書きを永久保存する。
 
+    自動保存日は枠ごと（frame_id、0＝枠なし）。対象はその時点で枠に所属しているワークスペース。
     何度実行しても同じグループ・同じ日の保存は1件だけになる。サーバー停止で取りこぼした日は次の実行時に保存する。
     """
+    from workspace_frames import has_frame_column
     now = now or datetime.datetime.now(JST)
     today = now.astimezone(JST).date().isoformat()
     saved_at = now.astimezone(datetime.timezone.utc).isoformat(timespec='seconds')
     created = 0
     with closing(connect_studies(database_path)) as db, db:
         db.execute('BEGIN IMMEDIATE')
-        days = db.execute('SELECT school,day FROM group_report_snapshot_day WHERE processed_at IS NULL AND day<? ORDER BY day,school', (today,)).fetchall()
+        days = db.execute('SELECT school,frame_id,day FROM group_report_snapshot_day WHERE processed_at IS NULL AND day<? ORDER BY day,school,frame_id', (today,)).fetchall()
         chat_ready = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tekne_chat_group'").fetchone() is not None
-        for school, day in days:
+        with_frame = has_frame_column(db)
+        for school, frame_id, day in days:
             # 削除されたグループの下書きは残っていても保存しない（チャット未初期化のDBでは絞り込まない）
-            only_existing = ' AND EXISTS (SELECT 1 FROM tekne_chat_group g WHERE g.id=d.group_id)' if chat_ready else ''
+            only_existing, params = '', [school]
+            if chat_ready:
+                frame_cond = ' AND COALESCE(g.frame_id,0)=?' if with_frame else ''
+                only_existing = f' AND EXISTS (SELECT 1 FROM tekne_chat_group g WHERE g.id=d.group_id{frame_cond})'
+                if with_frame:
+                    params.append(frame_id)
+            elif frame_id:
+                continue  # 枠の情報がないDBでは「枠なし」の日だけを扱う
             drafts = db.execute('SELECT d.group_id,d.school_id,d.school_name,d.template_snapshot,d.report_data FROM group_report_draft d '
-                                'WHERE d.school_name=?' + only_existing + ' ORDER BY d.group_id', (school,)).fetchall()
+                                'WHERE d.school_name=?' + only_existing + ' ORDER BY d.group_id', params).fetchall()
             for group_id, school_id, school_name, template_snapshot, report_data in drafts:
                 if db.execute("SELECT 1 FROM group_report_version WHERE group_id=? AND kind='scheduled' AND scheduled_date=?", (group_id, day)).fetchone():
                     continue
@@ -43,7 +53,7 @@ def run_scheduled_snapshots(database_path, now=None):
                 db.execute("""INSERT INTO group_report_version(group_id,school_id,school_name,version_number,template_snapshot,report_snapshot,saved_by,saved_at,kind,scheduled_date,context_snapshot)
                     VALUES(?,?,?,?,?,?,?,?,'scheduled',?,?)""", (group_id, school_id, school_name, version, template_snapshot, report_data, SCHEDULED_SAVED_BY, saved_at, day, context))
                 created += 1
-            db.execute('UPDATE group_report_snapshot_day SET processed_at=? WHERE school=? AND day=?', (saved_at, school, day))
+            db.execute('UPDATE group_report_snapshot_day SET processed_at=? WHERE school=? AND frame_id=? AND day=?', (saved_at, school, frame_id, day))
     return created
 
 
@@ -180,8 +190,11 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
     @router.get('/tekne-chat/groups/{group_id}/report')
     async def page(request:Request,group_id:str):
         _,group=group_access(request.session,group_id)
-        with closing(connect_studies(database_path)) as db: state=draft(db,group); db.commit()
-        return templates.TemplateResponse(request=request,name='group_report.html',context={'request':request,'group':group,'state':state,'csrf_token':request.session.get('tekne_chat_csrf','')})
+        from report_reviews import student_submission_context  # 循環importを避ける
+        with closing(connect_studies(database_path)) as db:
+            state=draft(db,group); db.commit()
+            submission=student_submission_context(db,group['school_name'],group_id) if state else None
+        return templates.TemplateResponse(request=request,name='group_report.html',context={'request':request,'group':group,'state':state,'submission':submission,'csrf_token':request.session.get('tekne_chat_csrf','')})
     @router.get('/api/group-reports/{group_id}')
     async def get_draft(request:Request,group_id:str):
         _,group=group_access(request.session,group_id)
@@ -254,8 +267,10 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
             field=next((f for f in state['template']['fields'] if f['stable_key']==field_key),None) if state else None
             if field is None or field.get('field_type') not in ('image','both'): raise HTTPException(422,'画像項目が不正です。')
             if len(state['data'].get(field_key,{}).get('images',[]))>=4: raise HTTPException(422,'画像は1項目につき4枚までです。')
-            lock=db.execute('SELECT student_id FROM group_report_lock WHERE group_id=? AND field_key=?',(group_id,field_key)).fetchone()
-            if not lock or lock[0]!=user: raise HTTPException(423,'画像を追加するには項目の編集ロックが必要です。')
+            # 個人スペースは本人しか編集しない（編集ロックを使わない）ので、グループのときだけロックを確かめる
+            if group.get('kind')!='personal':
+                lock=db.execute('SELECT student_id FROM group_report_lock WHERE group_id=? AND field_key=?',(group_id,field_key)).fetchone()
+                if not lock or lock[0]!=user: raise HTTPException(423,'画像を追加するには項目の編集ロックが必要です。')
             db.execute('INSERT OR IGNORE INTO group_report_asset VALUES(?,?,?,?,?)',(digest,stored,content_type,len(content),now()))
             db.execute('INSERT OR IGNORE INTO group_report_asset_access(group_id,content_hash) VALUES(?,?)',(group_id,digest))
         return {'content_hash':digest,'stored_name':stored,'original_name':original,'url':f'/api/group-reports/{group_id}/assets/{digest}'}
@@ -281,22 +296,22 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
         pdf=await asyncio.to_thread(render_study_pdf,sections)
         return Response(pdf,media_type='application/pdf',headers={'Content-Disposition':f'inline; filename="report-v{row["version_number"]}.pdf"'})
     @router.get('/teacher/reports')
-    async def teacher_reports(request:Request):
+    async def teacher_reports(request:Request,frame:str='all'):
+        from report_reviews import school_groups
+        from workspace_frames import frame_filter
         if request.session.get('teacher_login') is not True: raise HTTPException(403,'先生としてログインしてください。')
         teacher_id=request.session.get('teacher_id')
         with closing(connect_studies(database_path)) as db:
             teacher=db.execute('SELECT school,role FROM teacher WHERE id=?',(teacher_id,)).fetchone()
             if teacher is None: raise HTTPException(403,'先生アカウントが確認できません。')
-            # 個人スペースは作成者（本人）の名前も表示して、グループと区別する
-            groups=db.execute('''SELECT DISTINCT v.group_id,v.school_name,g.name,COALESCE(g.kind,'group'),COALESCE(st.name,i.login_id)
-                FROM group_report_version v JOIN tekne_chat_group g ON g.id=v.group_id  -- 削除されたグループは表示しない
-                LEFT JOIN tekne_student_identity i ON i.id=g.created_by LEFT JOIN student st ON st.id=i.login_id
-                WHERE v.school_name=? ORDER BY COALESCE(g.kind,'group'),g.name,v.group_id''',(teacher[0],)).fetchall()
+            selected=frame_filter(db,teacher[0],frame)
+            # 個人スペースは作成者（本人）の名前も表示して、グループと区別する。削除されたグループは表示しない
+            saved={row[0] for row in db.execute('SELECT DISTINCT group_id FROM group_report_version WHERE school_name=?',(teacher[0],))}
             records=[]
-            for item in groups:
-                records.append({'id':item[0],'name':item[2] or item[0],'kind':item[3],'owner':item[4] or '',
-                                'versions':version_rows(db,item[0])})
-        return templates.TemplateResponse(request=request,name='teacher/group_reports.html',context={'request':request,'groups':records,'school':teacher[0],'teacher_id':teacher_id,'teacher_role':teacher[1]})
+            for group in school_groups(db,teacher[0],selected['value']):
+                if group['id'] not in saved: continue
+                records.append({**group,'versions':version_rows(db,group['id'])})
+        return templates.TemplateResponse(request=request,name='teacher/group_reports.html',context={'request':request,'groups':records,'school':teacher[0],'teacher_id':teacher_id,'teacher_role':teacher[1],'frame_filter':selected})
     @router.get('/teacher/reports/{group_id}/versions/{version_id}.pdf')
     async def teacher_version_pdf(request:Request,group_id:str,version_id:int):
         if request.session.get('teacher_login') is not True: raise HTTPException(403,'先生としてログインしてください。')

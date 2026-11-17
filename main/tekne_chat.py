@@ -21,6 +21,8 @@ from uuid import uuid4
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
+from workspace_frames import ensure_frame_schema, frame_in_school, parse_frame_id, school_frames, set_workspace_frame
+
 
 MAX_MESSAGE_LENGTH = 5000
 MAX_PAGE_SIZE = 100
@@ -148,6 +150,8 @@ def initialize_tekne_chat(db):
         if "kind" not in {row[1] for row in db.execute("PRAGMA table_info(tekne_chat_group)")}:
             db.execute("""ALTER TABLE tekne_chat_group ADD COLUMN kind TEXT NOT NULL DEFAULT 'group'
                 CHECK(kind IN ('group','personal'))""")
+        # ワークスペースの枠（workspace_frame）と所属先の列 frame_id
+        ensure_frame_schema(db)
         db.execute("""CREATE TABLE IF NOT EXISTS tekne_chat_member (
             group_id TEXT NOT NULL,
             school_id TEXT NOT NULL,
@@ -599,7 +603,8 @@ class TekneChatService:
     def groups(self, session):
         with closing(_connect(self.database_path)) as db:
             identity = self._identity(db, session)
-            rows = db.execute("""SELECT g.id,g.name,g.icon_key,g.updated_at,g.kind,
+            rows = db.execute("""SELECT g.id,g.name,g.icon_key,g.updated_at,g.kind,g.frame_id,
+                (SELECT name FROM workspace_frame f WHERE f.id=g.frame_id) frame_name,
                 (SELECT COUNT(*) FROM tekne_chat_member m WHERE m.group_id=g.id AND m.left_at IS NULL) member_count,
                 (SELECT body FROM tekne_chat_message x WHERE x.group_id=g.id ORDER BY x.id DESC LIMIT 1) last_message
                 FROM tekne_chat_group g JOIN tekne_chat_member m ON m.group_id=g.id
@@ -624,7 +629,22 @@ class TekneChatService:
             raise HTTPException(422, "選択したグループの在籍状況を確認できません。画面を再読み込みしてください。")
         return {"id": group[0], "name": group[2], "members": members}
 
-    def create_group(self, session, name, kind=GROUP_KIND):
+    def frames(self, session):
+        """生徒が選べる枠（その学校の枠すべて）。"""
+        with closing(_connect(self.database_path)) as db:
+            identity = self._identity(db, session)
+            return school_frames(db, identity["school_name"])
+
+    def set_group_frame(self, session, group_id, frame_id):
+        """メンバーなら誰でも、ワークスペースの枠をいつでも変えられる。None は「枠なし」。"""
+        with closing(_connect(self.database_path)) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            identity, _ = self._member(db, session, group_id)
+            result = set_workspace_frame(db, identity["school_name"], group_id, parse_frame_id(frame_id))
+            db.execute("UPDATE tekne_chat_group SET updated_at=? WHERE id=?", (_now(), group_id))
+            return result
+
+    def create_group(self, session, name, kind=GROUP_KIND, frame_id=None):
         if kind not in GROUP_KINDS:
             raise HTTPException(422, "作成する種類を選択してください。")
         clean = _clean_group_name(name)
@@ -634,12 +654,14 @@ class TekneChatService:
         with closing(_connect(self.database_path)) as db, db:
             db.execute("BEGIN IMMEDIATE")
             identity = self._identity(db, session)
+            frame = frame_in_school(db, identity["school_name"], parse_frame_id(frame_id))
             group_id, now = uuid4().hex, _now()
-            db.execute("INSERT INTO tekne_chat_group(id,school_id,name,created_by,created_at,updated_at,kind) VALUES(?,?,?,?,?,?,?)",
-                       (group_id, identity[1], clean, identity[0], now, now, kind))
+            db.execute("INSERT INTO tekne_chat_group(id,school_id,name,created_by,created_at,updated_at,kind,frame_id) VALUES(?,?,?,?,?,?,?,?)",
+                       (group_id, identity[1], clean, identity[0], now, now, kind, frame["id"] if frame else None))
             db.execute("INSERT INTO tekne_chat_member(group_id,school_id,student_id,joined_at) VALUES(?,?,?,?)",
                        (group_id, identity[1], identity[0], now))
-            return {"id": group_id, "name": clean, "icon_key": None, "member_count": 1, "kind": kind}
+            return {"id": group_id, "name": clean, "icon_key": None, "member_count": 1, "kind": kind,
+                    "frame_id": frame["id"] if frame else None, "frame_name": frame["name"] if frame else None}
 
     def rename_group(self, session, group_id, name):
         clean = _clean_group_name(name)
@@ -1321,9 +1343,21 @@ def build_tekne_chat_router(database_path, templates, storage_root):
         return {"groups": await asyncio.to_thread(service.groups, request.session)}
 
     @router.post("/tekne-chat/api/groups")
-    async def group_create(request: Request, name: str = Form(...), csrf: str = Form(...), kind: str = Form(GROUP_KIND)):
+    async def group_create(request: Request, name: str = Form(...), csrf: str = Form(...), kind: str = Form(GROUP_KIND),
+                           frame_id: str = Form("")):
         require_csrf(request, csrf)
-        return await asyncio.to_thread(service.create_group, request.session, name, kind)
+        return await asyncio.to_thread(service.create_group, request.session, name, kind, frame_id)
+
+    @router.get("/tekne-chat/api/frames")
+    async def frame_list(request: Request):
+        return {"frames": await asyncio.to_thread(service.frames, request.session)}
+
+    @router.post("/tekne-chat/api/groups/{group_id}/frame")
+    async def group_frame(request: Request, group_id: str, frame_id: str = Form(""), csrf: str = Form(...)):
+        require_csrf(request, csrf)
+        result = await asyncio.to_thread(service.set_group_frame, request.session, group_id, frame_id)
+        await service.connections.broadcast(group_id, {"type": "group.updated", "id": group_id})
+        return result
 
     @router.patch("/tekne-chat/api/groups/{group_id}")
     async def group_rename(request: Request, group_id: str, name: str = Form(...), csrf: str = Form(...)):

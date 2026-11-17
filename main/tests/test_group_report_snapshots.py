@@ -134,9 +134,9 @@ class SnapshotDaySettingsTests(unittest.TestCase):
     def test_super_teacher_replaces_only_future_days(self):
         past = (snapshot_today() - datetime.timedelta(days=7)).isoformat()
         with closing(sqlite3.connect(self.path)) as db, db:
-            db.execute("INSERT INTO group_report_snapshot_day VALUES('学校A',?,'boss','now','now')", (past,))
-            db.execute("INSERT INTO group_report_snapshot_day VALUES('学校A',?,'boss','now',NULL)", (self.future(3),))
-            db.execute("INSERT INTO group_report_snapshot_day VALUES('学校B',?,'x','now',NULL)", (self.future(3),))
+            db.execute("INSERT INTO group_report_snapshot_day(school,day,created_by,created_at,processed_at) VALUES('学校A',?,'boss','now','now')", (past,))
+            db.execute("INSERT INTO group_report_snapshot_day(school,day,created_by,created_at,processed_at) VALUES('学校A',?,'boss','now',NULL)", (self.future(3),))
+            db.execute("INSERT INTO group_report_snapshot_day(school,day,created_by,created_at,processed_at) VALUES('学校B',?,'x','now',NULL)", (self.future(3),))
         result = self.call([self.future(7), self.future(14)])
         self.assertEqual([d['day'] for d in result['days']], [past, self.future(7), self.future(14)])
         with closing(sqlite3.connect(self.path)) as db:
@@ -158,9 +158,9 @@ class SnapshotDaySettingsTests(unittest.TestCase):
         with closing(sqlite3.connect(self.path)) as db, db:
             template_id = db.execute('SELECT id FROM study_template LIMIT 1').fetchone()[0]
             db.execute("INSERT INTO school_report_template VALUES('学校A',?,'now','boss')", (template_id,))
-            db.execute("INSERT INTO group_report_snapshot_day VALUES('学校A',?,'boss','now',NULL)", (self.future(14),))
-            db.execute("INSERT INTO group_report_snapshot_day VALUES('学校A',?,'boss','now',NULL)", (self.future(7),))
-            db.execute("INSERT INTO group_report_snapshot_day VALUES('学校A','2020-01-01','boss','now','now')")
+            db.execute("INSERT INTO group_report_snapshot_day(school,day,created_by,created_at,processed_at) VALUES('学校A',?,'boss','now',NULL)", (self.future(14),))
+            db.execute("INSERT INTO group_report_snapshot_day(school,day,created_by,created_at,processed_at) VALUES('学校A',?,'boss','now',NULL)", (self.future(7),))
+            db.execute("INSERT INTO group_report_snapshot_day(school,day,created_by,created_at,processed_at) VALUES('学校A','2020-01-01','boss','now','now')")
         page = asyncio.run(hub(self.request()))
         self.assertEqual(page['name'], 'teacher/school_report.html')
         context = page['context']

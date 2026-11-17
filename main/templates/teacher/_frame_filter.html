@@ -1,0 +1,9 @@
+{#- 枠で絞り込む（GETフォーム）。frame_filter: workspace_frames.frame_filter の戻り値 -#}
+<form class="staff-panel frame-filter" method="get" action="{{ action }}">
+    <label for="frame-filter-select">ワークスペースの枠</label>
+    <select id="frame-filter-select" name="frame" onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+        {% for option in frame_filter.options %}<option value="{{ option.value }}"{% if option.value == frame_filter.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
+    </select>
+    <noscript><button type="submit">絞り込む</button></noscript>
+    {% if teacher_role == 'super_teacher' %}<a class="frame-filter-manage" href="/teacher/workspace-frames">枠を管理</a>{% endif %}
+</form>

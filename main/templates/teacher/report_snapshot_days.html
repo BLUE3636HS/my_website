@@ -1,13 +1,35 @@
 {% extends "teacher/base.html" %}
 {% block title %}定期自動保存日{% endblock %}
-{% block css %}<link rel="stylesheet" href="/static/teacher/report_snapshot_days.css">{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/teacher/report_snapshot_days.css?v=frame-1">{% endblock %}
 {% block content %}
-<div class="teacher-page teacher-snapshot-days-page" id="snapshot-days" data-today="{{ today }}" data-csrf="{{ csrf_token }}">
+<div class="teacher-page teacher-snapshot-days-page" id="snapshot-days" data-today="{{ today }}" data-csrf="{{ csrf_token }}" data-frame="{{ frame.value }}" data-frame-label="{{ frame.label }}">
     <section class="teacher-dashboard-card">
         <p class="teacher-eyebrow">設定</p>
-        <h1>定期自動保存日</h1>
-        <p>{{ school }}の全グループについて、選んだ日の23:59時点の成果レポートの下書きを自動で保存します。自動保存した履歴は削除されずに残ります。生徒が保存ボタンで保存した履歴は、グループごとに最新10件だけ残ります。</p>
-        <p class="snapshot-days-note">日付をクリックすると、自動保存日の指定と解除が切り替わります。変更できるのは明日以降の日付だけです。最後に「設定を保存」を押してください。</p>
+        <h1>定期自動保存日・提出日</h1>
+        <p>自動保存日・提出日は<strong>ワークスペースの枠ごと</strong>に決めます。選んだ枠に所属するワークスペースについて、選んだ日の23:59時点の成果レポートの下書きを自動で保存します。自動保存した履歴は削除されずに残ります。生徒が保存ボタンで保存した履歴は、ワークスペースごとに最新10件だけ残ります。</p>
+        <form class="snapshot-frame-bar" method="get" action="/teacher/school-report/snapshot-days">
+            <label for="snapshot-frame">設定する枠</label>
+            <select id="snapshot-frame" name="frame" onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+                {% for option in frame_options %}<option value="{{ option.value }}"{% if option.value == frame.value %} selected{% endif %}>{{ option.label }}（{{ option.days|length }}日）</option>{% endfor %}
+            </select>
+            <noscript><button type="submit">切り替える</button></noscript>
+        </form>
+        {% if frame_options|length > 1 %}
+        <div class="snapshot-copy">
+            <label for="snapshot-copy-source">他の枠から日付をコピー</label>
+            <select id="snapshot-copy-source">
+                {% for option in frame_options if option.value != frame.value %}<option value="{{ option.value }}">{{ option.label }}</option>{% endfor %}
+            </select>
+            <button type="button" id="snapshot-copy">コピー</button>
+            <p class="snapshot-days-note">明日以降の自動保存日・提出日（名前も）を「{{ frame.label }}」にコピーします。コピー後に「設定を保存」を押すと保存されます。</p>
+        </div>
+        {% endif %}
+        <ol class="snapshot-steps">
+            <li>日付を<strong>1回</strong>クリックすると<strong>自動保存日</strong>になります。</li>
+            <li>もう<strong>1回</strong>クリックすると<strong>提出日</strong>になります。下の「指定中の日付」に提出日の名前を入力してください。</li>
+            <li>もう<strong>1回</strong>クリックすると指定を解除します。</li>
+        </ol>
+        <p class="snapshot-days-note">変更できるのは明日以降の日付だけです。最後に「設定を保存」を押してください。提出日の23:59が提出期限になり、生徒は期限まで「提出」ボタンで提出できます。期限までに提出しなかったワークスペースは、その時点の内容が自動で提出されます（提出日にも自動保存は行われます）。提出された版は「成果レポート提出・レビュー」でレビューできます。</p>
         <div class="snapshot-calendar" aria-live="polite">
             <div class="snapshot-calendar-head">
                 <button type="button" id="snapshot-prev" aria-label="前の月">‹</button>
@@ -19,14 +41,16 @@
             <ul class="snapshot-legend">
                 <li><span class="is-selected"></span>自動保存日（予定）</li>
                 <li><span class="is-done"></span>自動保存済み</li>
+                <li><span class="is-submission"></span>提出日</li>
             </ul>
         </div>
+        <h2 class="snapshot-list-title">「{{ frame.label }}」の指定中の日付</h2>
+        <ul id="snapshot-list" class="snapshot-list"></ul>
         <p id="snapshot-message" class="snapshot-message" role="status" hidden></p>
         <button type="button" id="snapshot-save" class="snapshot-save">設定を保存</button>
-        <h2 class="snapshot-list-title">指定中の日付</h2>
-        <ul id="snapshot-list" class="snapshot-list"></ul>
     </section>
 </div>
 <script id="snapshot-initial" type="application/json">{{ days|tojson }}</script>
+<script id="snapshot-frames" type="application/json">{{ frame_options|tojson }}</script>
 {% endblock %}
-{% block script %}<script src="/static/teacher/report_snapshot_days.js" defer></script>{% endblock %}
+{% block script %}<script src="/static/teacher/report_snapshot_days.js?v=frame-1" defer></script>{% endblock %}

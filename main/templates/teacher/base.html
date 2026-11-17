@@ -35,6 +35,7 @@
                         <p class="staff-nav-heading">研究</p>
                         {{ nav_link('/teacher/studylist', '自校提出物確認', 'list') }}
                         {{ nav_link('/teacher/reports', 'グループ成果レポート', 'report') }}
+                        {{ nav_link('/teacher/report-reviews', '成果レポート提出・レビュー', 'inbox') }}
                     </div>
                     <div class="staff-nav-group">
                         <p class="staff-nav-heading">生徒</p>
@@ -46,6 +47,7 @@
                         <p class="staff-nav-heading">設定</p>
                         {{ nav_link('/teacher/school-features', '自校の機能設定', 'settings') }}
                         {{ nav_link('/teacher/school-report', '成果レポート設定', 'layout') }}
+                        {{ nav_link('/teacher/workspace-frames', 'ワークスペースの枠', 'package') }}
                     </div>
                     {% endif %}
                 </nav>
@@ -63,10 +65,12 @@
                     {%- set top_pages = [
                         ('/teacher/studylist', '自校提出物確認'),
                         ('/teacher/reports', 'グループ成果レポート'),
+                        ('/teacher/report-reviews', '成果レポート提出・レビュー'),
                         ('/teacher/accounts', '生徒アカウント一覧'),
                         ('/teacher/notifications', '通知送信'),
                         ('/teacher/school-features', '自校の機能設定'),
                         ('/teacher/school-report', '成果レポート設定'),
+                        ('/teacher/workspace-frames', 'ワークスペースの枠'),
                         ('/teacher/edit', 'マイページ'),
                     ] -%}
                     {%- set crumb = namespace(href=None, label=None) -%}

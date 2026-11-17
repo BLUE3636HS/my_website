@@ -1,0 +1,69 @@
+/* 成果レポート提出・レビュー（先生用） */
+.teacher-review-page .review-muted { color: var(--text-muted); font-size: 13px; }
+.review-round-list { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.review-round a { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; color: inherit; text-decoration: none; }
+.review-round a:hover .review-round-title { text-decoration: underline; }
+.review-round-title { color: var(--text-strong); font-size: 18px; font-weight: 800; }
+.review-round-day { color: var(--text-muted); font-size: 14px; }
+.review-round-phase { padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--surface-soft); color: var(--text); }
+.review-round-phase.is-open { background: var(--primary-soft); color: var(--primary-strong); }
+.review-round-counts { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; color: var(--text-muted); font-size: 13px; align-items: center; }
+
+.review-status { display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--surface-soft); color: var(--text); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.review-status.is-unreviewed, .review-status.is-not_submitted, .review-status.is-no_draft { background: var(--warning-soft); color: var(--warning); }
+.review-status.is-reviewing, .review-status.is-early, .review-status.is-awaiting { background: var(--primary-soft); color: var(--primary-strong); }
+.review-status.is-returned { background: var(--success-soft); color: var(--success); }
+.review-status.is-resubmit { background: #fde2e2; color: #b42318; }
+
+.review-button { display: inline-flex; align-items: center; min-height: 40px; padding: 0 18px; border: 0; border-radius: 10px; background: var(--primary); color: #fff; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
+.review-button:hover { background: var(--primary-strong); }
+.review-button:disabled { opacity: .6; cursor: wait; }
+.review-button.is-secondary { background: #fff; color: var(--primary); border: 1px solid var(--primary); }
+.review-button.is-danger { background: #b42318; }
+
+.review-table-panel { overflow-x: auto; }
+.review-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.review-table th, .review-table td { padding: 12px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.review-table thead th { color: var(--text-muted); font-size: 12px; font-weight: 700; }
+.review-table tbody th { min-width: 160px; font-weight: 700; }
+.review-table tbody th svg { width: 16px; height: 16px; margin-right: 6px; vertical-align: -2px; color: var(--primary); }
+.review-table td > span { display: block; }
+.review-table td > span.review-status { display: inline-block; }
+.review-progress-warn { color: var(--warning); font-weight: 700; }
+.review-progress-ok { color: var(--success); font-weight: 700; }
+.review-attempts { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.review-attempts li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.review-attempt-label { font-weight: 700; }
+.review-attempts a { color: var(--primary); font-weight: 700; }
+.review-lock { color: #b42318; font-size: 12px; font-weight: 700; }
+
+.review-lock-panel .review-lock-text { margin: 0; }
+.review-lock-text.is-mine { color: var(--primary-strong); font-weight: 700; }
+.review-lock-text.is-locked { color: #b42318; }
+.review-lock-text svg { width: 18px; height: 18px; margin-right: 6px; vertical-align: -3px; }
+.review-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.review-message { margin: 12px 0 0; color: var(--success); font-weight: 700; }
+.review-message.is-error { color: #b42318; }
+
+.review-fields { margin-top: 20px; }
+.review-field h2, .review-overall h2, .review-return h2 { margin: 0 0 10px; font-size: 17px; }
+.review-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
+.review-images { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
+.review-images figure { margin: 0; max-width: 220px; }
+.review-images img { display: block; max-width: 100%; border: 1px solid var(--border); border-radius: 8px; }
+.review-images figcaption { margin-top: 4px; color: var(--text-muted); font-size: 12px; }
+.review-comment-label { display: block; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); color: var(--primary-strong); font-size: 13px; font-weight: 700; }
+.review-field-comment, #review-overall { display: block; width: 100%; box-sizing: border-box; margin-top: 6px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 10px; font: inherit; font-weight: 400; color: var(--text); resize: vertical; }
+.review-field-comment[readonly], #review-overall[readonly] { background: var(--surface-soft); }
+.review-editors { margin: 10px 0 0; color: var(--text-muted); font-size: 13px; }
+.review-previous summary { cursor: pointer; font-weight: 700; }
+.review-previous h3 { margin: 12px 0 4px; font-size: 14px; }
+.review-result { display: flex; flex-wrap: wrap; gap: 10px 20px; margin: 12px 0 16px; padding: 0; border: 0; }
+.review-due input { margin: 0 4px; }
+
+/* 枠で絞り込む */
+.frame-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.frame-filter label { font-weight: 700; }
+.frame-filter select { min-width: 220px; max-width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 10px; background: #fff; font: inherit; }
+.frame-filter-manage { margin-left: auto; color: var(--primary); font-weight: 700; font-size: 14px; }
+.review-round-frame { padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--text); font-size: 12px; font-weight: 700; }

@@ -176,6 +176,30 @@ class PersonalSpaceTests(unittest.TestCase):
         self.assertEqual(created, 1)
         self.assertEqual(self.rows("SELECT group_id,kind FROM group_report_version"), [(space['id'], 'scheduled')])
 
+    def test_personal_space_can_add_image_without_edit_lock_but_group_needs_it(self):
+        """個人スペースは編集ロックを使わないので、ロックなしで画像を追加できる。グループはロックが必要。"""
+        template = json.dumps({'fields': [{'stable_key': 'pic', 'label': '写真', 'field_type': 'image'}]})
+        space, group = self.personal(), self.chat.create_group(self.session, '1班')
+        with closing(connect_studies(self.path)) as db, db:
+            for item in (space, group):
+                school_id = db.execute('SELECT school_id FROM tekne_chat_group WHERE id=?', (item['id'],)).fetchone()[0]
+                db.execute("""INSERT INTO group_report_draft(group_id,school_id,school_name,template_id,template_snapshot,report_data,updated_at,revision)
+                    VALUES (?,?,?,?,?,?,?,0)""", (item['id'], school_id, 'school1', 1, template, '{}', 'now'))
+        router = build_group_report_router(self.path, main.templates, self.chat, self.root / 'report-images')
+        upload = next(r.endpoint for r in router.routes if r.path == '/api/group-reports/{group_id}/assets')
+        session = {**self.session, 'tekne_chat_csrf': 'csrf'}
+
+        def png():
+            data = io.BytesIO()
+            Image.new('RGB', (20, 20), (10, 120, 200)).save(data, 'PNG')
+            data.seek(0)
+            return UploadFile(data, filename='photo.png', headers={'content-type': 'image/png'})
+        result = asyncio.run(upload(SimpleNamespace(session=session), space['id'], png(), 'csrf', 'pic'))
+        self.assertEqual(result['original_name'], 'photo.png')
+        with self.assertRaises(HTTPException) as caught:
+            asyncio.run(upload(SimpleNamespace(session=session), group['id'], png(), 'csrf', 'pic'))
+        self.assertEqual(caught.exception.status_code, 423)
+
 
 class ChatListAndIconTests(unittest.TestCase):
     rows = fixtures.StudyTests.rows

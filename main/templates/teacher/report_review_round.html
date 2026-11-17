@@ -1,0 +1,57 @@
+{% extends 'teacher/base.html' %}
+{% import "student_icons.html" as icons %}
+{% block title %}{{ title }}（{{ day_label }}）{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/teacher/report_reviews.css?v=frame-2">{% endblock %}
+{% block content %}
+<div class="teacher-page teacher-review-page">
+    <header class="staff-page-hero">
+        <p class="teacher-eyebrow">{{ frame_label }}・提出日 {{ day_label }} 23:59・{{ phase }}</p>
+        <h1>{{ title }}</h1>
+        {% if finalized %}
+        <p>期限を過ぎた提出版をレビューできます。期限までに提出しなかったグループは、期限の時点の内容が自動で提出されています。</p>
+        {% else %}
+        <p>期限前です。レビューは期限（{{ day_label }} 23:59）を過ぎてからできます。未入力の項目数で、記入が進んでいないグループを確認できます。</p>
+        {% endif %}
+        {% if downloadable %}<p><a class="review-button" href="/teacher/report-reviews/rounds/{{ frame_key }}/{{ day }}/download.zip">提出版PDFを一括ダウンロード（ZIP）</a></p>{% endif %}
+        <p><a href="/teacher/report-reviews{{ back_query }}">提出日の一覧に戻る</a></p>
+    </header>
+    {% if not groups %}
+    <div class="staff-panel"><div class="staff-empty">{{ icons.icon("inbox") }}<p>この枠のワークスペースはありません。</p></div></div>
+    {% else %}
+    <div class="staff-panel review-table-panel">
+        <table class="review-table">
+            <thead><tr><th>グループ</th><th>今の枠</th><th>ステータス</th><th>入力状況（現在の下書き）</th><th>提出・レビュー</th></tr></thead>
+            <tbody>
+            {% for group in groups %}
+            <tr>
+                <th scope="row">{% if group.kind == 'personal' %}{{ icons.icon("user") }}{% else %}{{ icons.icon("users") }}{% endif %}{{ group.display_name }}</th>
+                <td>{{ group.frame_name or '枠なし' }}{% if group.moved %}<span class="review-muted">（提出後に枠を変更）</span>{% endif %}</td>
+                <td><span class="review-status is-{{ group.status }}">{{ group.status_label }}</span></td>
+                <td>
+                    {% if group.progress %}
+                    <span class="{{ 'review-progress-warn' if group.progress.empty else 'review-progress-ok' }}">未入力 {{ group.progress.empty }} / {{ group.progress.total }} 項目</span>
+                    <span class="review-muted">最終更新 {{ group.progress.updated_at }}</span>
+                    {% else %}<span class="review-muted">下書きなし</span>{% endif %}
+                </td>
+                <td>
+                    {% if not group.attempts %}<span class="review-muted">―</span>{% endif %}
+                    <ul class="review-attempts">
+                    {% for a in group.attempts %}
+                        <li>
+                            <span class="review-attempt-label">{{ a.attempt_label }}</span>
+                            <span class="review-status is-{{ a.status }}">{{ a.status_label }}</span>
+                            {% if a.submitted_label %}<span class="review-muted">{{ '自動提出' if a.method == 'auto' else '提出' }} {{ a.submitted_label }}</span>{% endif %}
+                            {% if a.lock_holder %}<span class="review-lock">{{ a.lock_holder }} 先生がレビュー中</span>{% endif %}
+                            {% if a.reviewable %}<a href="/teacher/report-reviews/submissions/{{ a.id }}{{ back_query }}">{{ 'レビューを見る' if a.status in ('returned','resubmit') else 'レビューする' }}</a>{% endif %}
+                        </li>
+                    {% endfor %}
+                    </ul>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

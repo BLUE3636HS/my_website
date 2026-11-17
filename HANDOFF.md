@@ -15,6 +15,8 @@ Neon 版（旧 `neon_version/`）は使用しないことになり、2026-11-09 
 | `main/admin_management.py`、`school_registration.py`、`school_features.py`、`student_custom_fields.py`（いずれも `main/` 配下） | 管理者権限、学校登録、学校別の機能設定、生徒の追加項目。 |
 | `main/tekne_chat.py`、`main/static/tekne_chat/chat.js` | TEKNE チャットの HTTP API、WebSocket、画面側の同期。 |
 | `main/group_reports.py`、`main/static/group_report.js` | グループレポートの共同編集、編集ロック、版保存、PDF。 |
+| `main/report_reviews.py`、`main/templates/teacher/report_review*.html`、`main/static/teacher/report_review.js` | 成果レポートの提出日（定期自動保存日に名前を付けて指定）、生徒の提出・期限での自動提出、先生のレビュー（ロック・返却・要再提出）、期限前リマインド、提出版のZIP一括ダウンロード。期限処理とリマインドは `main.py` の定期処理（5分ごと）で動く。 |
+| `main/workspace_frames.py`、`main/templates/teacher/workspace_frames.html`、`main/templates/teacher/_frame_filter.html` | ワークスペースの枠（例：2026年度 2年生 理数科）。表 `workspace_frame` と `tekne_chat_group.frame_id`（NULL＝枠なし）。枠の作成・変更・削除と先生画面からの付け替えは super_teacher のみ（削除するとワークスペースは枠なしに戻る）。生徒はワークスペースのメンバーなら設定画面でいつでも枠を変えられる。「グループ成果レポート」「成果レポート提出・レビュー」は `?frame=all／none／枠ID` で絞り込む。自動保存日・提出日は枠ごと（`group_report_snapshot_day`／`group_report_submission_day` の `frame_id`、0＝枠なし。提出は `group_report_submission.round_frame` に元の枠が残る）。日付がある枠は削除できない。レポート項目は学校単位のまま。 |
 | `main/studies.py`、`study_pdf.py`、`study_images.py`、`template_management.py` | 研究提出のデータ、PDF 生成、画像処理、研究テンプレート管理。 |
 | `main/mentor_reservations.py`、`notifications.py`、`mypage_calendar.py`、`google_calendar.py` | メンター予約、通知、マイページの予定、Google Calendar 連携。 |
 | `main/templates/`、`static/`、`csv/`、`assets/fonts/` | HTML テンプレート、CSS・JS、設備等の定義、PDF 生成用フォント。 |

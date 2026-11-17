@@ -1,0 +1,47 @@
+/* ワークスペースの枠（super_teacher 用） */
+.workspace-frames-page .frames-heading { margin: 0 0 12px; font-size: 18px; }
+.workspace-frames-page .teacher-eyebrow a { color: inherit; }
+.frame-form { display: grid; gap: 10px; max-width: 640px; }
+.frame-form label { display: grid; gap: 4px; font-size: 14px; font-weight: 700; }
+.frame-form input, .frame-form textarea, .workspace-frame-select { box-sizing: border-box; width: 100%; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: 10px; font: inherit; font-weight: 400; color: var(--text); background: #fff; }
+.frame-form .review-actions { margin-top: 0; }
+.workspace-frame-select { max-width: 320px; }
+.workspace-frames-page .review-message { position: sticky; bottom: 16px; padding: 10px 14px; border-radius: 10px; background: #fff; box-shadow: 0 6px 20px rgba(16, 24, 40, .15); }
+
+/* 枠の一覧：1行に名前・説明・所属数・操作をまとめる */
+.frame-list { margin: 0; padding: 0; list-style: none; }
+.frame-row { padding: 14px 4px; border-bottom: 1px solid var(--border); }
+.frame-row:first-child { padding-top: 0; }
+.frame-row:last-child { padding-bottom: 0; border-bottom: 0; }
+.frame-view { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.frame-main { flex: 1 1 260px; min-width: 0; }
+.frame-name { margin: 0; color: var(--text-strong); font-size: 16px; font-weight: 800; overflow-wrap: anywhere; }
+.frame-description { margin: 2px 0 0; color: var(--text-muted); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.frame-count { padding: 2px 10px; border-radius: 999px; background: var(--surface-soft); color: var(--text); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.frame-actions { display: flex; gap: 4px; }
+.frame-link { padding: 6px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--primary); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.frame-link:hover { background: var(--primary-soft); }
+.frame-link.is-danger { color: #b42318; }
+.frame-link.is-danger:hover { background: #fde2e2; }
+.frame-link:disabled { opacity: .6; cursor: wait; }
+.frame-row .frame-edit { margin-top: 4px; }
+.frame-view[hidden], .frame-form[hidden] { display: none; }
+
+/* ワークスペースの所属：どの行も1行の高さにそろえ、入りきらないメンバー名は横に流す */
+.workspace-table { table-layout: fixed; min-width: 560px; }
+.workspace-table .workspace-table-frame { width: 340px; }
+.workspace-table tbody th, .workspace-table td { vertical-align: middle; }
+.ws-cell { display: flex; align-items: center; gap: 12px; min-width: 0; white-space: nowrap; }
+.ws-name { flex: 0 1 auto; min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
+.ws-members { position: relative; flex: 1 1 0; min-width: 0; overflow: hidden; color: var(--text-muted); font-size: 13px; font-weight: 400; }
+.ws-members-track { display: inline-block; }
+.ws-members.is-overflowing { -webkit-mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent); mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent); }
+.ws-members.is-overflowing .ws-members-track { padding: 0 12px; animation: ws-members-flow var(--ws-duration, 8s) ease-in-out infinite alternate; }
+@keyframes ws-members-flow {
+    0%, 15% { transform: translateX(0); }
+    85%, 100% { transform: translateX(var(--ws-distance, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ws-members.is-overflowing .ws-members-track { animation: none; }
+    .ws-members { text-overflow: ellipsis; }
+}

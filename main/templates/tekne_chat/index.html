@@ -3,7 +3,7 @@
 {% block title %}ワークスペース{% endblock %}
 {% block page_title %}ワークスペース{% endblock %}
 {% block css %}
-<link rel="stylesheet" href="/static/student/chat.css?v=file-panel-1">
+<link rel="stylesheet" href="/static/student/chat.css?v=frame-1">
 {% endblock %}
 
 {% block content %}
@@ -79,12 +79,18 @@
         </fieldset>
         <label id="tc-new-group-name-label" for="tc-new-group-name">個人スペース名</label>
         <input id="tc-new-group-name" maxlength="100" pattern="[\p{L}\p{M}\p{N} 　_\(\)（）・ー\-]{1,100}" title="日本語・英数字・空白・一部の記号（_ - ( ) ・ ー）が使用できます。スラッシュや制御文字は使用できません。" placeholder="例：植物の成長の研究" required>
+        <label for="tc-new-frame">枠（任意）</label>
+        <select id="tc-new-frame" class="tc-frame-select"><option value="">枠なし</option></select>
+        <p id="tc-new-frame-description" class="tc-frame-description" hidden></p>
         <div class="tc-dialog-actions"><button value="cancel" type="button" class="tc-dialog-cancel">キャンセル</button><button id="tc-confirm-create" type="submit">作成</button></div>
     </form>
 </dialog>
 <dialog id="tc-icon-dialog" class="tc-dialog">
     <form id="tc-icon-form">
         <h2 id="tc-settings-title">グループ設定</h2><label id="tc-edit-group-name-label" for="tc-edit-group-name">グループ名</label><input id="tc-edit-group-name" maxlength="100" pattern="[\p{L}\p{M}\p{N} 　_\(\)（）・ー\-]{1,100}" title="日本語・英数字・空白・一部の記号（_ - ( ) ・ ー）が使用できます。スラッシュや制御文字は使用できません。" required>
+        <label for="tc-edit-frame">枠（任意）</label>
+        <select id="tc-edit-frame" class="tc-frame-select"><option value="">枠なし</option></select>
+        <p id="tc-edit-frame-description" class="tc-frame-description" hidden></p>
         <label id="tc-group-icon-label" for="tc-group-icon-file">グループアイコン（任意）</label>
         <div class="tc-icon-setting">
             <div id="tc-icon-preview" class="tc-avatar tc-icon-preview" aria-hidden="true"></div>
@@ -128,5 +134,5 @@
 {% endblock %}
 
 {% block script %}
-<script src="/static/tekne_chat/chat.js?v=file-panel-1" defer></script>
+<script src="/static/tekne_chat/chat.js?v=frame-1" defer></script>
 {% endblock %}

@@ -17,11 +17,11 @@
             <a class="school-report-hub-button" href="/teacher/school-report/template">項目を編集する</a>
         </section>
         <section class="teacher-dashboard-card school-report-hub-card">
-            <h2>定期自動保存日</h2>
+            <h2>定期自動保存日・提出日</h2>
             <p class="school-report-hub-summary">{% if next_day %}次回 <strong>{{ next_day }}</strong>{% else %}予定はありません{% endif %}</p>
             <p class="school-report-hub-detail">予定 {{ upcoming_count }} 日 ／ 保存済み {{ done_count }} 日</p>
-            <p class="school-report-hub-help">指定した日の23:59時点の下書きを全グループ分自動で保存し、ずっと残します。生徒が保存ボタンで保存した履歴は最新10件まで残ります。</p>
-            <a class="school-report-hub-button" href="/teacher/school-report/snapshot-days">保存日を設定する</a>
+            <p class="school-report-hub-help">ワークスペースの枠ごとに、指定した日の23:59時点の下書きを自動で保存し、ずっと残します。提出日もここで決めます。生徒が保存ボタンで保存した履歴は最新10件まで残ります。</p>
+            <a class="school-report-hub-button" href="/teacher/school-report/snapshot-days">保存日・提出日を設定する</a>
         </section>
     </div>
 </div>

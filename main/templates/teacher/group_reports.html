@@ -1,6 +1,7 @@
 {% extends 'teacher/base.html' %}
 {% import "student_icons.html" as icons %}
 {% block title %}成果レポート履歴{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/teacher/report_reviews.css?v=frame-1">{% endblock %}
 {% block content %}
 <div class="teacher-page teacher-reports-page">
     <header class="staff-page-hero">
@@ -8,8 +9,9 @@
         <h1>{{ school }}：成果レポート履歴</h1>
         <p>グループ・個人スペースごとに保存されたレポートの版をPDFで確認・ダウンロードできます。</p>
     </header>
+    {% set action = '/teacher/reports' %}{% include 'teacher/_frame_filter.html' %}
     {% if not groups %}
-    <div class="staff-panel"><div class="staff-empty">{{ icons.icon("inbox") }}<p>保存済みレポートはありません。</p></div></div>
+    <div class="staff-panel"><div class="staff-empty">{{ icons.icon("inbox") }}<p>{{ 'この枠に保存済みレポートはありません。' if frame_filter.value != 'all' else '保存済みレポートはありません。' }}</p></div></div>
     {% endif %}
     <div class="teacher-report-list">
     {% for group in groups %}
@@ -19,11 +21,12 @@
             {% else %}
             <h2>{{ icons.icon("users") }}{{ group.name }}</h2>
             {% endif %}
+            <p class="review-muted">枠：{{ group.frame_name or '枠なし' }}</p>
             <ul class="teacher-report-versions">
                 {% for v in group.versions %}
                 <li>
                     <span class="teacher-report-version">v{{ v.version_number }}</span>
-                    {% if v.kind == 'scheduled' %}<span class="teacher-report-kind is-scheduled">定期保存（{{ v.scheduled_date[5:7]|int }}/{{ v.scheduled_date[8:10]|int }}）</span>{% else %}<span class="teacher-report-kind">生徒保存</span>{% endif %}
+                    {% if v.kind == 'scheduled' %}<span class="teacher-report-kind is-scheduled">定期保存（{{ v.scheduled_date[5:7]|int }}/{{ v.scheduled_date[8:10]|int }}）</span>{% elif v.kind == 'submission' %}<span class="teacher-report-kind is-submission">提出（{{ v.scheduled_date[5:7]|int }}/{{ v.scheduled_date[8:10]|int }}）</span>{% else %}<span class="teacher-report-kind">生徒保存</span>{% endif %}
                     <time>{{ v.saved_at }}</time>
                     <span class="teacher-report-by">保存者：{{ v.saved_by }}</span>
                     <a href="/teacher/reports/{{ group.id }}/versions/{{ v.id }}.pdf" target="_blank">PDF表示・ダウンロード</a>

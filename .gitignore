@@ -14,3 +14,6 @@ main/database/*.bak
 
 # Local secrets
 .env
+
+# Claude のローカル設定
+CLAUDE.local.md

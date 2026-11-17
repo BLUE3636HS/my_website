@@ -1,0 +1,46 @@
+{% extends 'teacher/base.html' %}
+{% block title %}枠の一覧{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/teacher/report_reviews.css?v=frame-1"><link rel="stylesheet" href="/static/teacher/workspace_frames.css?v=frame-2">{% endblock %}
+{% block content %}
+<div class="teacher-page teacher-review-page workspace-frames-page" id="workspace-frames" data-csrf="{{ csrf_token }}">
+    <header class="staff-page-hero">
+        <p class="teacher-eyebrow"><a href="/teacher/workspace-frames">ワークスペースの枠</a></p>
+        <h1>枠の一覧</h1>
+        <p>枠を削除すると、所属していたワークスペースは「枠なし」に戻ります（ワークスペースやレポートは消えません）。自動保存日・提出日が設定されている枠は削除できません。</p>
+        <div class="review-actions"><a class="review-button" href="/teacher/workspace-frames/new">枠を追加</a></div>
+    </header>
+    <section class="staff-panel">
+        {% if not frames %}
+        <p class="review-muted">枠はまだありません。</p>
+        {% else %}
+        <ul class="frame-list">
+            {% for frame in frames %}
+            <li class="frame-row" data-id="{{ frame.id }}" data-count="{{ frame.count }}" data-name="{{ frame.name }}">
+                <div class="frame-view">
+                    <div class="frame-main">
+                        <p class="frame-name">{{ frame.name }}</p>
+                        {% if frame.description %}<p class="frame-description">{{ frame.description }}</p>{% endif %}
+                    </div>
+                    <span class="frame-count" title="所属するワークスペースの数">{{ frame.count }} ワークスペース</span>
+                    <div class="frame-actions">
+                        <button type="button" class="frame-link frame-edit-open">編集</button>
+                        <button type="button" class="frame-link is-danger frame-delete">削除</button>
+                    </div>
+                </div>
+                <form class="frame-form frame-edit" hidden>
+                    <label>名前<input name="name" maxlength="{{ name_max }}" required value="{{ frame.name }}"></label>
+                    <label>説明<textarea name="description" rows="2" maxlength="{{ description_max }}">{{ frame.description }}</textarea></label>
+                    <div class="review-actions">
+                        <button type="submit" class="review-button">保存</button>
+                        <button type="button" class="review-button is-secondary frame-edit-cancel">キャンセル</button>
+                    </div>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </section>
+    <p id="frame-message" class="review-message" role="status" hidden></p>
+</div>
+{% endblock %}
+{% block script %}<script src="/static/teacher/workspace_frames.js?v=frame-2" defer></script>{% endblock %}

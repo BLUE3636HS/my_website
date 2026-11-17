@@ -14,6 +14,8 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator, model_validator
 
 from studies import connect_studies, get_templates, stored_field_type
+from report_reviews import apply_submission_days, normalize_submission_titles, submission_days
+from workspace_frames import parse_frame_key, school_frames
 from report_header import MAX_HEADER_ITEMS, header_options, save_school_header_items, school_header_items, school_header_style, validate_header_items
 
 
@@ -95,10 +97,31 @@ def snapshot_day_label(value):
     return f"{day.month}/{day.day}（{'月火水木金土日'[day.weekday()]}）"
 
 
+def snapshot_day_items(db, school, frame_key=0):
+    """枠（0＝枠なし）の自動保存日の一覧。提出日には名前（title）を付ける。"""
+    titles = submission_days(db, school, frame_key)
+    return [{'day': r[0], 'processed': r[1] is not None, 'submission': r[0] in titles,
+             'title': titles.get(r[0], {}).get('title', '')} for r in db.execute(
+        'SELECT day,processed_at FROM group_report_snapshot_day WHERE school=? AND frame_id=? ORDER BY day', (school, frame_key))]
+
+
+def snapshot_frame_options(db, school):
+    """設定画面の枠の選択肢（「枠なし」＋学校の枠）と、それぞれの日付（他の枠からコピーするときに使う）。"""
+    options = [{'value': 'none', 'key': 0, 'label': '枠なし'}] + \
+              [{'value': str(f['id']), 'key': f['id'], 'label': f['name']} for f in school_frames(db, school)]
+    for option in options:
+        option['days'] = snapshot_day_items(db, school, option['key'])
+    return options
+
+
 class SnapshotDays(BaseModel):
     model_config = ConfigDict(extra='forbid')
     csrf_token: StrictStr
     days: list[StrictStr] = Field(default_factory=list, max_length=400)
+    # 自動保存日のうち提出日にする日と、その名前（{日付: 名前}）
+    submissions: dict[StrictStr, StrictStr] = Field(default_factory=dict, max_length=400)
+    # 設定する枠（'none'＝枠なし、または枠ID）
+    frame: StrictStr = 'none'
 
 
 class HeaderStyle(BaseModel):
@@ -204,9 +227,10 @@ def create_template_router(database_path, templates):
         with closing(connect_studies(database_path())) as db:
             assigned = db.execute('SELECT template_id,updated_at FROM school_report_template WHERE school=?', (school,)).fetchone()
             current = next((item for item in get_templates(db, include_inactive=True) if assigned and item['id'] == assigned[0]), None)
+            # 枠ごとの日付をまとめて、日付の数で数える
             upcoming = [r[0] for r in db.execute(
-                'SELECT day FROM group_report_snapshot_day WHERE school=? AND processed_at IS NULL AND day>=? ORDER BY day', (school, today))]
-            done_count = db.execute('SELECT COUNT(*) FROM group_report_snapshot_day WHERE school=? AND processed_at IS NOT NULL', (school,)).fetchone()[0]
+                'SELECT DISTINCT day FROM group_report_snapshot_day WHERE school=? AND processed_at IS NULL AND day>=? ORDER BY day', (school, today))]
+            done_count = db.execute('SELECT COUNT(DISTINCT day) FROM group_report_snapshot_day WHERE school=? AND processed_at IS NOT NULL', (school,)).fetchone()[0]
         return templates.TemplateResponse(request=request, name='teacher/school_report.html', context={
             'request': request, 'school': school, 'teacher_id': request.session.get('teacher_id'), 'teacher_role': 'super_teacher',
             'field_count': len(current['fields']) if current else 0, 'field_labels': [f['label'] for f in current['fields']] if current else [],
@@ -241,14 +265,15 @@ def create_template_router(database_path, templates):
                                        for field in initial['fields']] if initial else []})
 
     @router.get('/teacher/school-report/snapshot-days')
-    async def snapshot_days_page(request: Request):
+    async def snapshot_days_page(request: Request, frame: str = 'none'):
         school = super_teacher_school(request)
         token = request.session.setdefault('school_report_template_csrf', secrets.token_urlsafe(32))
         with closing(connect_studies(database_path())) as db:
-            days = [{'day': r[0], 'processed': r[1] is not None} for r in db.execute(
-                'SELECT day,processed_at FROM group_report_snapshot_day WHERE school=? ORDER BY day', (school,))]
+            options = snapshot_frame_options(db, school)
+        selected = next((o for o in options if o['value'] == frame), options[0])
         return templates.TemplateResponse(request=request, name='teacher/report_snapshot_days.html', context={
-            'request': request, 'school': school, 'csrf_token': token, 'days': days, 'today': snapshot_today().isoformat(),
+            'request': request, 'school': school, 'csrf_token': token, 'days': selected['days'], 'today': snapshot_today().isoformat(),
+            'frame_options': options, 'frame': selected,
             'teacher_id': request.session.get('teacher_id'), 'teacher_role': 'super_teacher'})
 
     @router.post('/teacher/school-report/snapshot-days')
@@ -271,18 +296,22 @@ def create_template_router(database_path, templates):
             if day > today + datetime.timedelta(days=730):
                 raise HTTPException(422, '2年以内の日付を選んでください。')
             requested.add(value)
+        titles = normalize_submission_titles(data.submissions, requested)
         now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
         actor = request.session.get('teacher_id') or ''
         with closing(connect_studies(database_path())) as db, db:
             db.execute('BEGIN IMMEDIATE')
+            frame_key = parse_frame_key(db, school, data.frame)
             # 今日以前の日付（保存済み・保存待ち）は変更しない。明日以降だけを送られた内容に置き換える。
-            current = {r[0] for r in db.execute('SELECT day FROM group_report_snapshot_day WHERE school=? AND day>?', (school, today.isoformat()))}
+            apply_submission_days(db, school, frame_key, today, titles, actor, now)
+            current = {r[0] for r in db.execute('SELECT day FROM group_report_snapshot_day WHERE school=? AND frame_id=? AND day>?',
+                                                (school, frame_key, today.isoformat()))}
             for day in current - requested:
-                db.execute('DELETE FROM group_report_snapshot_day WHERE school=? AND day=?', (school, day))
+                db.execute('DELETE FROM group_report_snapshot_day WHERE school=? AND frame_id=? AND day=?', (school, frame_key, day))
             for day in sorted(requested - current):
-                db.execute('INSERT INTO group_report_snapshot_day(school,day,created_by,created_at) VALUES(?,?,?,?)', (school, day, actor, now))
-            days = [{'day': r[0], 'processed': r[1] is not None} for r in db.execute(
-                'SELECT day,processed_at FROM group_report_snapshot_day WHERE school=? ORDER BY day', (school,))]
+                db.execute('INSERT INTO group_report_snapshot_day(school,frame_id,day,created_by,created_at) VALUES(?,?,?,?,?)',
+                           (school, frame_key, day, actor, now))
+            days = snapshot_day_items(db, school, frame_key)
         return {'ok': True, 'days': days}
 
     @router.post('/teacher/school-report/apply')

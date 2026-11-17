@@ -88,3 +88,24 @@
 .snapshot-save:disabled { opacity: .6; cursor: default; }
 .snapshot-list-title { margin-top: 28px; font-size: 18px; }
 .snapshot-list { padding-left: 1.2em; }
+
+/* 提出日 */
+.snapshot-steps { margin: 8px 0; padding-left: 1.4em; line-height: 1.8; }
+.snapshot-day { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; }
+.snapshot-day.is-submission,
+.snapshot-legend .is-submission { background: #f2b705; color: #3d2c00; border-color: #c99600; }
+.snapshot-day.is-submission.is-done { background: #f7d77a; }
+.snapshot-day-mark { font-size: 10px; font-weight: 700; line-height: 1; }
+.snapshot-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-bottom: 8px; }
+.snapshot-submission-badge { padding: 2px 10px; border-radius: 999px; background: #fff4cc; color: #7a5a00; font-size: 13px; font-weight: 700; }
+.snapshot-submission-title { flex: 1 1 260px; min-width: 0; padding: 8px 12px; border: 1px solid rgba(47, 107, 20, .35); border-radius: 8px; font: inherit; }
+.snapshot-list + .snapshot-message { margin-top: 16px; }
+
+/* 枠の選択・他の枠からのコピー */
+.snapshot-frame-bar, .snapshot-copy { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 14px 0; }
+.snapshot-frame-bar label, .snapshot-copy label { font-weight: 700; }
+.snapshot-frame-bar select, .snapshot-copy select { min-width: 220px; max-width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid rgba(47, 107, 20, .35); border-radius: 10px; background: #fff; font: inherit; }
+.snapshot-frame-bar select { font-weight: 700; }
+.snapshot-copy { padding: 10px 14px; border-radius: 12px; background: #f4f8f1; }
+.snapshot-copy button { min-height: 40px; padding: 0 16px; border: 1px solid var(--teacher-green, #2f6b14); border-radius: 999px; background: #fff; color: var(--teacher-green, #2f6b14); font: inherit; font-weight: 700; cursor: pointer; }
+.snapshot-copy .snapshot-days-note { flex-basis: 100%; margin: 0; font-size: 13px; }

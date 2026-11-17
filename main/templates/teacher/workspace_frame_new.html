@@ -1,0 +1,24 @@
+{% extends 'teacher/base.html' %}
+{% block title %}枠を追加{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/teacher/report_reviews.css?v=frame-1"><link rel="stylesheet" href="/static/teacher/workspace_frames.css?v=frame-2">{% endblock %}
+{% block content %}
+<div class="teacher-page teacher-review-page workspace-frames-page" id="workspace-frames" data-csrf="{{ csrf_token }}">
+    <header class="staff-page-hero">
+        <p class="teacher-eyebrow"><a href="/teacher/workspace-frames">ワークスペースの枠</a></p>
+        <h1>枠を追加</h1>
+        <p>生徒は、ここで作った枠をワークスペースの設定で選べるようになります。</p>
+    </header>
+    <section class="staff-panel">
+        <form id="frame-create" class="frame-form">
+            <label>名前<input name="name" maxlength="{{ name_max }}" required placeholder="例：2026年度 2年生 理数科" autofocus></label>
+            <label>説明（任意・生徒が枠を選ぶときに表示されます）<textarea name="description" rows="3" maxlength="{{ description_max }}" placeholder="例：2026年度の2年生理数科の課題研究"></textarea></label>
+            <div class="review-actions">
+                <button type="submit" class="review-button">追加</button>
+                <a class="review-button is-secondary" href="/teacher/workspace-frames">キャンセル</a>
+            </div>
+        </form>
+    </section>
+    <p id="frame-message" class="review-message" role="status" hidden></p>
+</div>
+{% endblock %}
+{% block script %}<script src="/static/teacher/workspace_frames.js?v=frame-2" defer></script>{% endblock %}

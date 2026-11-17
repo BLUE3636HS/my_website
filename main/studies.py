@@ -111,6 +111,7 @@ def initialize_studies(db):
             school TEXT NOT NULL, day TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL,
             processed_at TEXT, PRIMARY KEY(school,day))""")
         prune_manual_report_versions(db)
+        initialize_report_review_tables(db)
         db.execute("""CREATE TABLE IF NOT EXISTS group_report_lock (
             group_id TEXT NOT NULL, field_key TEXT NOT NULL, student_id TEXT NOT NULL,
             student_name TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(group_id,field_key))""")
@@ -148,6 +149,69 @@ def initialize_studies(db):
 
 
 MANUAL_REPORT_VERSION_LIMIT = 10
+
+
+def initialize_report_review_tables(db):
+    """成果レポートの提出日・提出・先生のレビューのテーブル（処理は report_reviews.py）。"""
+    from workspace_frames import ensure_frame_schema
+    ensure_frame_schema(db)
+    # 提出日：定期自動保存日のうち、提出日として指定された日（名前付き）
+    db.execute("""CREATE TABLE IF NOT EXISTS group_report_submission_day (
+        school TEXT NOT NULL, day TEXT NOT NULL, title TEXT NOT NULL,
+        created_by TEXT NOT NULL, created_at TEXT NOT NULL, finalized_at TEXT,
+        PRIMARY KEY(school,day))""")
+    # 提出：attempt=0 が本提出、1以上が再提出。version_id が NULL なら未提出（再提出待ちなど）
+    db.execute("""CREATE TABLE IF NOT EXISTS group_report_submission (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, school TEXT NOT NULL, group_id TEXT NOT NULL,
+        round_day TEXT NOT NULL, attempt INTEGER NOT NULL CHECK(attempt >= 0), due_day TEXT NOT NULL,
+        version_id INTEGER, method TEXT CHECK(method IN ('manual','auto')), submitted_by TEXT, submitted_at TEXT,
+        finalized_at TEXT, created_at TEXT NOT NULL, UNIQUE(group_id,round_day,attempt))""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_group_report_submission_round ON group_report_submission(school,round_day)")
+    # レビュー：提出版ごとに1つ。result が NULL の間は先生だけが見られる下書き
+    db.execute("""CREATE TABLE IF NOT EXISTS group_report_review (
+        submission_id INTEGER PRIMARY KEY NOT NULL REFERENCES group_report_submission(id) ON DELETE CASCADE,
+        overall_comment TEXT NOT NULL DEFAULT '', field_comments TEXT NOT NULL DEFAULT '{}',
+        result TEXT CHECK(result IN ('returned','resubmit')), returned_at TEXT, returned_by TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL)""")
+    db.execute("""CREATE TABLE IF NOT EXISTS group_report_review_editor (
+        submission_id INTEGER NOT NULL REFERENCES group_report_submission(id) ON DELETE CASCADE,
+        teacher_id TEXT NOT NULL, first_edited_at TEXT NOT NULL, last_edited_at TEXT NOT NULL,
+        PRIMARY KEY(submission_id,teacher_id))""")
+    # レビュー中のロック：「レビューを終了」か「返却」で外れる。どの先生でも強制的に外せる
+    db.execute("""CREATE TABLE IF NOT EXISTS group_report_review_lock (
+        submission_id INTEGER PRIMARY KEY NOT NULL REFERENCES group_report_submission(id) ON DELETE CASCADE,
+        teacher_id TEXT NOT NULL, locked_at TEXT NOT NULL)""")
+    # 期限前リマインドの送信記録（同じ期限・同じ区分は1回だけ）
+    db.execute("""CREATE TABLE IF NOT EXISTS group_report_reminder_sent (
+        group_id TEXT NOT NULL, round_day TEXT NOT NULL, attempt INTEGER NOT NULL, offset_days INTEGER NOT NULL,
+        sent_at TEXT NOT NULL, PRIMARY KEY(group_id,round_day,attempt,offset_days))""")
+    add_frame_to_report_days(db)
+
+
+def _rebuild_with_frame(db, table, create_sql, columns):
+    """日付の表に枠（frame_id、0＝枠なし）を加え、主キーを (school, frame_id, day) にする。"""
+    if 'frame_id' in {row[1] for row in db.execute(f"PRAGMA table_info({table})")}:
+        return
+    db.execute(f"ALTER TABLE {table} RENAME TO {table}_old")
+    db.execute(create_sql)
+    db.execute(f"INSERT INTO {table}({columns},frame_id) SELECT {columns},0 FROM {table}_old")
+    db.execute(f"DROP TABLE {table}_old")
+
+
+def add_frame_to_report_days(db):
+    """自動保存日・提出日を枠ごとにする。今ある日付は「枠なし」（frame_id=0）の日付になる。"""
+    _rebuild_with_frame(db, 'group_report_snapshot_day', """CREATE TABLE group_report_snapshot_day (
+        school TEXT NOT NULL, day TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+        processed_at TEXT, frame_id INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(school,frame_id,day))""",
+        'school,day,created_by,created_at,processed_at')
+    _rebuild_with_frame(db, 'group_report_submission_day', """CREATE TABLE group_report_submission_day (
+        school TEXT NOT NULL, day TEXT NOT NULL, title TEXT NOT NULL,
+        created_by TEXT NOT NULL, created_at TEXT NOT NULL, finalized_at TEXT,
+        frame_id INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(school,frame_id,day))""",
+        'school,day,title,created_by,created_at,finalized_at')
+    # 提出がどの枠の提出回のものか（提出後に枠を変えても、元の提出回に残る）
+    if 'round_frame' not in {row[1] for row in db.execute("PRAGMA table_info(group_report_submission)")}:
+        db.execute("ALTER TABLE group_report_submission ADD COLUMN round_frame INTEGER NOT NULL DEFAULT 0")
 
 
 def prune_manual_report_versions(db, group_id=None, keep=MANUAL_REPORT_VERSION_LIMIT):

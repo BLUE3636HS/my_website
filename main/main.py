@@ -4,6 +4,8 @@ from starlette.concurrency import run_in_threadpool
 from study_pdf import render_study_pdf
 from template_management import create_template_router
 from group_reports import build_group_report_router, run_scheduled_snapshots
+from report_reviews import build_report_review_router, run_report_deadlines, run_report_reminders
+from workspace_frames import build_workspace_frame_router
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -453,6 +455,8 @@ app.include_router(build_mentor_inquiry_router(DATABASE_PATH, templates))
 tekne_chat_router, tekne_chat_service = build_tekne_chat_router(DATABASE_PATH, templates, TEKNE_CHAT_STORAGE_DIR)
 app.include_router(tekne_chat_router)
 app.include_router(build_group_report_router(DATABASE_PATH, templates, tekne_chat_service, STUDY_IMAGE_UPLOADS_DIR))
+app.include_router(build_report_review_router(DATABASE_PATH, templates, tekne_chat_service, STUDY_IMAGE_UPLOADS_DIR))
+app.include_router(build_workspace_frame_router(DATABASE_PATH, templates))
 
 
 async def _tekne_chat_cleanup_loop():
@@ -474,6 +478,12 @@ async def _group_report_snapshot_loop():
             await asyncio.to_thread(run_scheduled_snapshots, DATABASE_PATH)
         except Exception:
             logging.exception("Scheduled group report snapshot failed")
+        # 提出期限を過ぎた提出のまとめ（自動提出）と、期限前のリマインド通知
+        for job, label in ((run_report_deadlines, "deadline"), (run_report_reminders, "reminder")):
+            try:
+                await asyncio.to_thread(job, DATABASE_PATH)
+            except Exception:
+                logging.exception("Group report %s job failed", label)
         await asyncio.sleep(GROUP_REPORT_SNAPSHOT_INTERVAL_SECONDS)
 
 
