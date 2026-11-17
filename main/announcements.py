@@ -1,4 +1,4 @@
-"""Temporary announcements that administrators pin to the student dashboard."""
+"""Temporary announcements that administrators pin to the student and/or teacher dashboards."""
 
 import datetime
 import re
@@ -24,6 +24,10 @@ KINDS = (
 KIND_STYLES = {key: (tone, icon) for key, _, tone, icon in KINDS}
 KIND_BY_ICON = {icon: key for key, _, _, icon in KINDS}
 DEFAULT_KIND = "info"
+
+# 表示対象: (対象キー, 表示名)。キーは列名 show_<キー> に対応する。
+AUDIENCES = (("student", "生徒"), ("teacher", "先生"))
+AUDIENCE_KEYS = tuple(key for key, _ in AUDIENCES)
 
 
 def kind_for(item):
@@ -58,6 +62,11 @@ def initialize_announcements(db):
             updated_at TEXT NOT NULL
         )
     """)
+    # 表示対象の列。追加前に作成された掲示は生徒・先生の両方に表示する。
+    existing = {row[1] for row in db.execute("PRAGMA table_info(dashboard_announcement)").fetchall()}
+    for key in AUDIENCE_KEYS:
+        if f"show_{key}" not in existing:
+            db.execute(f"ALTER TABLE dashboard_announcement ADD COLUMN show_{key} INTEGER NOT NULL DEFAULT 1")
     for key, _, tone, icon in KINDS:
         db.execute("UPDATE dashboard_announcement SET tone=? WHERE icon=? AND tone<>?", (tone, icon, tone))
     default_tone, default_icon = KIND_STYLES[DEFAULT_KIND]
@@ -85,7 +94,12 @@ def _normalize_datetime(value, label):
     return parsed.strftime(DATETIME_FORMAT)
 
 
-def validate_announcement(title, summary, body, link_url, link_label, kind, starts_at, ends_at):
+def _checked(value):
+    return str(value or "").strip().lower() in ("1", "true", "on", "yes")
+
+
+def validate_announcement(title, summary, body, link_url, link_label, kind, starts_at, ends_at,
+                          show_student="", show_teacher=""):
     title = (title or "").strip()
     summary = (summary or "").strip()
     body = (body or "").replace("\r\n", "\n").strip()
@@ -113,15 +127,19 @@ def validate_announcement(title, summary, body, link_url, link_label, kind, star
     ends_at = _normalize_datetime(ends_at, "表示終了")
     if starts_at and ends_at and ends_at <= starts_at:
         raise ValueError("表示終了は表示開始より後の日時にしてください。")
+    show_student, show_teacher = int(_checked(show_student)), int(_checked(show_teacher))
+    if not (show_student or show_teacher):
+        raise ValueError("表示対象（生徒・先生）を1つ以上選んでください。")
     return {
         "title": title, "summary": summary, "body": body, "link_url": link_url,
         "link_label": link_label, "tone": tone, "icon": icon,
         "starts_at": starts_at, "ends_at": ends_at,
+        "show_student": show_student, "show_teacher": show_teacher,
     }
 
 
 COLUMNS = ("id", "title", "summary", "body", "link_url", "link_label", "tone", "icon",
-           "starts_at", "ends_at", "created_by", "created_at", "updated_at")
+           "starts_at", "ends_at", "created_by", "created_at", "updated_at", "show_student", "show_teacher")
 SELECT_COLUMNS = ", ".join(COLUMNS)
 ACTIVE_CONDITION = "(starts_at IS NULL OR starts_at <= ?) AND (ends_at IS NULL OR ends_at > ?)"
 
@@ -130,20 +148,28 @@ def _rows_to_dicts(rows):
     return [dict(zip(COLUMNS, row)) for row in rows]
 
 
-def active_announcements(db, now=None):
+def _audience_column(audience):
+    if audience not in AUDIENCE_KEYS:
+        raise ValueError(f"unknown audience: {audience}")
+    return f"show_{audience}"
+
+
+def active_announcements(db, now=None, audience="student"):
     current = now_jst_text(now)
     rows = db.execute(
-        f"SELECT {SELECT_COLUMNS} FROM dashboard_announcement WHERE {ACTIVE_CONDITION} "
+        f"SELECT {SELECT_COLUMNS} FROM dashboard_announcement "
+        f"WHERE {_audience_column(audience)}=1 AND {ACTIVE_CONDITION} "
         "ORDER BY COALESCE(starts_at, created_at) DESC, id DESC",
         (current, current),
     ).fetchall()
     return _rows_to_dicts(rows)
 
 
-def active_announcement(db, announcement_id, now=None):
+def active_announcement(db, announcement_id, now=None, audience="student"):
     current = now_jst_text(now)
     row = db.execute(
-        f"SELECT {SELECT_COLUMNS} FROM dashboard_announcement WHERE id=? AND {ACTIVE_CONDITION}",
+        f"SELECT {SELECT_COLUMNS} FROM dashboard_announcement "
+        f"WHERE id=? AND {_audience_column(audience)}=1 AND {ACTIVE_CONDITION}",
         (announcement_id, current, current),
     ).fetchone()
     return _rows_to_dicts([row])[0] if row else None
@@ -201,7 +227,7 @@ def build_announcement_router(database_path, templates):
             request=request,
             name="admin/announcements.html",
             context={
-                "request": request, "items": items, "kinds": KINDS,
+                "request": request, "items": items, "kinds": KINDS, "audiences": AUDIENCES,
                 "form": form or {"kind": DEFAULT_KIND},
                 "editing_id": editing_id, "csrf_token": token, "error": error,
                 "notice": request.session.pop("announcement_notice", None),
@@ -228,31 +254,35 @@ def build_announcement_router(database_path, templates):
         return render(request, form=form, editing_id=edit if form else None)
 
     async def save(request, announcement_id, csrf_token, title, summary, body, link_url,
-                   link_label, kind, starts_at, ends_at):
+                   link_label, kind, starts_at, ends_at, show_student, show_teacher):
         raw = {"title": title, "summary": summary, "body": body, "link_url": link_url,
                "link_label": link_label, "kind": kind,
-               "starts_at": starts_at, "ends_at": ends_at}
+               "starts_at": starts_at, "ends_at": ends_at,
+               "show_student": show_student, "show_teacher": show_teacher}
         check_csrf(request, csrf_token)
         try:
             data = validate_announcement(**raw)
         except ValueError as exc:
-            return render(request, form=raw, editing_id=announcement_id, error=str(exc), status_code=400)
+            form = dict(raw, show_student=_checked(show_student), show_teacher=_checked(show_teacher))
+            return render(request, form=form, editing_id=announcement_id, error=str(exc), status_code=400)
         now = datetime.datetime.now(JST).isoformat(timespec="seconds")
         with closing(sqlite3.connect(database_path, timeout=10)) as db:
             admin = require_admin(db, request)
             values = (data["title"], data["summary"], data["body"], data["link_url"], data["link_label"],
-                      data["tone"], data["icon"], data["starts_at"], data["ends_at"])
+                      data["tone"], data["icon"], data["starts_at"], data["ends_at"],
+                      data["show_student"], data["show_teacher"])
             if announcement_id is None:
                 db.execute(
                     "INSERT INTO dashboard_announcement(title,summary,body,link_url,link_label,tone,icon,"
-                    "starts_at,ends_at,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "starts_at,ends_at,show_student,show_teacher,created_by,created_at,updated_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     values + (admin[0], now, now),
                 )
                 notice = "掲示を作成しました。"
             else:
                 cursor = db.execute(
                     "UPDATE dashboard_announcement SET title=?,summary=?,body=?,link_url=?,link_label=?,"
-                    "tone=?,icon=?,starts_at=?,ends_at=?,updated_at=? WHERE id=?",
+                    "tone=?,icon=?,starts_at=?,ends_at=?,show_student=?,show_teacher=?,updated_at=? WHERE id=?",
                     values + (now, announcement_id),
                 )
                 if cursor.rowcount == 0:
@@ -266,18 +296,20 @@ def build_announcement_router(database_path, templates):
     async def create_announcement(request: Request, csrf_token: str = Form(""), title: str = Form(""),
                                   summary: str = Form(""), body: str = Form(""), link_url: str = Form(""),
                                   link_label: str = Form(""), kind: str = Form(DEFAULT_KIND),
-                                  starts_at: str = Form(""), ends_at: str = Form("")):
+                                  starts_at: str = Form(""), ends_at: str = Form(""),
+                                  show_student: str = Form(""), show_teacher: str = Form("")):
         return await save(request, None, csrf_token, title, summary, body, link_url, link_label,
-                          kind, starts_at, ends_at)
+                          kind, starts_at, ends_at, show_student, show_teacher)
 
     @router.post("/admin/announcements/{announcement_id}")
     async def update_announcement(request: Request, announcement_id: int, csrf_token: str = Form(""),
                                   title: str = Form(""), summary: str = Form(""), body: str = Form(""),
                                   link_url: str = Form(""), link_label: str = Form(""),
                                   kind: str = Form(DEFAULT_KIND),
-                                  starts_at: str = Form(""), ends_at: str = Form("")):
+                                  starts_at: str = Form(""), ends_at: str = Form(""),
+                                  show_student: str = Form(""), show_teacher: str = Form("")):
         return await save(request, announcement_id, csrf_token, title, summary, body, link_url, link_label,
-                          kind, starts_at, ends_at)
+                          kind, starts_at, ends_at, show_student, show_teacher)
 
     @router.post("/admin/announcements/{announcement_id}/end")
     async def end_announcement(request: Request, announcement_id: int, csrf_token: str = Form("")):
@@ -310,7 +342,7 @@ def build_announcement_router(database_path, templates):
         if request.session.get("user_login") is not True or not request.session.get("user_id"):
             return RedirectResponse("/login", status_code=303)
         with closing(sqlite3.connect(database_path)) as db:
-            item = active_announcement(db, announcement_id)
+            item = active_announcement(db, announcement_id, audience="student")
         if item is None:
             raise HTTPException(404, "この掲示は表示期間外か、削除されました。")
         return templates.TemplateResponse(
@@ -318,6 +350,23 @@ def build_announcement_router(database_path, templates):
             name="announcement_detail.html",
             context={"request": request, "item": item,
                      "user_login": True, "user_id": request.session.get("user_id")},
+        )
+
+    @router.get("/teacher/announcements/{announcement_id}")
+    async def teacher_announcement_detail(request: Request, announcement_id: int):
+        teacher_id = request.session.get("teacher_id")
+        if request.session.get("teacher_login") is not True or not teacher_id:
+            return RedirectResponse("/login", status_code=303)
+        with closing(sqlite3.connect(database_path)) as db:
+            item = active_announcement(db, announcement_id, audience="teacher")
+            role_row = db.execute("SELECT role FROM teacher WHERE id=?", (teacher_id,)).fetchone()
+        if item is None:
+            raise HTTPException(404, "この掲示は表示期間外か、削除されました。")
+        return templates.TemplateResponse(
+            request=request,
+            name="teacher/announcement_detail.html",
+            context={"request": request, "item": item, "teacher_login": True, "teacher_id": teacher_id,
+                     "teacher_role": role_row[0] if role_row else "teacher"},
         )
 
     return router

@@ -5,7 +5,7 @@
 {% block content %}
 <section class="announcement-admin-panel">
     <h1>ダッシュボード掲示</h1>
-    <p>生徒ダッシュボードの「お知らせ」欄に、期間限定のカードを表示します（全生徒が対象）。カードを押すと詳細ページが開きます。アンケートのURLなどはリンクURLに入力してください。</p>
+    <p>生徒・先生のダッシュボードの「お知らせ」欄に、期間限定のカードを表示します（表示対象で選んだ全員が対象）。カードを押すと詳細ページが開きます。アンケートのURLなどはリンクURLに入力してください。</p>
     {% if error %}<p class="login-error" role="alert">{{ error }}</p>{% endif %}
     {% if notice %}<p class="school-features-notice" role="status">{{ notice }}</p>{% endif %}
 
@@ -43,6 +43,12 @@
             <label class="announcement-kind tone-{{ tone }}"><input type="radio" name="kind" value="{{ key }}"{% if form.kind == key %} checked{% endif %}><span class="announcement-kind-icon">{{ ui_icons.icon(icon) }}</span><span>{{ label }}</span></label>
             {% endfor %}
         </fieldset>
+        <fieldset class="announcement-choice announcement-audience">
+            <legend>表示対象 <span class="announcement-required">1つ以上</span></legend>
+            {% for key, label in audiences %}
+            <label class="announcement-audience-option"><input type="checkbox" name="show_{{ key }}" value="1"{% if form['show_' ~ key] %} checked{% endif %}><span>{{ label }}のダッシュボード</span></label>
+            {% endfor %}
+        </fieldset>
         <div class="announcement-form-actions">
             <button class="school-features-save" type="submit">{% if editing_id %}更新する{% else %}作成する{% endif %}</button>
             {% if editing_id %}<a class="announcement-cancel" href="/admin/announcements">編集をやめる</a>{% endif %}
@@ -53,13 +59,14 @@
     {% if items %}
     <div class="school-features-table-wrap">
         <table class="announcement-table">
-            <thead><tr><th scope="col">状態</th><th scope="col">種類</th><th scope="col">題名</th><th scope="col">表示期間</th><th scope="col">作成者</th><th scope="col">操作</th></tr></thead>
+            <thead><tr><th scope="col">状態</th><th scope="col">種類</th><th scope="col">題名</th><th scope="col">表示対象</th><th scope="col">表示期間</th><th scope="col">作成者</th><th scope="col">操作</th></tr></thead>
             <tbody>
             {% for item in items %}
                 <tr>
                     <td><span class="announcement-status announcement-status-{{ item.status }}">{% if item.status == 'active' %}表示中{% elif item.status == 'scheduled' %}公開前{% else %}終了{% endif %}</span></td>
                     <td>{% for key, label, tone, icon in kinds %}{% if icon == item.icon %}<span class="announcement-kind-badge tone-{{ tone }}">{{ ui_icons.icon(icon) }}{{ label }}</span>{% endif %}{% endfor %}</td>
                     <td class="announcement-title-cell">{{ item.title }}{% if item.link_url %}<br><small>{{ item.link_url }}</small>{% endif %}</td>
+                    <td class="announcement-audience-cell">{% for key, label in audiences %}{% if item['show_' ~ key] %}<span class="announcement-audience-badge">{{ label }}</span>{% endif %}{% endfor %}</td>
                     <td>{{ item.starts_at|announcement_period if item.starts_at else '指定なし' }} 〜 {{ item.ends_at|announcement_period if item.ends_at else '無期限' }}</td>
                     <td>{{ item.created_by }}</td>
                     <td class="announcement-actions">

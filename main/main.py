@@ -1141,7 +1141,7 @@ async def Dashboard(request: Request):
             """,
             (user_id,)
         ).fetchall()
-        announcements = active_announcements(db)
+        announcements = active_announcements(db, audience="student")
 
     return templates.TemplateResponse(
         request = request,
@@ -3344,6 +3344,7 @@ async def teacher(request: Request):
     teacher_school = teacher_row[2]
     with closing(sqlite3.connect(DATABASE_PATH)) as db:
         summary = teacher_dashboard_summary(db, teacher_school)
+        announcements = active_announcements(db, audience="teacher")
 
     return templates.TemplateResponse(
         request = request,
@@ -3354,7 +3355,8 @@ async def teacher(request: Request):
             "teacher_id": teacher_id,
             "teacher_school": teacher_school,
             "teacher_role": teacher_row[3],
-            "summary": summary
+            "summary": summary,
+            "announcements": announcements
         }
     )
 

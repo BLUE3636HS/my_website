@@ -3,6 +3,7 @@
 {% block title %}ダッシュボード{% endblock %}
 {% block css %}
     <link rel="stylesheet" href="/static/teacher.css">
+    <link rel="stylesheet" href="/static/teacher/announcements.css">
 {% endblock %}
 {% block content %}
     <div class="teacher-page teacher-dashboard-page">
@@ -14,6 +15,25 @@
                 <p class="staff-hero-meta"><span>在籍校：{{ teacher_school }}</span>{% if teacher_role == 'super_teacher' %}<span>管理権限あり</span>{% endif %}</p>
             </div>
         </section>
+
+        {% if announcements %}
+        <section class="staff-section teacher-announcements" aria-labelledby="teacher-announcements-title">
+            <div class="staff-section-heading"><h2 id="teacher-announcements-title">お知らせ</h2></div>
+            <div class="teacher-announcement-list">
+                {% for item in announcements %}
+                <a class="teacher-announcement-card tone-{{ item.tone }}" href="/teacher/announcements/{{ item.id }}">
+                    <span class="teacher-announcement-icon">{{ icons.icon(item.icon) }}</span>
+                    <span class="teacher-announcement-text">
+                        <strong>{{ item.title }}</strong>
+                        {% if item.summary %}<small>{{ item.summary }}</small>{% endif %}
+                        {% if item.ends_at %}<small class="teacher-announcement-period">{{ item.ends_at|announcement_period }} まで</small>{% endif %}
+                    </span>
+                    <span class="teacher-announcement-arrow">{{ icons.icon("arrow-right") }}</span>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
 
         <div class="staff-stat-grid">
             <a class="staff-stat-card" href="/teacher/accounts">
