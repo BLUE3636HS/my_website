@@ -34,7 +34,7 @@
                     <div class="staff-nav-group">
                         <p class="staff-nav-heading">研究</p>
                         {{ nav_link('/teacher/studylist', '自校提出物確認', 'list') }}
-                        <a class="staff-nav-link teacher-nav-link" href="/teacher/reports"{% if current_path == '/teacher/reports' or current_path.startswith('/teacher/reports/') or current_path == '/teacher/report-reviews' or current_path.startswith('/teacher/report-reviews/') %} aria-current="page"{% endif %}>{{ icons.icon('report') }}<span>成果レポート管理</span></a>
+                        <a class="staff-nav-link teacher-nav-link" href="/teacher/reports"{% if current_path == '/teacher/reports' or current_path.startswith('/teacher/reports/') or current_path == '/teacher/report-reviews' or current_path.startswith('/teacher/report-reviews/') or current_path == '/teacher/report-archive' or current_path.startswith('/teacher/report-archive/') %} aria-current="page"{% endif %}>{{ icons.icon('report') }}<span>成果レポート管理</span></a>
                     </div>
                     <div class="staff-nav-group">
                         <p class="staff-nav-heading">生徒</p>
@@ -65,6 +65,7 @@
                         ('/teacher/studylist', '自校提出物確認'),
                         ('/teacher/reports', '成果レポート管理'),
                         ('/teacher/report-reviews', '成果レポート管理'),
+                        ('/teacher/report-archive', '成果レポート管理'),
                         ('/teacher/accounts', '生徒アカウント一覧'),
                         ('/teacher/notifications', '通知送信'),
                         ('/teacher/school-features', '自校の機能設定'),

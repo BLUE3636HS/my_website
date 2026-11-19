@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator, model_validator
 
-from studies import connect_studies, get_templates, stored_field_type
+from studies import THEME_KEY, connect_studies, ensure_theme_field, get_templates, stored_field_type
 from report_reviews import apply_submission_days, normalize_submission_titles, submission_days
 from workspace_frames import parse_frame_key, school_frames
 from report_header import MAX_HEADER_ITEMS, header_options, save_school_header_items, school_header_items, school_header_style, validate_header_items
@@ -76,6 +76,8 @@ class TemplateCreate(BaseModel):
         keys = [item.stable_key for item in self.fields if item.stable_key]
         if len(keys) != len(set(keys)):
             raise ValueError('項目識別キーは重複できません。')
+        # 「テーマ」項目は全レポートに必須。なければ先頭に足し、あれば先頭へ移して文字だけにする
+        self.fields = [TemplateField.model_validate(item) for item in ensure_theme_field([f.model_dump() for f in self.fields])]
         return self
 
 
@@ -147,6 +149,8 @@ class SchoolReportTemplate(BaseModel):
         keys = [item.stable_key for item in self.fields if item.stable_key]
         if len(keys) != len(set(keys)):
             raise ValueError('項目識別キーは重複できません。')
+        # 「テーマ」項目は全レポートに必須。なければ先頭に足し、あれば先頭へ移して文字だけにする
+        self.fields = [TemplateField.model_validate(item) for item in ensure_theme_field([f.model_dump() for f in self.fields])]
         return self
 
 
@@ -335,7 +339,7 @@ def create_template_router(database_path, templates):
                     source_keys.update(row[0] for row in db.execute('SELECT stable_key FROM study_template_field WHERE template_id=?',(current_id,)))
                 for item in fields:
                     key=item['stable_key']
-                    if key and key not in source_keys and db.execute('SELECT 1 FROM study_template_field WHERE stable_key=?',(key,)).fetchone():
+                    if key and key != THEME_KEY and key not in source_keys and db.execute('SELECT 1 FROM study_template_field WHERE stable_key=?',(key,)).fetchone():
                         raise HTTPException(422,'項目識別キーが既存テンプレートと重複しています。複製元を選び直してください。')
                     if not key: item['stable_key']=uuid.uuid4().hex
                 header_items=None

@@ -146,6 +146,34 @@ def initialize_studies(db):
             db.executemany("""INSERT INTO study_template_field(template_id, label, position, required)
                 VALUES (?, ?, ?, 0)""", [(inserted.lastrowid, label, i) for i, label in enumerate(labels)])
         db.execute("UPDATE study_template_field SET stable_key=lower(hex(randomblob(16))) WHERE stable_key IS NULL OR stable_key=''")
+        migrate_theme_fields(db)
+        initialize_report_archive_tables(db)
+
+
+def initialize_report_archive_tables(db):
+    """成果レポートのアーカイブ（学校ごとの永久保存）。元のグループ・枠・提出の表とは結びつけず、保存した時点の値をコピーして持つ。"""
+    db.execute("""CREATE TABLE IF NOT EXISTS report_archive (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, school TEXT NOT NULL,
+        frame_id INTEGER NOT NULL DEFAULT 0, frame_name TEXT NOT NULL DEFAULT '', frame_description TEXT NOT NULL DEFAULT '',
+        round_day TEXT NOT NULL, round_title TEXT NOT NULL DEFAULT '', attempt INTEGER NOT NULL DEFAULT 0,
+        submission_id INTEGER NOT NULL UNIQUE,
+        group_id TEXT NOT NULL, group_name TEXT NOT NULL, group_kind TEXT NOT NULL DEFAULT 'group',
+        theme TEXT NOT NULL DEFAULT '', members_json TEXT NOT NULL DEFAULT '[]', custom_labels_json TEXT NOT NULL DEFAULT '{}',
+        template_snapshot TEXT NOT NULL, report_snapshot TEXT NOT NULL, version_json TEXT NOT NULL DEFAULT '{}',
+        submitted_at TEXT, submit_method TEXT, submitted_by TEXT,
+        review_overall TEXT NOT NULL DEFAULT '', review_fields_json TEXT NOT NULL DEFAULT '{}',
+        review_result TEXT, returned_at TEXT, returned_by TEXT,
+        archived_at TEXT NOT NULL, archived_by TEXT NOT NULL, search_text TEXT NOT NULL DEFAULT '')""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_report_archive_school_day ON report_archive(school,round_day DESC,id DESC)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_report_archive_school_archived ON report_archive(school,archived_at)")
+    db.execute("""CREATE TABLE IF NOT EXISTS report_archive_asset (
+        archive_id INTEGER NOT NULL REFERENCES report_archive(id) ON DELETE CASCADE, content_hash TEXT NOT NULL,
+        PRIMARY KEY(archive_id,content_hash))""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_report_archive_asset_hash ON report_archive_asset(content_hash)")
+    db.execute("""CREATE TABLE IF NOT EXISTS report_archive_deletion_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, school TEXT NOT NULL, archive_id INTEGER NOT NULL,
+        group_name TEXT NOT NULL, round_title TEXT NOT NULL, round_day TEXT NOT NULL,
+        deleted_at TEXT NOT NULL, deleted_by TEXT NOT NULL, deleted_role TEXT NOT NULL)""")
 
 
 MANUAL_REPORT_VERSION_LIMIT = 10
@@ -267,6 +295,75 @@ def get_templates(db, include_inactive=False):
         for field in db.execute("""SELECT id, label, required, heading_font_size, body_font_size, hide_heading, max_length, heading_alignment, body_alignment, heading_bold, body_bold, field_type, image_size, image_alignment, stable_key, with_images FROM study_template_field
             WHERE template_id = ? ORDER BY position, id""", (row[0],))
     ]} for row in db.execute("SELECT id, name, active FROM study_template WHERE active = 1 OR ? ORDER BY id", (include_inactive,))]
+
+
+# 全レポートに必ず入る「テーマ」項目。固定の識別キーで先頭に置く（古いテンプレートの「テーマ」項目もテーマとして扱う）
+THEME_KEY = "theme"
+THEME_LABEL = "テーマ"
+
+
+def default_theme_field():
+    return {"stable_key": THEME_KEY, "label": THEME_LABEL, "required": False, "heading_font_size": 11,
+            "body_font_size": 10, "hide_heading": False, "max_length": 0, "heading_alignment": "left",
+            "body_alignment": "left", "heading_bold": False, "body_bold": False, "field_type": "text",
+            "image_size": "small", "image_alignment": "center"}
+
+
+def is_theme_field(field):
+    """識別キーが theme の項目、または見出しが「テーマ」の文字項目。"""
+    if field.get("stable_key") == THEME_KEY:
+        return True
+    return (field.get("label") or "").strip() == THEME_LABEL and field.get("field_type", "text") in ("text", "both")
+
+
+def find_theme_field(fields):
+    explicit = next((f for f in fields if f.get("stable_key") == THEME_KEY), None)
+    return explicit or next((f for f in fields if is_theme_field(f)), None)
+
+
+def ensure_theme_field(fields):
+    """項目の一覧（dict）に、テーマ項目を先頭に1つだけ置いた一覧を返す。なければ追加し、あれば先頭へ移して文字だけにする。"""
+    fields = list(fields)
+    theme = find_theme_field(fields)
+    if theme is None:
+        return [default_theme_field(), *fields]
+    rest = [f for f in fields if f is not theme]
+    return [{**theme, "field_type": "text"}, *rest]
+
+
+def theme_value(template, report):
+    """保存されたテンプレートとレポート本文から、テーマの文字列を取り出す（なければ空）。"""
+    field = find_theme_field(template.get("fields", []))
+    if field is None or not isinstance(report, dict):
+        return ""
+    item = report.get(field.get("stable_key"))
+    value = item.get("value") if isinstance(item, dict) else ""
+    return (value or "").strip() if isinstance(value, str) else ""
+
+
+def migrate_theme_fields(db):
+    """既存のテンプレートと書きかけのレポートに、テーマ項目がなければ先頭に足す（何度呼んでもよい）。"""
+    import json
+    columns = "heading_font_size,body_font_size,hide_heading,max_length,heading_alignment,body_alignment,heading_bold,body_bold,field_type,image_size,image_alignment,stable_key,with_images"
+    for (template_id,) in db.execute("SELECT id FROM study_template").fetchall():
+        fields = [{"stable_key": r[0], "label": r[1], "field_type": r[2]} for r in db.execute(
+            "SELECT stable_key,label,field_type FROM study_template_field WHERE template_id=? ORDER BY position,id", (template_id,))]
+        if find_theme_field(fields) is not None:
+            continue
+        db.execute("UPDATE study_template_field SET position=position+1 WHERE template_id=?", (template_id,))
+        db.execute(f"INSERT INTO study_template_field(template_id,label,position,required,{columns}) VALUES(?,?,0,0,11,10,0,0,'left','left',0,0,'text','small','center',?,0)",
+                   (template_id, THEME_LABEL, THEME_KEY))
+    for group_id, snapshot, data in db.execute("SELECT group_id,template_snapshot,report_data FROM group_report_draft").fetchall():
+        try:
+            template, values = json.loads(snapshot), json.loads(data)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(template, dict) or not isinstance(values, dict) or find_theme_field(template.get("fields", [])) is not None:
+            continue
+        template["fields"] = [default_theme_field(), *template.get("fields", [])]
+        values[THEME_KEY] = {"value": "", "images": []}
+        db.execute("UPDATE group_report_draft SET template_snapshot=?,report_data=?,revision=revision+1 WHERE group_id=?",
+                   (json.dumps(template, ensure_ascii=False), json.dumps(values, ensure_ascii=False), group_id))
 
 
 def get_submission_collaboration(db, study_ids):

@@ -5,6 +5,7 @@ from study_pdf import render_study_pdf
 from template_management import create_template_router
 from group_reports import build_group_report_router, run_scheduled_snapshots
 from report_reviews import build_report_review_router, run_report_deadlines, run_report_reminders
+from report_archive import build_report_archive_router
 from workspace_frames import build_workspace_frame_router
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -456,6 +457,7 @@ tekne_chat_router, tekne_chat_service = build_tekne_chat_router(DATABASE_PATH, t
 app.include_router(tekne_chat_router)
 app.include_router(build_group_report_router(DATABASE_PATH, templates, tekne_chat_service, STUDY_IMAGE_UPLOADS_DIR))
 app.include_router(build_report_review_router(DATABASE_PATH, templates, tekne_chat_service, STUDY_IMAGE_UPLOADS_DIR))
+app.include_router(build_report_archive_router(DATABASE_PATH, templates, STUDY_IMAGE_UPLOADS_DIR, require_super_admin))
 app.include_router(build_workspace_frame_router(DATABASE_PATH, templates))
 
 
@@ -1168,34 +1170,8 @@ async def Dashboard(request: Request):
         }
     )
 
-@app.get("/addform", response_class = HTMLResponse)
-async def AddForm(request: Request):
-    if request.session.get("user_login") is not True or not request.session.get("user_id"):
-        return RedirectResponse("/login", status_code=303)
-    csrf = request.session.setdefault("study_csrf_token", secrets.token_urlsafe(32))
-    nonce = secrets.token_hex(32)
-    submission_token = nonce + "." + hmac.new(csrf.encode(), nonce.encode(), hashlib.sha256).hexdigest()
-    try:
-        # 個人スペースは共同提出に使えないので、通常のグループだけを選択肢にする
-        submission_groups = [group for group in tekne_chat_service.groups(request.session)
-                             if group.get("kind", "group") == "group"]
-    except HTTPException:
-        submission_groups = []
-    return templates.TemplateResponse(
-        request = request,
-        name = "addform.html",
-        context = {
-            "submission_groups": submission_groups,
-            "csrf_token": csrf,
-            "submission_token": submission_token,
-            "request": request,
-            "user_login": request.session.get("user_login"),
-            "user_id": request.session.get("user_id")
-        }
-    )
-
-@app.get("/studylist", response_class = HTMLResponse)
-async def StudyList(request: Request):    
+def student_visible_studies(request: Request):
+    """生徒本人の個人提出と、参加中グループの提出物を新しい順に返す。"""
     user_id = request.session.get("user_id")
     with closing(connect_studies(DATABASE_PATH)) as db:
         group_ids = []
@@ -1219,18 +1195,42 @@ async def StudyList(request: Request):
                ) ORDER BY s.time DESC, s.id DESC""",
             (user_id, *group_ids, user_id)).fetchall()
         submission_details = get_submission_collaboration(db, [study[0] for study in studies])
+    return studies, submission_details
 
+# PDFの提出フォームと提出物一覧は1つのページ「PDF提出」にまとめている
+@app.get("/addform", response_class = HTMLResponse)
+async def AddForm(request: Request):
+    if request.session.get("user_login") is not True or not request.session.get("user_id"):
+        return RedirectResponse("/login", status_code=303)
+    csrf = request.session.setdefault("study_csrf_token", secrets.token_urlsafe(32))
+    nonce = secrets.token_hex(32)
+    submission_token = nonce + "." + hmac.new(csrf.encode(), nonce.encode(), hashlib.sha256).hexdigest()
+    try:
+        # 個人スペースは共同提出に使えないので、通常のグループだけを選択肢にする
+        submission_groups = [group for group in tekne_chat_service.groups(request.session)
+                             if group.get("kind", "group") == "group"]
+    except HTTPException:
+        submission_groups = []
+    studies, submission_details = student_visible_studies(request)
     return templates.TemplateResponse(
         request = request,
-        name = "studylist.html",
+        name = "addform.html",
         context = {
-            "request": request,
+            "submission_groups": submission_groups,
             "studies": studies,
             "submission_details": submission_details,
+            "csrf_token": csrf,
+            "submission_token": submission_token,
+            "request": request,
             "user_login": request.session.get("user_login"),
             "user_id": request.session.get("user_id")
         }
     )
+
+@app.get("/studylist")
+async def StudyList(request: Request):
+    # 旧「提出物一覧」のURL。統合後のページの一覧部分へ移動する
+    return RedirectResponse("/addform#submitted-pdfs", status_code=303)
 
 @app.get("/uploads/{id}.pdf")
 async def pdf(id: int, request: Request):
@@ -1248,7 +1248,7 @@ async def pdf(id: int, request: Request):
     if not authenticated:
         return RedirectResponse("/login", status_code=303, headers=headers)
     if request.session.get("user_login") is True and not enabled_for_student(
-        DATABASE_PATH, request.session.get("user_id"), "studies_list"
+        DATABASE_PATH, request.session.get("user_id"), "studies_add"
     ):
         raise HTTPException(404, "この機能は現在利用できません。")
     with closing(connect_studies(DATABASE_PATH)) as db:

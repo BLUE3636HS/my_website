@@ -40,6 +40,19 @@
     if (!editor) return;
     const byId = id => document.getElementById(id);
     const fields = Array.isArray(initialFields) ? initialFields : [];
+    // 「テーマ」項目は全レポートに必須：先頭に固定し、削除・移動・種類の変更はできない
+    const THEME_KEY = 'theme';
+    const looksLikeTheme = field => field.stable_key === THEME_KEY || ((field.label || '').trim() === 'テーマ' && field.field_type !== 'image');
+    let themeField = null;
+    const isTheme = field => field === themeField;
+    (() => {
+        let index = fields.findIndex(field => field.stable_key === THEME_KEY);
+        if (index < 0) index = fields.findIndex(looksLikeTheme);
+        const theme = index >= 0 ? fields.splice(index, 1)[0] : {stable_key: THEME_KEY, label: 'テーマ', heading_font_size: 11,
+            body_font_size: 10, hide_heading: false, max_length: 0, heading_alignment: 'left', body_alignment: 'left',
+            heading_bold: false, body_bold: false, field_type: 'text', image_size: 'small', image_alignment: 'center'};
+        theme.field_type = 'text'; fields.unshift(theme); themeField = theme;
+    })();
     let selected = null;
     let dragging = null;
     let saving = false;
@@ -161,6 +174,8 @@
         updateFieldType();
         byId('field-label').setCustomValidity('');
         byId('editor-title').textContent = `${fields.indexOf(field) + 1}番目の項目を編集`;
+        const lockType = isTheme(field);  // テーマは文字だけに固定
+        ['content-text', 'content-image', 'field-type'].forEach(id => { byId(id).disabled = lockType; });
         showEditor(true);
         render(); byId('field-label').focus();
     }
@@ -323,7 +338,7 @@
     }
     function move(field, offset) {
         const index = fields.indexOf(field); const to = index + offset;
-        if (to < 0 || to >= fields.length) return;
+        if (to < 0 || to >= fields.length || isTheme(field) || to === 0) return;
         fields.splice(index, 1); fields.splice(to, 0, field); render();
         status.textContent = `「${field.label}」を${to + 1}番目に移動しました。`;
         byId('field-list').children[to].querySelector('.field-handle').focus();
@@ -368,6 +383,11 @@
             const editButton = action('✎', `${field.label}を編集`, () => edit(field)); editButton.title = '編集';
             const removeButton = action('×', `${field.label}を削除`, () => { fields.splice(fields.indexOf(field), 1); if (selected === field) resetEditor(); render(); });
             removeButton.title = '削除'; removeButton.className = 'field-remove';
+            if (isTheme(field)) {
+                removeButton.disabled = true; removeButton.title = 'テーマは全レポートに必須のため削除できません';
+                handle.disabled = true; handle.draggable = false;
+                label.append(' ', badge('必須', 'テーマは全レポートに必須です', 'field-limit'));
+            }
             const actions = document.createElement('div'); actions.className = 'field-row-actions';
             actions.append(editButton, removeButton);
             row.append(handle, kind, label, limit, actions); list.append(row);

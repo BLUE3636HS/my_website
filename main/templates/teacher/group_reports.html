@@ -17,6 +17,7 @@
     <nav class="report-tabs" aria-label="表示の切り替え">
         <a class="report-tab" href="/teacher/reports?tab=progress{{ frame_filter.query.replace('?', '&') }}"{% if tab == 'progress' %} aria-current="page"{% endif %}>進捗確認</a>
         <a class="report-tab" href="/teacher/reports?tab=submissions{{ frame_filter.query.replace('?', '&') }}"{% if tab == 'submissions' %} aria-current="page"{% endif %}>提出物確認</a>
+        <a class="report-tab" href="/teacher/report-archive">アーカイブ</a>
     </nav>
     {% if tab == 'submissions' %}
     {% if not rounds %}

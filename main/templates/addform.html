@@ -1,14 +1,16 @@
 {% extends "base.html" %}
-{% block title %}PDFを提出{% endblock %}
+{% block title %}PDF提出{% endblock %}
 {% block css %}
-    <link rel="stylesheet" href="/static/student/addform.css">
+    <link rel="stylesheet" href="/static/student/addform.css?v=unified-1">
+    <link rel="stylesheet" href="/static/student/studylist.css?v=unified-1">
 {% endblock %}
 {% block content %}
 <div class="student-page addform-page">
     <section class="student-page-hero">
         <p class="student-page-eyebrow">研究</p>
-        <h1>PDFを提出</h1>
-        <p>研究成果をまとめたPDFファイルを提出できます。</p>
+        <h1>PDF提出</h1>
+        <p>研究成果をまとめたPDFファイルを提出し、提出したPDFを確認できます。</p>
+        <p><a href="#submitted-pdfs" class="student-secondary-link">提出したPDFを見る（{{ studies|length }} 件）</a></p>
     </section>
     <form class="addform-panel" id="study-form" method="post" action="/addform" enctype="multipart/form-data">
         <section class="student-panel addform-section">
@@ -53,8 +55,43 @@
             {% if student_features.dashboard %}<a href="/dashboard" class="student-secondary-link">ダッシュボードへ戻る</a>{% endif %}
         </div>
     </form>
+    <section class="addform-submitted" id="submitted-pdfs" aria-labelledby="submitted-pdfs-title">
+        <h2 id="submitted-pdfs-title">提出したPDF</h2>
+    {% if studies %}
+    <p class="studylist-count">{{ studies|length }} 件の提出物</p>
+    <section class="student-panel studylist-panel" aria-label="提出物">
+        <table class="studylist-table">
+            <thead>
+                <tr><th scope="col">提出日時</th><th scope="col">研究名・紹介文</th><th scope="col">区分</th><th scope="col">提出者</th><th scope="col">ファイル</th></tr>
+            </thead>
+            <tbody>
+                {% for study in studies %}
+                {% set collaboration = submission_details.get(study[0]) %}
+                <tr class="studylist-row">
+                    <td class="studylist-time" data-label="提出日時"><time>{{ study[6] }}</time></td>
+                    <td class="studylist-title" data-label="研究名・紹介文">
+                        <strong>{{ study[1] }}</strong>
+                        {% if study[2] %}<span class="studylist-summary">{{ study[2] }}</span>{% endif %}
+                    </td>
+                    <td data-label="区分"><span class="study-card-badge{% if collaboration %} is-group{% endif %}">{% if collaboration %}グループ提出{% else %}個人提出{% endif %}</span></td>
+                    <td class="studylist-submitter" data-label="提出者">{% if collaboration %}「{{ collaboration.group_name }}」{{ collaboration.submitters | join(',') }}{% else %}{{ study[8] }}{% endif %}</td>
+                    <td class="studylist-file" data-label="ファイル">
+                        {% if study[7] == "pdf" %}<a href="/uploads/{{study[0]}}.pdf">{{study[3]}}</a>{% else %}<a href="/uploads/{{ study[0] }}.pdf" target="_blank" rel="noopener">PDFを開く</a>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+    {% else %}
+    <section class="student-panel studylist-empty">
+        <p class="studylist-empty-title">まだ提出物はありません</p>
+        <p>上のフォームからPDFを提出すると、ここに一覧で表示されます。</p>
+    </section>
+    {% endif %}
+    </section>
 </div>
 {% endblock %}
 {% block script %}
-    <script src="/static/addform.js?v=pdf-only-1"></script>
+    <script src="/static/addform.js?v=unified-1"></script>
 {% endblock %}

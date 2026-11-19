@@ -1,0 +1,9 @@
+{% extends 'admin/base.html' %}
+{% block title %}{{ a.round_title }}（{{ a.group_name }}）{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/report_archive.css?v=1">{% endblock %}
+{% block content %}
+<section class="school-features-panel">
+    <h1>{{ a.school }}：{{ a.group_name }}（{{ a.round_title }}）</h1>
+    {% include '_report_archive_detail.html' %}
+</section>
+{% endblock %}

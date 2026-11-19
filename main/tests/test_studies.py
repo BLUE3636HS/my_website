@@ -101,8 +101,8 @@ class StudyTests(unittest.TestCase):
                                     'is_super_admin': False}
              ]):
             endpoint = next(route.endpoint for route in main.app.routes
-                            if getattr(route, 'path', '') == '/studylist' and 'GET' in route.methods)
-            coroutine = endpoint(request('/studylist', self.session if session is None else session))
+                            if getattr(route, 'path', '') == '/addform' and 'GET' in route.methods)
+            coroutine = endpoint(request('/addform', self.session if session is None else session))
             try:
                 coroutine.send(None)
             except StopIteration as result:
@@ -538,6 +538,13 @@ class StudyTests(unittest.TestCase):
         self.assertLess(html.index('Newest lower id'), html.index('Older student submission'))
         self.assertNotIn('Another student submission', html)
 
+    def test_old_studylist_url_redirects_to_unified_pdf_page(self):
+        endpoint = next(route.endpoint for route in main.app.routes
+                        if getattr(route, 'path', '') == '/studylist' and 'GET' in route.methods)
+        response = asyncio.run(endpoint(request('/studylist', self.session)))
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers['location'], '/addform#submitted-pdfs')
+
     def test_addform_submission_kind_and_group_selector_precede_name(self):
         main.seed_school_feature_settings(self.path)
         with patch.object(main, 'tekne_chat_service', self.chat):
@@ -586,7 +593,7 @@ class StudyTests(unittest.TestCase):
         self.submit(mode='pdf', pdf=UploadFile(io.BytesIO(sample_pdf()), filename='test.pdf'))
         self.insert_template_study()
         # Resolve by route because legacy code reuses the StudyList function name.
-        for path, session in [('/addform', self.session), ('/studylist', self.session),
+        for path, session in [('/addform', self.session),
                               ('/teacher/studylist', {'teacher_login': True, 'teacher_id': 'teacher1'}),
                               ('/admin/studies', {'admin_login': True, 'admin_id': 'admin'})]:
             endpoint = next(route.endpoint for route in main.app.routes if getattr(route, 'path', '') == path and 'GET' in route.methods)
@@ -594,7 +601,11 @@ class StudyTests(unittest.TestCase):
             html = response.body.decode()
             self.assertEqual(response.status_code, 200)
             if path == '/addform':
-                self.assertIn('<h1>PDFを提出</h1>', html)
+                self.assertIn('<h1>PDF提出</h1>', html)
+                # 提出フォームの下に提出物一覧がまとまっている
+                self.assertIn('id="submitted-pdfs"', html)
+                self.assertLess(html.index('id="study-form"'), html.index('id="submitted-pdfs"'))
+                self.assertIn('<tr class="studylist-row">', html)
                 self.assertIn('accept=".pdf,application/pdf" required', html)
                 self.assertNotIn('registration_type', html)
                 self.assertNotIn('study-templates', html)

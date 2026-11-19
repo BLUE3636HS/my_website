@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}レポートアーカイブ{% endblock %}
+{% block css %}
+    <link rel="stylesheet" href="/static/report_archive.css?v=1">
+{% endblock %}
+{% block content %}
+<div class="student-page">
+    <section class="student-page-hero">
+        <p class="student-page-eyebrow">研究</p>
+        <h1>レポートアーカイブ</h1>
+        <p>{{ school }}で提出された成果レポートの記録です。今年度のものも過去のものも、テーマや名前、本文のことばで検索できます。</p>
+    </section>
+    <section class="student-panel">{% include '_report_archive_list.html' %}</section>
+</div>
+{% endblock %}

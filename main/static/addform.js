@@ -34,8 +34,9 @@ form.addEventListener("submit", async event => {
         succeeded = true;
         statusMessage.textContent = "PDFを提出しました。";
         const next = document.createElement("a");
-        next.href = "/addform";
-        next.textContent = "続けて別のPDFを提出";
+        // 同じページ内の一覧に反映させるため、クエリを付けて再読み込みする
+        next.href = "/addform?submitted=1#submitted-pdfs";
+        next.textContent = "一覧を更新して確認";
         statusMessage.append(document.createTextNode(" "), next);
         button.textContent = "提出済み";
     } catch (error) {

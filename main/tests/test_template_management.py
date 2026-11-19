@@ -40,7 +40,7 @@ class TemplateManagementTests(unittest.TestCase):
         self.assertEqual(self.create().status_code, 201)
         self.assertEqual(self.rows('SELECT seed_key,active FROM study_template WHERE id=2'), [(None, 1)])
         self.assertEqual(self.rows('SELECT label,position,heading_font_size,body_font_size,hide_heading,max_length,required FROM study_template_field WHERE template_id=2 ORDER BY position'),
-                         [('先頭', 0, 24, 16, 1, 5, 0), ('次の項目', 1, 11, 10, 0, 0, 0)])
+                         [('テーマ', 0, 11, 10, 0, 0, 0), ('先頭', 1, 24, 16, 1, 5, 0), ('次の項目', 2, 11, 10, 0, 0, 0)])  # テーマは全テンプレートの先頭に自動で入る
         with closing(connect_studies(self.path)) as db:
             self.assertEqual(len(get_templates(db)), 2)
 
@@ -116,7 +116,7 @@ class TemplateManagementTests(unittest.TestCase):
                       'body_alignment': 'center', 'heading_bold': False, 'body_bold': True}])
         with closing(connect_studies(self.path)) as db:
             fields = get_templates(db)[1]['fields']
-        self.assertEqual([(f['heading_alignment'], f['body_alignment'], f['heading_bold'], f['body_bold']) for f in fields],
+        self.assertEqual([(f['heading_alignment'], f['body_alignment'], f['heading_bold'], f['body_bold']) for f in fields[1:]],
                          [('center', 'right', True, False), ('left', 'center', False, True)])
         self.insert_template_study(template_id=2, values={f['id']: '本文' for f in fields})
         response = asyncio.run(main.pdf(1, fixtures.request('/uploads/1.pdf', self.session)))
@@ -147,7 +147,7 @@ class TemplateManagementTests(unittest.TestCase):
 
     def test_arbitrary_field_count_and_input_validation(self):
         self.create([{'label': f'項目{i}'} for i in range(20)])
-        self.assertEqual(len(self.rows('SELECT id FROM study_template_field WHERE template_id=2')), 20)
+        self.assertEqual(len(self.rows('SELECT id FROM study_template_field WHERE template_id=2')), 21)  # 20項目＋テーマ
         for change in ({'label': '　'}, {'heading_font_size': 5}, {'body_font_size': 37},
                        {'heading_font_size': 12.5}, {'max_length': -1}, {'max_length': True},
                        {'hide_heading': 'true'}, {'required': 1}):
@@ -163,8 +163,8 @@ class TemplateManagementTests(unittest.TestCase):
                                  'body_font_size': 9, 'body_alignment': 'center', 'required': True}])
         self.assertEqual(response.status_code, 201)
         self.assertEqual(self.rows('''SELECT field_type,image_size,image_alignment,max_length,body_font_size,
-            body_alignment,required FROM study_template_field WHERE template_id=2'''),
-            [('image', 'large', 'right', 50, 9, 'center', 0)])
+            body_alignment,required FROM study_template_field WHERE template_id=2 ORDER BY position'''),
+            [('text', 'small', 'center', 0, 10, 'left', 0), ('image', 'large', 'right', 50, 9, 'center', 0)])
         for change in ({'field_type': 'video'}, {'image_size': 'medium'},
                        {'image_alignment': 'justify'}, {'field_type': 'image', 'max_length': 49}):
             with self.subTest(change=change), self.assertRaises(ValidationError):
@@ -226,11 +226,12 @@ class TemplateManagementTests(unittest.TestCase):
                 INSERT INTO study_template_field VALUES(1,1,'元の項目',0,1);''')
             initialize_studies(db)
             initialize_studies(db)
-            self.assertEqual(db.execute('SELECT label,required,heading_font_size,body_font_size,hide_heading,max_length FROM study_template_field').fetchall(),
-                             [('元の項目', 0, 11, 10, 0, 0)])
+            # 既存のテンプレートには、テーマ項目が先頭に1つだけ足される（2回呼んでも増えない）
+            self.assertEqual(db.execute('SELECT label,required,heading_font_size,body_font_size,hide_heading,max_length FROM study_template_field ORDER BY position').fetchall(),
+                             [('テーマ', 0, 11, 10, 0, 0), ('元の項目', 0, 11, 10, 0, 0)])
             self.assertEqual(db.execute('SELECT name FROM study_template').fetchall(), [('元の名前',)])
             self.assertEqual(db.execute('SELECT heading_alignment,body_alignment,heading_bold,body_bold FROM study_template_field').fetchall(),
-                             [('left', 'left', 0, 0)])
+                             [('left', 'left', 0, 0), ('left', 'left', 0, 0)])
 
     def test_pdf_field_styles_and_hidden_heading(self):
         reader = PdfReader(io.BytesIO(render_study_pdf([

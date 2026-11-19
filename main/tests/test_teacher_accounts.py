@@ -120,7 +120,7 @@ class TeacherAccountsTests(unittest.TestCase):
         self.assertIn('href="/teacher/school-features"', response.body.decode())
 
         token = session["teacher_school_features_csrf"]
-        body = f"csrf_token={token}&enabled%3Adashboard=1&enabled%3Acommunity=1&enabled%3Astudies_add=1&enabled%3Astudies_list=1&enabled%3Aworkshop_reservation=1&enabled%3Amentor_reservation=1&enabled%3Aequipment_reservation=1"
+        body = f"csrf_token={token}&enabled%3Adashboard=1&enabled%3Acommunity=1&enabled%3Astudies_add=1&enabled%3Aworkshop_reservation=1&enabled%3Amentor_reservation=1&enabled%3Aequipment_reservation=1"
         post_scope = request(session).scope
         post_scope.update({"method": "POST", "path": "/teacher/school-features",
                            "headers": [(b"content-type", b"application/x-www-form-urlencoded")],
@@ -136,7 +136,6 @@ class TeacherAccountsTests(unittest.TestCase):
                 "enabled:dashboard": "1",
                 "enabled:community": "1",
                 "enabled:studies_add": "1",
-                "enabled:studies_list": "1",
                 "enabled:workshop_reservation": "1",
                 "enabled:mentor_reservation": "1",
                 "enabled:equipment_reservation": "1",

@@ -11,8 +11,9 @@ from fastapi.responses import RedirectResponse
 
 FEATURES = (
     ("dashboard", "ダッシュボード"),
-    ("studies_add", "PDF提出フォーム"),
-    ("studies_list", "研究成果一覧"),
+    # PDFの提出と提出物一覧は1つのページ（/addform）にまとめたので設定も1項目
+    ("studies_add", "PDF提出"),
+    ("report_archive", "成果レポートのアーカイブ"),
     ("community", "TEKNEコミュニティ"),
     ("workshop_reservation", "TEKNE工作室予約"),
     ("mentor_reservation", "大学生メンター予約"),
@@ -24,10 +25,10 @@ FEATURE_KEYS = {key for key, _ in FEATURES}
 def feature_for_student_path(path):
     if path == "/dashboard":
         return "dashboard"
-    if path == "/addform":
+    if path in {"/addform", "/studylist"}:
         return "studies_add"
-    if path == "/studylist":
-        return "studies_list"
+    if path == "/report-archive" or path.startswith("/report-archive/"):
+        return "report_archive"
     if path == "/community" or path.startswith("/community/"):
         return "community"
     if path == "/reservation" or path.startswith("/reservation/"):

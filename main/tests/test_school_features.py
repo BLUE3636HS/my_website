@@ -60,7 +60,7 @@ class SchoolFeatureSettingsTests(unittest.TestCase):
         paths = {
             "/dashboard": "dashboard",
             "/addform": "studies_add",
-            "/studylist": "studies_list",
+            "/studylist": "studies_add",
             "/community/posts": "community",
             "/reservation/availability": "workshop_reservation",
             "/reservation/date": "workshop_reservation",

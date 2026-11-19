@@ -1,0 +1,72 @@
+{# 成果レポートのアーカイブ一覧（先生・生徒・管理者の画面で共通）。必要な変数：base_url, filters, result, facets, query, page_query #}
+<form class="ra-search" method="get" action="{{ base_url }}" role="search" aria-label="アーカイブの検索">
+    <label class="ra-field ra-field-wide">キーワード
+        <input type="search" name="q" value="{{ filters.q }}" maxlength="200" placeholder="テーマ・グループ名・生徒の名前・本文など（スペース区切りですべてを含むものを検索）">
+    </label>
+    {% if facets.schools %}
+    <label class="ra-field">学校
+        <select name="school"><option value="">すべての学校</option>
+            {% for name in facets.schools %}<option value="{{ name }}"{% if filters.school == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
+        </select>
+    </label>
+    {% endif %}
+    <label class="ra-field">年度（4月始まり）
+        <select name="fy"><option value="">すべての年度</option>
+            {% for year in facets.years %}<option value="{{ year }}"{% if filters.fy == year %} selected{% endif %}>{{ year }}年度</option>{% endfor %}
+        </select>
+    </label>
+    <label class="ra-field">提出日（から）<input type="date" name="date_from" value="{{ filters.date_from }}"></label>
+    <label class="ra-field">提出日（まで）<input type="date" name="date_to" value="{{ filters.date_to }}"></label>
+    <label class="ra-field">枠
+        <select name="frame"><option value="">すべての枠</option>
+            {% for name in facets.frames %}<option value="{{ name }}"{% if filters.frame == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
+        </select>
+    </label>
+    <label class="ra-field">提出レポート名
+        <select name="title"><option value="">すべて</option>
+            {% for name in facets.titles %}<option value="{{ name }}"{% if filters.title == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
+        </select>
+    </label>
+    <div class="ra-actions">
+        <button type="submit" class="ra-button">検索</button>
+        <a class="ra-button ra-button-quiet" href="{{ base_url }}">条件をクリア</a>
+    </div>
+</form>
+
+<p class="ra-count" role="status">{{ result.total }} 件{% if result.total %}（{{ result.page }} / {{ result.pages }} ページ）{% endif %}
+    {% if zip_url and result.total %}　<a href="{{ zip_url }}{{ query }}">この検索結果をPDFでまとめてダウンロード（ZIP・最大{{ zip_limit }}件）</a>{% endif %}
+</p>
+
+{% if not result.rows %}
+<p class="ra-empty">{% if filters.q or filters.fy or filters.date_from or filters.date_to or filters.frame or filters.title %}条件に合うアーカイブはありません。{% else %}まだアーカイブはありません。{% endif %}</p>
+{% else %}
+<div class="ra-table-wrap">
+<table class="ra-table">
+    <thead><tr>
+        <th scope="col">提出日</th><th scope="col">提出レポート</th>{% if facets.schools %}<th scope="col">学校</th>{% endif %}<th scope="col">枠</th>
+        <th scope="col">グループ</th><th scope="col">テーマ</th><th scope="col">メンバー</th><th scope="col">保存日</th>
+    </tr></thead>
+    <tbody>
+    {% for item in result.rows %}
+        <tr>
+            <td data-label="提出日"><time datetime="{{ item.round_day }}">{{ item.day_label }}</time></td>
+            <td data-label="提出レポート"><a href="{{ base_url }}/{{ item.id }}?{{ {'back': query}|urlencode }}">{{ item.round_title }}</a>{% if item.attempt_label != '本提出' %}<span class="ra-tag">{{ item.attempt_label }}</span>{% endif %}</td>
+            {% if facets.schools %}<td data-label="学校">{{ item.school }}</td>{% endif %}
+            <td data-label="枠">{{ item.frame_name }}</td>
+            <td data-label="グループ">{{ item.group_name }}</td>
+            <td data-label="テーマ">{% if item.theme %}{{ item.theme }}{% else %}<span class="ra-muted">（テーマ未記入）</span>{% endif %}</td>
+            <td data-label="メンバー">{{ item.members|join('、') }}</td>
+            <td data-label="保存日">{{ item.archived_label }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% if result.pages > 1 %}
+<nav class="ra-pager" aria-label="ページ">
+    {% if result.page > 1 %}<a class="ra-button ra-button-quiet" href="{{ base_url }}{{ page_query(result.page - 1) }}">前へ</a>{% endif %}
+    <span>{{ result.page }} / {{ result.pages }}</span>
+    {% if result.page < result.pages %}<a class="ra-button ra-button-quiet" href="{{ base_url }}{{ page_query(result.page + 1) }}">次へ</a>{% endif %}
+</nav>
+{% endif %}
+{% endif %}

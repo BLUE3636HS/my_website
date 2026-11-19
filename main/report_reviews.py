@@ -777,13 +777,18 @@ def build_report_review_router(database_path, templates, chat_service, image_dir
             groups = round_groups(db, school, frame_key, day, info[1] is not None)
             label = frame_label(db, school, frame_key)
             back_query = frame_filter(db, school, frame)['query']  # 一覧に戻るときの枠の絞り込み
+            from report_archive import archived_ids, round_archive_status  # 循環importを避ける
+            archived = archived_ids(db, school, [a['id'] for g in groups for a in g['attempts']])
+            archive_status = round_archive_status(db, school, frame_key, day)
         today = today_jst().isoformat()
         phase = '受付中' if info[1] is None and day >= today else '締切処理中' if info[1] is None else '締切済み'
         return templates.TemplateResponse(request=request, name='teacher/report_review_round.html', context={
             **base_context(request, teacher_id, school, role), 'day': day, 'day_label': day_label(day), 'title': info[0],
             'frame_key': frame_key, 'frame_label': label, 'back_query': back_query,
             'finalized': info[1] is not None, 'phase': phase, 'groups': groups,
-            'downloadable': any(a['reviewable'] for g in groups for a in g['attempts'])})
+            'downloadable': any(a['reviewable'] for g in groups for a in g['attempts']),
+            'can_archive': role == 'super_teacher', 'archived': archived, 'archive_status': archive_status,
+            'archive_csrf': request.session.setdefault('report_archive_csrf', secrets.token_urlsafe(32))})
 
     @router.get('/teacher/report-reviews/rounds/{frame_key}/{day}/download.zip')
     async def round_zip(request: Request, frame_key: int, day: str):

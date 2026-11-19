@@ -38,8 +38,8 @@
                     {% endif %}
                     <div class="student-nav-group">
                         <p class="student-nav-heading">研究</p>
-                        {% if student_features.studies_add %}{{ nav_link('/addform', 'PDFを提出', 'file-plus') }}{% endif %}
-                        {% if student_features.studies_list %}{{ nav_link('/studylist', '提出物一覧', 'list') }}{% endif %}
+                        {% if student_features.studies_add %}{{ nav_link('/addform', 'PDF提出', 'file-plus') }}{% endif %}
+                        {% if student_features.report_archive %}{{ nav_link('/report-archive', 'レポートアーカイブ', 'archive') }}{% endif %}
                         {{ nav_link('/tekne-chat', 'ワークスペース', 'briefcase') }}
                     </div>
                     {% if student_features.community %}
@@ -74,8 +74,7 @@
                     {#- サイドバーにある項目が最上位の階層。その下のURLは子ページとして1段ずつ増やす -#}
                     {%- set top_pages = [
                         ('/dashboard', 'ダッシュボード'),
-                        ('/addform', 'PDFを提出'),
-                        ('/studylist', '提出物一覧'),
+                        ('/addform', 'PDF提出'),
                         ('/community', 'TEKNEコミュニティ'),
                         ('/tekne-chat', 'ワークスペース'),
                         ('/reservation', 'TEKNE工作室'),

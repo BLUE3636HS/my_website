@@ -1,0 +1,66 @@
+{# アーカイブ1件の詳細（読み取り専用）。必要な変数：a, base_url, can_delete, back_query #}
+<p class="ra-back"><a href="{{ base_url }}{{ back_query }}">アーカイブの一覧に戻る</a></p>
+<section class="ra-panel">
+    <dl class="ra-meta">
+        <div><dt>提出レポート</dt><dd>{{ a.round_title }}{% if a.attempt_label != '本提出' %}（{{ a.attempt_label }}）{% endif %}</dd></div>
+        <div><dt>提出日</dt><dd>{{ a.day_label }}（{{ a.fiscal_year }}年度）</dd></div>
+        <div><dt>枠</dt><dd>{{ a.frame_name }}{% if a.frame_description %}<span class="ra-muted">　{{ a.frame_description }}</span>{% endif %}</dd></div>
+        <div><dt>グループ</dt><dd>{{ a.group_name }}</dd></div>
+        <div><dt>テーマ</dt><dd>{% if a.theme %}{{ a.theme }}{% else %}<span class="ra-muted">（テーマ未記入）</span>{% endif %}</dd></div>
+        {% if show_school %}<div><dt>学校</dt><dd>{{ a.school }}</dd></div>{% endif %}
+        <div><dt>提出</dt><dd>{{ a.submitted_label }}{% if a.submit_method == 'auto' %}（期限で自動提出）{% endif %}</dd></div>
+        <div><dt>アーカイブに保存</dt><dd>{{ a.archived_label }}</dd></div>
+    </dl>
+    <p><a class="ra-button" href="{{ base_url }}/{{ a.id }}/report.pdf" target="_blank" rel="noopener">PDFで見る・ダウンロード</a>
+        <span class="ra-muted">（PDFは保存せず、保存した内容から作ります）</span></p>
+</section>
+
+<section class="ra-panel">
+    <h2>メンバー</h2>
+    {% if a.members %}
+    <ul class="ra-members">
+        {% for m in a.members %}
+        <li><strong>{{ m.name or m.id }}</strong>{% if m.furigana %}<span class="ra-muted">（{{ m.furigana }}）</span>{% endif %}
+            <span class="ra-muted">ID：{{ m.id }}</span>
+            {% for field_id, label in a.custom_labels.items() %}{% set value = (m.custom or {}).get(field_id) %}{% if value %}<span class="ra-muted">／{{ label }}：{{ value }}</span>{% endif %}{% endfor %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}<p class="ra-muted">メンバーの記録はありません。</p>{% endif %}
+</section>
+
+{% if a.review_overall or a.review_result %}
+<section class="ra-panel">
+    <h2>先生のレビュー{% if a.returned_label %}<span class="ra-muted">（{{ a.returned_label }} {{ '要再提出' if a.review_result == 'resubmit' else '返却' }}）</span>{% endif %}</h2>
+    {% if a.review_overall %}<p class="ra-text ra-review">{{ a.review_overall }}</p>{% else %}<p class="ra-muted">全体コメントはありません。</p>{% endif %}
+</section>
+{% endif %}
+
+{% for field in a.fields %}
+<section class="ra-panel">
+    <h2>{{ field.label }}</h2>
+    {% if field.type != 'image' %}
+    {% if field.value and field.value.strip() %}<p class="ra-text">{{ field.value }}</p>{% else %}<p class="ra-muted">(未入力)</p>{% endif %}
+    {% endif %}
+    {% if field.type in ('image', 'both') %}
+    <div class="ra-images">
+        {% for image in field.images %}<figure><a href="{{ image.url }}" target="_blank" rel="noopener"><img src="{{ image.url }}" alt="{{ image.caption }}" loading="lazy"></a>{% if image.caption %}<figcaption>{{ image.caption }}</figcaption>{% endif %}</figure>{% endfor %}
+        {% if not field.images and field.type == 'image' %}<p class="ra-muted">(画像なし)</p>{% endif %}
+    </div>
+    {% endif %}
+    {% if field.comment %}<p class="ra-text ra-review"><strong>先生のコメント：</strong>{{ field.comment }}</p>{% endif %}
+</section>
+{% endfor %}
+
+{% if can_delete %}
+<section class="ra-panel ra-danger" id="ra-delete" data-url="{{ delete_url }}" data-csrf="{{ csrf_token }}" data-word="{{ delete_word }}" data-after="{{ base_url }}">
+    <h2>このアーカイブを削除</h2>
+    <p>削除すると元に戻せません。確認のため、下の欄に <code>{{ delete_word }}</code> と入力してください。</p>
+    <label class="ra-field">確認入力
+        <input type="text" id="ra-delete-confirm" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="{{ delete_word }}">
+    </label>
+    <button type="button" class="ra-button ra-button-danger" id="ra-delete-button" disabled>削除する</button>
+    <p id="ra-delete-message" class="ra-muted" role="status"></p>
+</section>
+<script src="/static/report_archive.js?v=1"></script>
+{% endif %}

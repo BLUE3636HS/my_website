@@ -154,3 +154,14 @@
     .addform-actions { flex-direction: column-reverse; }
     .addform-actions > * { width: 100%; }
 }
+
+/* PDF提出ページの下半分：提出したPDFの一覧 */
+.addform-submitted {
+    margin-top: 32px;
+    scroll-margin-top: 80px;
+}
+
+.addform-submitted > h2 {
+    margin: 0 0 12px;
+    font-size: 18px;
+}

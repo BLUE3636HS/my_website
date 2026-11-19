@@ -1,0 +1,13 @@
+{% extends 'teacher/base.html' %}
+{% import "student_icons.html" as icons %}
+{% block title %}{{ a.round_title }}（{{ a.group_name }}）{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/teacher/report_reviews.css?v=frame-3"><link rel="stylesheet" href="/static/report_archive.css?v=1">{% endblock %}
+{% block content %}
+<div class="teacher-page teacher-reports-page">
+    <header class="staff-page-hero">
+        <p class="teacher-eyebrow">成果レポートのアーカイブ</p>
+        <h1>{{ a.group_name }}：{{ a.round_title }}</h1>
+    </header>
+    {% include '_report_archive_detail.html' %}
+</div>
+{% endblock %}

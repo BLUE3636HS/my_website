@@ -1,0 +1,10 @@
+{% extends 'admin/base.html' %}
+{% block title %}レポートアーカイブ管理{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/report_archive.css?v=1">{% endblock %}
+{% block content %}
+<section class="school-features-panel">
+    <h1>レポートアーカイブ管理</h1>
+    <p>全学校のアーカイブを検索できます。削除は各アーカイブの詳細画面から、「{{ delete_word }}」と入力して行います。</p>
+    {% include '_report_archive_list.html' %}
+</section>
+{% endblock %}

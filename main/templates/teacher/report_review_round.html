@@ -1,7 +1,7 @@
 {% extends 'teacher/base.html' %}
 {% import "student_icons.html" as icons %}
 {% block title %}{{ title }}（{{ day_label }}）{% endblock %}
-{% block css %}<link rel="stylesheet" href="/static/teacher/report_reviews.css?v=frame-2">{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/teacher/report_reviews.css?v=frame-2"><link rel="stylesheet" href="/static/report_archive.css?v=1">{% endblock %}
 {% block content %}
 <div class="teacher-page teacher-review-page">
     <header class="staff-page-hero">
@@ -18,6 +18,20 @@
     {% if not groups %}
     <div class="staff-panel"><div class="staff-empty">{{ icons.icon("inbox") }}<p>この枠のワークスペースはありません。</p></div></div>
     {% else %}
+    {% if can_archive %}
+    <div class="staff-panel ra-pick-bar">
+        <strong>アーカイブに保存</strong>
+        <span class="review-muted">各グループの一番新しい提出（再提出があればそれ）が、自動で学校のアーカイブに永久に保存されます。保存済みのグループは飛ばします。先生と生徒が見られるようになります。</span>
+        {% if not finalized %}
+        <span class="review-muted">期限を過ぎてから保存できます。</span>
+        {% elif archive_status.pending %}
+        <button type="button" class="review-button" id="ra-save" data-csrf="{{ archive_csrf }}" data-frame="{{ frame_key }}" data-day="{{ day }}" data-pending="{{ archive_status.pending }}" data-waiting="{{ archive_status.waiting }}">{{ archive_status.pending }}件をアーカイブに保存</button>
+        {% else %}
+        <span class="review-muted">保存できる提出はありません（{{ archive_status.archived }}件は保存済み）。</span>
+        {% endif %}
+        <span id="ra-save-message" class="review-muted" role="status"></span>
+    </div>
+    {% endif %}
     <div class="staff-panel review-table-panel">
         <table class="review-table">
             <thead><tr><th>グループ</th><th>今の枠</th><th>ステータス</th><th>入力状況（現在の下書き）</th><th>提出・レビュー</th></tr></thead>
@@ -43,6 +57,8 @@
                             {% if a.submitted_label %}<span class="review-muted">{{ '自動提出' if a.method == 'auto' else '提出' }} {{ a.submitted_label }}</span>{% endif %}
                             {% if a.lock_holder %}<span class="review-lock">{{ a.lock_holder }} 先生がレビュー中</span>{% endif %}
                             {% if a.reviewable %}<a href="/teacher/report-reviews/submissions/{{ a.id }}{{ back_query }}">{{ 'レビューを見る' if a.status in ('returned','resubmit') else 'レビューする' }}</a>{% endif %}
+                            {% if a.id in archived %}<a class="review-muted" href="/teacher/report-archive/{{ archived[a.id] }}">アーカイブ済み</a>
+                            {% endif %}
                         </li>
                     {% endfor %}
                     </ul>
@@ -55,3 +71,4 @@
     {% endif %}
 </div>
 {% endblock %}
+{% block script %}{% if can_archive %}<script src="/static/report_archive.js?v=1"></script>{% endif %}{% endblock %}

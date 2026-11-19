@@ -79,8 +79,8 @@ class TemplateApiTests(unittest.TestCase):
         with closing(connect_studies(self.path)) as db:
             rows = db.execute('SELECT label,field_type,with_images,max_length FROM study_template_field WHERE template_id=? ORDER BY position',
                               (json.loads(response.body)['id'],)).fetchall()
-        self.assertEqual(rows, [('考察', 'text', 1, 200), ('写真', 'image', 0, 50)])
-        self.assertEqual(SchoolReportTemplate(csrf_token='x', fields=[field('a', 'both')]).fields[0].field_type, 'both')
+        self.assertEqual(rows, [('テーマ', 'text', 0, 0), ('考察', 'text', 1, 200), ('写真', 'image', 0, 50)])  # テーマは必ず先頭に入る
+        self.assertEqual(SchoolReportTemplate(csrf_token='x', fields=[field('a', 'both')]).fields[1].field_type, 'both')  # [0] は自動で入るテーマ
 
 
 class LegacyIndividualSubmissionTests(unittest.TestCase):

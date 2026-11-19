@@ -1,0 +1,19 @@
+{% extends 'teacher/base.html' %}
+{% import "student_icons.html" as icons %}
+{% block title %}成果レポートのアーカイブ{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/teacher/report_reviews.css?v=frame-3"><link rel="stylesheet" href="/static/report_archive.css?v=1">{% endblock %}
+{% block content %}
+<div class="teacher-page teacher-reports-page">
+    <header class="staff-page-hero">
+        <p class="teacher-eyebrow">研究</p>
+        <h1>{{ school }}：成果レポートのアーカイブ</h1>
+        <p>学校ごとに永久に残る、提出された成果レポートの記録です。今年度のものも過去のものも、まとめて検索できます。生徒も同じ内容を見られます。{% if teacher_role == 'super_teacher' %}アーカイブへの保存は、「提出物確認」の提出回の画面から行います。{% endif %}</p>
+    </header>
+    <nav class="report-tabs" aria-label="表示の切り替え">
+        <a class="report-tab" href="/teacher/reports?tab=progress">進捗確認</a>
+        <a class="report-tab" href="/teacher/reports?tab=submissions">提出物確認</a>
+        <a class="report-tab" href="/teacher/report-archive" aria-current="page">アーカイブ</a>
+    </nav>
+    <div class="staff-panel">{% include '_report_archive_list.html' %}</div>
+</div>
+{% endblock %}
