@@ -199,11 +199,12 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
             except Exception: pass
     @router.get('/tekne-chat/groups/{group_id}/report')
     async def page(request:Request,group_id:str):
-        _,group=group_access(request.session,group_id)
-        from report_reviews import student_submission_context  # 循環importを避ける
+        user,group=group_access(request.session,group_id)
+        from report_reviews import mark_reviews_seen,student_submission_context  # 循環importを避ける
         with closing(connect_studies(database_path)) as db:
             state=draft(db,group); db.commit()
             submission=student_submission_context(db,group['school_name'],group_id) if state else None
+            mark_reviews_seen(db,group_id,user); db.commit()  # 開いたら返却済みレビューは既読（ワークスペースの「新しいレビュー」を消す）
         return templates.TemplateResponse(request=request,name='group_report.html',context={'request':request,'group':group,'state':state,'submission':submission,'csrf_token':request.session.get('tekne_chat_csrf','')})
     @router.get('/api/group-reports/{group_id}')
     async def get_draft(request:Request,group_id:str):
@@ -305,6 +306,11 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
         sections=pdf_sections(database_path,image_dir,json.loads(row['template_snapshot']),json.loads(row['report_snapshot']),row['header'],row['header_style'])
         pdf=await asyncio.to_thread(render_study_pdf,sections)
         return Response(pdf,media_type='application/pdf',headers={'Content-Disposition':f'inline; filename="report-v{row["version_number"]}.pdf"'})
+    @router.get('/api/group-reports/{group_id}/review-notice')
+    async def review_notice_api(request:Request,group_id:str):
+        from report_reviews import review_notice  # 循環importを避ける
+        user,_=group_access(request.session,group_id)
+        with closing(connect_studies(database_path)) as db: return review_notice(db,group_id,user)
     @router.get('/api/group-reports/{group_id}/submissions/{submission_id}/review.pdf')
     async def student_review_pdf(request:Request,group_id:str,submission_id:int):
         from report_reviews import review_pdf  # 循環importを避ける

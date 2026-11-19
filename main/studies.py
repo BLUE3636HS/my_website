@@ -185,7 +185,19 @@ def initialize_report_review_tables(db):
     db.execute("""CREATE TABLE IF NOT EXISTS group_report_reminder_sent (
         group_id TEXT NOT NULL, round_day TEXT NOT NULL, attempt INTEGER NOT NULL, offset_days INTEGER NOT NULL,
         sent_at TEXT NOT NULL, PRIMARY KEY(group_id,round_day,attempt,offset_days))""")
+    # 生徒が返却されたレビューを見たかどうか（ワークスペースで「新しいレビュー」と知らせるため）
+    db.execute("""CREATE TABLE IF NOT EXISTS group_report_review_seen (
+        submission_id INTEGER NOT NULL REFERENCES group_report_submission(id) ON DELETE CASCADE,
+        student_id TEXT NOT NULL, seen_at TEXT NOT NULL, PRIMARY KEY(submission_id,student_id))""")
     add_frame_to_report_days(db)
+    # 再提出の行が「枠なし」で作られていた不具合の補正：再提出は、同じ提出日の本提出と同じ枠の提出回にする
+    db.execute("""UPDATE group_report_submission SET round_frame=(
+            SELECT p.round_frame FROM group_report_submission p
+            WHERE p.group_id=group_report_submission.group_id AND p.round_day=group_report_submission.round_day AND p.attempt=0)
+        WHERE attempt>0 AND EXISTS (
+            SELECT 1 FROM group_report_submission p
+            WHERE p.group_id=group_report_submission.group_id AND p.round_day=group_report_submission.round_day AND p.attempt=0
+              AND p.round_frame<>group_report_submission.round_frame)""")
     # 提出は提出した時点で確定する（先生が返却するまで出し直せない）。以前の「期限前の提出」も確定済みにする
     db.execute("UPDATE group_report_submission SET finalized_at=COALESCE(submitted_at,created_at) WHERE version_id IS NOT NULL AND finalized_at IS NULL")
 

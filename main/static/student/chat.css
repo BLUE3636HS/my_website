@@ -214,3 +214,13 @@
 .tc-frame-description { margin: 6px 0 0; color: #667085; font-size: 12px; white-space: pre-wrap; }
 .tc-frame-heading { display: flex; align-items: baseline; gap: 6px; }
 .tc-frame-heading small { color: #98a2b3; font-weight: 400; }
+
+/* 先生からのレビューの知らせ（「レポート記入」の左） */
+.tc-header-actions .tc-review-notice { display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 14px; border: 2px solid #f0a020; border-radius: 9px; background: #fff7e6; color: #9a5b00; font-size: 14px; font-weight: 700; text-decoration: none; white-space: nowrap; animation: tc-review-pulse 1.6s ease-in-out 3; }
+.tc-header-actions .tc-review-notice::before { content: "!"; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: currentColor; color: #fff; font-size: 13px; }
+.tc-header-actions .tc-review-notice.is-resubmit { border-color: #d00000; background: #fff0f0; color: #d00000; }
+.tc-header-actions .tc-review-notice:hover { filter: brightness(.97); }
+#tc-review-notice[hidden] { display: none !important; }
+@keyframes tc-review-pulse { 50% { box-shadow: 0 0 0 5px rgba(240, 160, 32, .25); } }
+@media (prefers-reduced-motion: reduce) { .tc-header-actions .tc-review-notice { animation: none; } }
+@media (max-width: 640px) { .tc-header-actions .tc-review-notice { height: 38px; padding: 0 10px; font-size: 12px; } }

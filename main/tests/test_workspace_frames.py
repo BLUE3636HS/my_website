@@ -15,10 +15,11 @@ import test_report_reviews as rr
 from group_reports import build_group_report_router
 from group_reports import run_scheduled_snapshots
 from report_reviews import (
+    acquire_review_lock, return_review,
     build_report_review_router, build_round_zip, open_targets, round_groups, round_summaries, run_report_deadlines,
     run_report_reminders, school_groups, submit_report,
 )
-from studies import add_frame_to_report_days
+from studies import add_frame_to_report_days, initialize_studies
 from template_management import SnapshotDays, create_template_router, snapshot_today
 from workspace_frames import (
     build_workspace_frame_router, create_frame, delete_frame, ensure_frame_schema, frame_filter, school_frames,
@@ -184,6 +185,28 @@ class FrameDayTests(FrameBase):
         self.assertEqual(set(groups), {'g1', 'p3'})
         self.assertTrue(groups['g1']['moved'])
         self.assertFalse(groups['p3']['moved'])
+
+    def test_resubmission_stays_in_the_original_frames_round(self):
+        self.add_frame_round('2026-11-20', self.f1)
+        self.submit('g1', '2026-11-20', now=rr.at('2026-11-18'))
+        sid = self.sub_id('g1', '2026-11-20')
+        self.call(acquire_review_lock, sid, '学校A', 't1')
+        self.call(return_review, sid, '学校A', 't1', '直して', {}, 'resubmit', '2026-11-25', now=rr.at('2026-11-19'))
+        self.submit('g1', '2026-11-20', attempt=1, now=rr.at('2026-11-19'))
+        with self.db() as db:
+            frames = db.execute('SELECT attempt,round_frame FROM group_report_submission WHERE group_id=? ORDER BY attempt', ('g1',)).fetchall()
+            groups = {g['id']: g for g in round_groups(db, '学校A', self.f1, '2026-11-20', False)}
+        self.assertEqual(frames, [(0, self.f1), (1, self.f1)])
+        self.assertEqual([(a['attempt'], a['reviewable']) for a in groups['g1']['attempts']], [(0, True), (1, True)])  # 再提出もレビューできる
+
+    def test_migration_moves_resubmission_rows_to_the_original_frame(self):
+        self.add_frame_round('2026-11-20', self.f1)
+        self.submit('g1', '2026-11-20', now=rr.at('2026-11-18'))
+        with self.db() as db, db:
+            db.execute("INSERT INTO group_report_submission(school,group_id,round_day,attempt,due_day,created_at,round_frame) VALUES('学校A','g1','2026-11-20',1,'2026-11-25','now',0)")
+            initialize_studies(db)
+            initialize_studies(db)  # 何度実行しても同じ
+            self.assertEqual(db.execute('SELECT attempt,round_frame FROM group_report_submission ORDER BY attempt').fetchall(), [(0, self.f1), (1, self.f1)])
 
     def test_reminders_follow_each_frames_days(self):
         self.add_frame_round('2026-11-20', self.f1)

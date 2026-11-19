@@ -20,7 +20,7 @@ from notifications import initialize_notification_tables
 from report_reviews import (
     acquire_review_lock, build_report_review_router, build_round_zip, force_release_review_lock, input_status,
     open_targets, release_review_lock, return_review, round_groups, round_summaries, run_report_deadlines,
-    review_pdf, run_report_reminders, save_review, student_submission_context, submit_report,
+    day_label, mark_reviews_seen, review_notice, review_pdf, run_report_reminders, save_review, student_submission_context, submit_report,
 )
 from studies import initialize_studies
 from template_management import SnapshotDays, create_template_router, snapshot_today
@@ -480,6 +480,25 @@ class RouterTests(Base):
         self.submit('g1', self.day, attempt=1, now=at(snapshot_today().isoformat()))
         with self.db() as db:
             self.assertEqual(student_submission_context(db, '学校A', 'g1')['pending_reviews'], [])
+
+    def test_workspace_notice_for_resubmit_and_unseen_reviews(self):
+        with self.db() as db:
+            self.assertEqual(review_notice(db, 'g1', 'u1'), {'resubmit_due': None, 'unseen': 0})
+        self.call(acquire_review_lock, self.sid, '学校A', 't1')
+        due = (snapshot_today() + datetime.timedelta(days=3)).isoformat()
+        self.call(return_review, self.sid, '学校A', 't1', '全体', {}, 'resubmit', due)
+        with self.db() as db:
+            notice = review_notice(db, 'g1', 'u1')
+        self.assertEqual(notice, {'resubmit_due': day_label(due), 'unseen': 1})
+        self.call(mark_reviews_seen, 'g1', 'u1')  # レポート画面を開いた
+        with self.db() as db:
+            self.assertEqual(review_notice(db, 'g1', 'u1'), {'resubmit_due': day_label(due), 'unseen': 0})  # 要再提出は再提出まで出す
+            self.assertEqual(review_notice(db, 'g1', 'u2')['unseen'], 1)  # 既読は生徒ごと
+        self.submit('g1', self.day, attempt=1, now=at(snapshot_today().isoformat()))
+        with self.db() as db:
+            self.assertEqual(review_notice(db, 'g1', 'u1'), {'resubmit_due': None, 'unseen': 0})
+            records = student_submission_context(db, '学校A', 'g1')['records']
+        self.assertFalse(records[-1]['feedback']['pending'])  # 再提出後は「下の記入欄に赤文字」と出さない
 
     def test_returned_review_is_not_pending(self):
         self.call(acquire_review_lock, self.sid, '学校A', 't1')

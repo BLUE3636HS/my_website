@@ -349,8 +349,9 @@ def student_submission_context(db, school, group_id, today=None):
                                   (group_id, sub['round_day'], sub['attempt'] + 1)).fetchone()
             item['feedback'] = {'result': returned['result'], 'overall': returned['overall_comment'], 'fields': comments,
                                 'editors': returned['editors'], 'returned_at': format_time(returned['returned_at']),
-                                'resubmit_due': day_label(next_row[0]) if next_row else None}
-            if returned['result'] == 'resubmit' and next_row and next_row[1] is None:
+                                'resubmit_due': day_label(next_row[0]) if next_row else None,
+                                'pending': returned['result'] == 'resubmit' and bool(next_row) and next_row[1] is None}
+            if item['feedback']['pending']:
                 # 再提出待ち：記入欄の下に赤文字で出すレビュー（項目のキー → ラベルとコメント）
                 pending_reviews.append({
                     'title': sub['title'] or '', 'attempt_label': attempt_label(sub['attempt']), 'overall': returned['overall_comment'],
@@ -358,6 +359,29 @@ def student_submission_context(db, school, group_id, today=None):
                                for f in fields if returned['field_comments'].get(f.get('stable_key'))}})
         records.append(item)
     return {'targets': open_targets(db, school, group_id, today), 'records': records, 'pending_reviews': pending_reviews}
+
+
+def returned_review_ids(db, group_id):
+    return [r[0] for r in db.execute('''SELECT s.id FROM group_report_submission s JOIN group_report_review r ON r.submission_id=s.id
+        WHERE s.group_id=? AND r.result IS NOT NULL''', (group_id,))]
+
+
+def mark_reviews_seen(db, group_id, student_id, now=None):
+    """生徒がレポート画面を開いたら、そのワークスペースの返却済みレビューを既読にする。"""
+    stamp = utc_text(now)
+    for submission_id in returned_review_ids(db, group_id):
+        db.execute('INSERT OR IGNORE INTO group_report_review_seen(submission_id,student_id,seen_at) VALUES(?,?,?)',
+                   (submission_id, student_id, stamp))
+
+
+def review_notice(db, group_id, student_id):
+    """ワークスペースの「レポート記入」の横に出す知らせ。要再提出（再提出前）と、まだ見ていない返却済みレビュー。"""
+    resubmit = db.execute('''SELECT due_day FROM group_report_submission
+        WHERE group_id=? AND attempt>0 AND version_id IS NULL AND finalized_at IS NULL ORDER BY due_day LIMIT 1''', (group_id,)).fetchone()
+    unseen = sum(1 for submission_id in returned_review_ids(db, group_id)
+                 if not db.execute('SELECT 1 FROM group_report_review_seen WHERE submission_id=? AND student_id=?',
+                                   (submission_id, student_id)).fetchone())
+    return {'resubmit_due': day_label(resubmit[0]) if resubmit else None, 'unseen': unseen}
 
 
 def review_pdf(database_path, image_dir, db, submission_id, school=None, group_id=None):
@@ -583,8 +607,9 @@ def return_review(db, submission_id, school, teacher_id, overall_comment, field_
     group_name = group[0] if group else sub['group_id']
     title = sub['title'] or day_label(sub['round_day'])
     if result == 'resubmit':
-        db.execute("""INSERT INTO group_report_submission(school,group_id,round_day,attempt,due_day,created_at) VALUES(?,?,?,?,?,?)""",
-                   (sub['school'], sub['group_id'], sub['round_day'], sub['attempt'] + 1, due_day, stamp))
+        # 再提出は、もとの提出と同じ枠の提出回に入れる（枠を指定しないと「枠なし」になり、先生の一覧に出ない）
+        db.execute("""INSERT INTO group_report_submission(school,group_id,round_day,attempt,due_day,created_at,round_frame) VALUES(?,?,?,?,?,?,?)""",
+                   (sub['school'], sub['group_id'], sub['round_day'], sub['attempt'] + 1, due_day, stamp, sub['round_frame']))
         body = (f"「{title}」の{attempt_label(sub['attempt'])}が先生から返却されました。再提出が必要です。\n"
                 f"グループ：{group_name}\n再提出期限：{day_label(due_day)} 23:59\n成果レポート画面でフィードバックを確認してください。")
         notify_group(db, sub['group_id'], '成果レポートの再提出をお願いします', body, 'report_resubmit', 'teacher', teacher_id)

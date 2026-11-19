@@ -32,7 +32,7 @@
     {% if record.feedback %}
     <div class="report-feedback">
      <p class="report-feedback-head">先生のレビュー（{{ record.feedback.returned_at }} 返却）　<a class="report-version-pdf" href="/api/group-reports/{{ group.id }}/submissions/{{ record.submission_id }}/review.pdf" target="_blank" rel="noopener">レビュー付きPDF</a></p>
-     {% if record.feedback.result == 'resubmit' %}<p class="report-feedback-resubmit">再提出が必要です。{% if record.feedback.resubmit_due %}再提出期限：{{ record.feedback.resubmit_due }} 23:59　{% endif %}レビューの内容は、下の記入欄に赤文字で表示しています。</p>{% endif %}
+     {% if record.feedback.pending %}<p class="report-feedback-resubmit">再提出が必要です。{% if record.feedback.resubmit_due %}再提出期限：{{ record.feedback.resubmit_due }} 23:59　{% endif %}レビューの内容は、下の記入欄に赤文字で表示しています。</p>{% elif record.feedback.result == 'resubmit' %}<p class="report-feedback-editors">再提出済みです。このときのレビューは「レビュー付きPDF」で確認できます。</p>{% endif %}
      <p class="report-feedback-editors">レビューした先生：{{ record.feedback.editors|join('、') }}</p>
     </div>
     {% endif %}

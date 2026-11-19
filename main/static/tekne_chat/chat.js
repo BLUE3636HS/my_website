@@ -225,6 +225,7 @@
             if (!refreshed) {
                 state.socket?.close(); state.group = null; state.selectedEntry = null; renderSelectionActions(); setEnabled(false); $("tc-current-name").textContent = "グループを選択";
                 if ($("tc-report-link")) $("tc-report-link").hidden = true;
+                if ($("tc-review-notice")) $("tc-review-notice").hidden = true;
                 messagesEl.replaceChildren();
             } else {
                 state.group = refreshed;
@@ -234,6 +235,23 @@
             }
         }
     }
+    // 先生からのレビュー（要再提出・まだ見ていない返却）を「レポート記入」の左に知らせる
+    async function loadReviewNotice(groupId) {
+        const reviewNotice = $("tc-review-notice");
+        if (!reviewNotice) return;
+        reviewNotice.hidden = true;
+        try {
+            const result = await api(`/api/group-reports/${encodeURIComponent(groupId)}/review-notice`);
+            if (state.group?.id !== groupId) return;
+            const label = result.resubmit_due ? `要再提出（期限 ${result.resubmit_due}）` : result.unseen ? "先生からのレビューが届いています" : "";
+            if (!label) return;
+            reviewNotice.textContent = label;
+            reviewNotice.classList.toggle("is-resubmit", !!result.resubmit_due);
+            reviewNotice.href = `/tekne-chat/groups/${encodeURIComponent(groupId)}/report`;
+            reviewNotice.title = "レポート記入画面で先生のレビューを確認できます";
+            reviewNotice.hidden = false;
+        } catch { /* 知らせが取れなくてもワークスペースは使える */ }
+    }
     async function openGroup(groupId, options = {}) {
         clearError();
         state.socket?.close(); clearTimeout(state.reconnectTimer);
@@ -242,6 +260,7 @@
         state.group = state.groups.find((group) => group.id === groupId) || { id: groupId, name: "読み込み中" };
         const group = state.group;
         const reportLink = $("tc-report-link"); if (reportLink) { reportLink.href = `/tekne-chat/groups/${encodeURIComponent(groupId)}/report`; reportLink.hidden = false; }
+        loadReviewNotice(groupId);
         $("tc-current-name").textContent = group.name;
         const currentIcon = groupIcon(group); currentIcon.id = "tc-current-icon";
         $("tc-current-icon").replaceWith(currentIcon);
