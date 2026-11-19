@@ -1,9 +1,9 @@
 """成果レポートの提出日・提出・先生のレビュー・期限前リマインド。
 
 - 提出日は「定期自動保存日」のうち、先生が提出日に指定した日（名前付き）。
-- 生徒は提出日の23:59までなら「提出」ボタンで何度でも提出し直せ、最後に提出した版が提出版になる。
+- 生徒は提出日の23:59までに「提出」ボタンで提出する。提出した時点で確定し、先生が返却するまで出し直せない。
 - 期限（23:59）を過ぎると、まだ提出していないグループはその時点の下書きが自動で提出される。
-- 期限を過ぎた提出版を先生がレビューする。レビュー中はロックされ、「レビューを終了」か「返却」で外れる。
+- 提出された版は、期限前でも先生がレビューできる。レビュー中はロックされ、「レビューを終了」か「返却」で外れる。
 - 「要再提出」で返却すると、再提出期限つきの再提出（attempt+1）が作られ、同じ流れで提出・レビューする。
 """
 import asyncio
@@ -19,7 +19,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import RedirectResponse, Response
 
 from group_reports import JST, load_version, pdf_sections
 from notifications import create_notification
@@ -225,9 +225,11 @@ def normalize_submission_titles(submissions, requested_days):
 
 
 def remove_submission_day(db, school, frame_key, day):
-    """期限前の提出日を解除する。早めに提出された版は通常の保存履歴に戻す。"""
+    """提出がまだない期限前の提出日を解除する（提出があれば外せない）。"""
     where = 'school=? AND round_frame=? AND round_day=?'
     args = (school, frame_key, day)
+    if db.execute(f'SELECT 1 FROM group_report_submission WHERE {where} AND version_id IS NOT NULL LIMIT 1', args).fetchone():
+        raise HTTPException(409, f'{day_label(day)} の提出日は、すでに提出があるため外せません。')
     rows = db.execute(f'SELECT group_id,version_id FROM group_report_submission WHERE {where}', args).fetchall()
     groups = set()
     for group_id, version_id in rows:
@@ -269,13 +271,16 @@ def open_targets(db, school, group_id, today):
         WHERE school=? AND frame_id=? AND day>=? AND finalized_at IS NULL ORDER BY day LIMIT 1''', (school, frame_key, today.isoformat())).fetchone()
     if nearest:
         sub = submission_row(db, group_id, nearest[0], 0)
+        if sub and sub['version_id']:
+            nearest = None  # 提出済み。先生が返却するまで出し直せない
+    if nearest:
         targets.append({'round_day': nearest[0], 'attempt': 0, 'title': nearest[1], 'due_day': nearest[0], 'round_frame': frame_key,
                         'due_label': day_label(nearest[0]),
-                        'submitted_at': format_time(sub['submitted_at']) if sub and sub['version_id'] else None})
+                        'submitted_at': None})
     for row in db.execute('''SELECT s.round_day,s.attempt,s.due_day,s.version_id,s.submitted_at,COALESCE(d.title,''),s.round_frame
             FROM group_report_submission s
             LEFT JOIN group_report_submission_day d ON d.school=s.school AND d.frame_id=s.round_frame AND d.day=s.round_day
-            WHERE s.group_id=? AND s.attempt>0 AND s.finalized_at IS NULL AND s.due_day>=? ORDER BY s.due_day,s.round_day''',
+            WHERE s.group_id=? AND s.attempt>0 AND s.finalized_at IS NULL AND s.version_id IS NULL AND s.due_day>=? ORDER BY s.due_day,s.round_day''',
                           (group_id, today.isoformat())):
         targets.append({'round_day': row[0], 'attempt': row[1], 'title': row[5], 'due_day': row[2], 'round_frame': row[6],
                         'due_label': day_label(row[2]),
@@ -284,7 +289,7 @@ def open_targets(db, school, group_id, today):
 
 
 def submit_report(db, school, group_id, student_id, round_day, attempt, now=None):
-    """生徒の「提出」。今の下書きを提出版として保存する。期限までは出し直せ、最後の提出が有効になる。"""
+    """生徒の「提出」。今の下書きを提出版として保存し、その時点で確定する（先生が返却するまで出し直せない）。"""
     today = today_jst(now)
     if not isinstance(round_day, str) or not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 0:
         raise HTTPException(422, '提出先が正しくありません。')
@@ -300,16 +305,13 @@ def submit_report(db, school, group_id, student_id, round_day, attempt, now=None
     version_id = insert_version(db, group_id, draft[0], draft[1], draft[2], draft[3], student_id, saved_at, 'submission', round_day)
     existing = submission_row(db, group_id, round_day, attempt)
     if existing:
-        if existing['version_id']:
-            # 前に提出した版は通常の保存履歴に戻す（最新10件の対象になる）
-            db.execute("UPDATE group_report_version SET kind='manual' WHERE id=? AND kind='submission'", (existing['version_id'],))
-        # 期限前に枠を変え、移った先の枠の同じ日に出し直した場合は、移った先の提出回の提出にする
-        db.execute("""UPDATE group_report_submission SET version_id=?,method='manual',submitted_by=?,submitted_at=?,round_frame=? WHERE id=?""",
-                   (version_id, student_id, saved_at, target['round_frame'], existing['id']))
+        # 再提出の枠（提出待ちの行）に提出する。期限前に枠を変えた場合は、移った先の提出回の提出にする
+        db.execute("""UPDATE group_report_submission SET version_id=?,method='manual',submitted_by=?,submitted_at=?,round_frame=?,finalized_at=? WHERE id=?""",
+                   (version_id, student_id, saved_at, target['round_frame'], saved_at, existing['id']))
     else:
-        db.execute("""INSERT INTO group_report_submission(school,group_id,round_day,attempt,due_day,version_id,method,submitted_by,submitted_at,created_at,round_frame)
-            VALUES(?,?,?,?,?,?,'manual',?,?,?,?)""", (school, group_id, round_day, attempt, round_day, version_id, student_id, saved_at, saved_at,
-                                                    target['round_frame']))
+        db.execute("""INSERT INTO group_report_submission(school,group_id,round_day,attempt,due_day,version_id,method,submitted_by,submitted_at,finalized_at,created_at,round_frame)
+            VALUES(?,?,?,?,?,?,'manual',?,?,?,?,?)""", (school, group_id, round_day, attempt, round_day, version_id, student_id, saved_at, saved_at, saved_at,
+                                                      target['round_frame']))
     prune_manual_report_versions(db, group_id)
     return {'ok': True, 'submitted_at': format_time(saved_at)}
 
@@ -318,6 +320,7 @@ def student_submission_context(db, school, group_id, today=None):
     """生徒のレポート画面に出す、提出ボタンの対象・提出状況・返却されたレビュー。"""
     today = today or today_jst()
     records = []
+    pending_reviews = []  # 「要再提出」で返却され、まだ再提出していないレビュー（記入欄の下に赤文字で出す）
     rows = db.execute('''SELECT s.id FROM group_report_submission s WHERE s.group_id=?
         ORDER BY s.round_day DESC,s.attempt DESC''', (group_id,)).fetchall()
     for (submission_id,) in rows:
@@ -336,19 +339,42 @@ def student_submission_context(db, school, group_id, today=None):
             label = '提出済み（レビュー待ち）'
         item = {'title': sub['title'] or '', 'attempt_label': attempt_label(sub['attempt']), 'status': label,
                 'due_label': day_label(sub['due_day']), 'submitted_at': format_time(sub['submitted_at']),
-                'method': sub['method'], 'version_id': sub['version_id'], 'feedback': None}
+                'method': sub['method'], 'version_id': sub['version_id'], 'feedback': None, 'submission_id': sub['id']}
         if returned and sub['version_id']:
             version = db.execute('SELECT template_snapshot FROM group_report_version WHERE id=?', (sub['version_id'],)).fetchone()
             fields = json.loads(version[0]).get('fields', []) if version else []
             comments = [{'label': f['label'], 'comment': returned['field_comments'][f['stable_key']]}
                         for f in fields if returned['field_comments'].get(f.get('stable_key'))]
-            next_due = db.execute('SELECT due_day FROM group_report_submission WHERE group_id=? AND round_day=? AND attempt=?',
+            next_row = db.execute('SELECT due_day,version_id FROM group_report_submission WHERE group_id=? AND round_day=? AND attempt=?',
                                   (group_id, sub['round_day'], sub['attempt'] + 1)).fetchone()
             item['feedback'] = {'result': returned['result'], 'overall': returned['overall_comment'], 'fields': comments,
                                 'editors': returned['editors'], 'returned_at': format_time(returned['returned_at']),
-                                'resubmit_due': day_label(next_due[0]) if next_due else None}
+                                'resubmit_due': day_label(next_row[0]) if next_row else None}
+            if returned['result'] == 'resubmit' and next_row and next_row[1] is None:
+                # 再提出待ち：記入欄の下に赤文字で出すレビュー（項目のキー → ラベルとコメント）
+                pending_reviews.append({
+                    'title': sub['title'] or '', 'attempt_label': attempt_label(sub['attempt']), 'overall': returned['overall_comment'],
+                    'fields': {f['stable_key']: {'label': f['label'], 'comment': returned['field_comments'][f['stable_key']]}
+                               for f in fields if returned['field_comments'].get(f.get('stable_key'))}})
         records.append(item)
-    return {'targets': open_targets(db, school, group_id, today), 'records': records}
+    return {'targets': open_targets(db, school, group_id, today), 'records': records, 'pending_reviews': pending_reviews}
+
+
+def review_pdf(database_path, image_dir, db, submission_id, school=None, group_id=None):
+    """返却済みのレビュー付きPDF（レビューされた提出版の内容＋先生のレビューを赤文字で）。school か group_id で持ち主を確かめる。"""
+    sub = submission_by_id(db, submission_id)
+    if sub is None or (school is not None and sub['school'] != school) or (group_id is not None and sub['group_id'] != group_id):
+        raise HTTPException(404, '提出が見つかりません。')
+    review = review_row(db, submission_id)
+    if sub['version_id'] is None or not review or not review['result']:
+        raise HTTPException(404, '返却されたレビューがありません。')
+    version = load_version(db, sub['group_id'], sub['version_id'])
+    if version is None:
+        raise HTTPException(404, '提出版が見つかりません。')
+    sections = pdf_sections(db, image_dir, json.loads(version['template_snapshot']), json.loads(version['report_snapshot']),
+                            version['header'], version['header_style'],
+                            review={'overall': review['overall_comment'], 'fields': review['field_comments']})
+    return render_study_pdf(sections)
 
 
 # ---------------------------------------------------------------- 期限の処理・リマインド
@@ -446,7 +472,7 @@ def run_report_reminders(database_path, now=None):
                        (group_id, round_day, attempt, offset, sent_at))
             kind = '再提出' if attempt else '提出'
             body = (f"「{title}」の{kind}期限は {day_label(due_day)} 23:59 です。\nグループ：{name}\n"
-                    f"期限までは成果レポート画面の「提出」ボタンで提出できます（何度でも出し直せます）。"
+                    f"期限までは成果レポート画面の「提出」ボタンで提出できます（提出すると、先生が返却するまで出し直せません）。"
                     f"期限を過ぎると、その時点の内容が自動で提出されます。")
             notify_group(db, group_id, f'成果レポートの{kind}期限が近づいています', body, 'report_reminder')
             sent += 1
@@ -475,7 +501,7 @@ def _reviewable(db, submission_id, school):
     if sub is None or sub['school'] != school:
         raise HTTPException(404, '提出が見つかりません。')
     if sub['version_id'] is None or sub['finalized_at'] is None:
-        raise HTTPException(409, '提出期限を過ぎた提出だけレビューできます。')
+        raise HTTPException(409, '提出された版だけレビューできます。')
     return sub
 
 
@@ -705,13 +731,11 @@ def build_report_review_router(database_path, templates, chat_service, image_dir
     # ---- 先生
     @router.get('/teacher/report-reviews')
     async def rounds_page(request: Request, frame: str = FILTER_ALL):
-        teacher_id, school, role = teacher_identity(request)
+        # 一覧は「成果レポート管理」の提出物確認タブに統合した。旧URLは枠の指定を保ったまま転送する
+        school = teacher_identity(request)[1]
         with closing(connect_studies(database_path)) as db:
-            selected = frame_filter(db, school, frame)
-            rounds = round_summaries(db, school, today_jst(), selected['value'])
-        return templates.TemplateResponse(request=request, name='teacher/report_reviews.html',
-                                          context={**base_context(request, teacher_id, school, role), 'rounds': rounds,
-                                                   'frame_filter': selected})
+            query = frame_filter(db, school, frame)['query']
+        return RedirectResponse('/teacher/reports?tab=submissions' + query.replace('?', '&'), status_code=307)
 
     def round_info(db, school, frame_key, day):
         info = db.execute('SELECT title,finalized_at FROM group_report_submission_day WHERE school=? AND frame_id=? AND day=?',
@@ -798,9 +822,20 @@ def build_report_review_router(database_path, templates, chat_service, image_dir
             'reviewable': sub['finalized_at'] is not None, 'review': review, 'lock_holder': holder, 'status': key, 'status_label': label,
             'fields': fields, 'previous': previous, 'returned_at': format_time(review['returned_at']) if review else '',
             'pdf_url': f"/teacher/reports/{quote(sub['group_id'])}/versions/{sub['version_id']}.pdf",
+            'review_pdf_url': f"/teacher/report-reviews/submissions/{submission_id}/review.pdf" if review and review['result'] else None,
             'today': today_jst().isoformat(), 'max_due': (today_jst() + datetime.timedelta(days=RESUBMIT_MAX_DAYS)).isoformat(),
             'overall_max': OVERALL_COMMENT_MAX, 'field_max': FIELD_COMMENT_MAX, 'back_query': back_query,
             'round_frame_label': round_frame_label})
+
+    @router.get('/teacher/report-reviews/submissions/{submission_id}/review.pdf')
+    async def review_pdf_page(request: Request, submission_id: int):
+        _, school, _ = teacher_identity(request)
+
+        def build():
+            with closing(connect_studies(database_path)) as db:
+                return review_pdf(database_path, image_dir, db, submission_id, school=school)
+        pdf = await asyncio.to_thread(build)
+        return Response(pdf, media_type='application/pdf', headers={'Content-Disposition': 'inline; filename="report-review.pdf"'})
 
     @router.get('/teacher/reports/{group_id}/assets/{content_hash}')
     async def teacher_asset(request: Request, group_id: str, content_hash: str):

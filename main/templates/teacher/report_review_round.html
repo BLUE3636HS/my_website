@@ -8,12 +8,12 @@
         <p class="teacher-eyebrow">{{ frame_label }}・提出日 {{ day_label }} 23:59・{{ phase }}</p>
         <h1>{{ title }}</h1>
         {% if finalized %}
-        <p>期限を過ぎた提出版をレビューできます。期限までに提出しなかったグループは、期限の時点の内容が自動で提出されています。</p>
+        <p>提出された版をレビューできます。期限までに提出しなかったグループは、期限の時点の内容が自動で提出されています。</p>
         {% else %}
-        <p>期限前です。レビューは期限（{{ day_label }} 23:59）を過ぎてからできます。未入力の項目数で、記入が進んでいないグループを確認できます。</p>
+        <p>期限前です。提出された版は、期限前でもレビューできます（生徒は提出すると、返却されるまで出し直せません）。未入力の項目数で、記入が進んでいないグループを確認できます。</p>
         {% endif %}
         {% if downloadable %}<p><a class="review-button" href="/teacher/report-reviews/rounds/{{ frame_key }}/{{ day }}/download.zip">提出版PDFを一括ダウンロード（ZIP）</a></p>{% endif %}
-        <p><a href="/teacher/report-reviews{{ back_query }}">提出日の一覧に戻る</a></p>
+        <p><a href="/teacher/reports?tab=submissions{{ back_query.replace('?', '&') }}">提出日の一覧に戻る</a></p>
     </header>
     {% if not groups %}
     <div class="staff-panel"><div class="staff-empty">{{ icons.icon("inbox") }}<p>この枠のワークスペースはありません。</p></div></div>

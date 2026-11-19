@@ -291,7 +291,11 @@ class FrameRouterTests(FrameBase):
         self.close_round(day, rr.at(snapshot_today().isoformat(), 1))
         review = build_report_review_router(self.path, self.templates, None, self.image_dir.name)
         routes = {(r.path, sorted(r.methods)[0]): r.endpoint for r in review.routes}
-        page = asyncio.run(routes[('/teacher/report-reviews', 'GET')](self.request('t1'), str(self.f1)))
+        redirect = asyncio.run(routes[('/teacher/report-reviews', 'GET')](self.request('t1'), str(self.f1)))
+        self.assertEqual(redirect.headers['location'], f'/teacher/reports?tab=submissions&frame={self.f1}')  # 旧URLは統合画面へ
+        reports = build_group_report_router(self.path, self.templates, None, self.image_dir.name)
+        teacher_reports = next(r.endpoint for r in reports.routes if r.path == '/teacher/reports')
+        page = asyncio.run(teacher_reports(self.request('t1'), str(self.f1), 'submissions'))
         self.assertIn(f'/teacher/report-reviews/rounds/{self.f1}/{day}?frame={self.f1}', page['html'])
         self.assertNotIn(f'/teacher/report-reviews/rounds/0/{day}', page['html'])
         self.assertIn('対象 2', page['html'])
@@ -303,8 +307,6 @@ class FrameRouterTests(FrameBase):
         with self.assertRaises(HTTPException) as caught:
             asyncio.run(routes[('/teacher/report-reviews/rounds/{frame_key}/{day}', 'GET')](self.request('t1'), self.f2, day, 'all'))
         self.assertEqual(caught.exception.status_code, 404)
-        reports = build_group_report_router(self.path, self.templates, None, self.image_dir.name)
-        teacher_reports = next(r.endpoint for r in reports.routes if r.path == '/teacher/reports')
         page = asyncio.run(teacher_reports(self.request('boss'), str(self.f1)))
         self.assertEqual([g['id'] for g in page['context']['groups']], ['g1'])
         self.assertIn('枠を管理', page['html'])

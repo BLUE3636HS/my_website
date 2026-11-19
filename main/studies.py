@@ -186,6 +186,8 @@ def initialize_report_review_tables(db):
         group_id TEXT NOT NULL, round_day TEXT NOT NULL, attempt INTEGER NOT NULL, offset_days INTEGER NOT NULL,
         sent_at TEXT NOT NULL, PRIMARY KEY(group_id,round_day,attempt,offset_days))""")
     add_frame_to_report_days(db)
+    # 提出は提出した時点で確定する（先生が返却するまで出し直せない）。以前の「期限前の提出」も確定済みにする
+    db.execute("UPDATE group_report_submission SET finalized_at=COALESCE(submitted_at,created_at) WHERE version_id IS NOT NULL AND finalized_at IS NULL")
 
 
 def _rebuild_with_frame(db, table, create_sql, columns):

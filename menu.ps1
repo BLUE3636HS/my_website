@@ -11,28 +11,29 @@ $py      = Join-Path $mainDir '.venv\Scripts\python.exe'
 $port    = 8000
 $url     = "http://127.0.0.1:$port"
 $utf8    = New-Object System.Text.UTF8Encoding($false)
+$maxLogChars = 1000000
 
 $colGreen  = [System.Drawing.Color]::FromArgb(0, 130, 60)
 $colRed    = [System.Drawing.Color]::FromArgb(200, 40, 40)
 $colGray   = [System.Drawing.Color]::FromArgb(110, 110, 110)
 $colOrange = [System.Drawing.Color]::FromArgb(210, 120, 0)
 
-$script:serverPid     = $null
+$script:server        = $null   # このウィンドウから起動したサーバー
 $script:startingUntil = [datetime]::MinValue
-$script:job           = $null
+$script:job           = $null   # テスト・保存の実行中の処理
 $script:tick          = 0
 
 # ---------- 画面 ----------
 $form = New-Object System.Windows.Forms.Form
 $form.Text          = 'my_website 管理'
-$form.ClientSize    = New-Object System.Drawing.Size(640, 480)
-$form.MinimumSize   = New-Object System.Drawing.Size(520, 360)
+$form.ClientSize    = New-Object System.Drawing.Size(720, 540)
+$form.MinimumSize   = New-Object System.Drawing.Size(560, 400)
 $form.StartPosition = 'CenterScreen'
 $form.Font          = New-Object System.Drawing.Font('Yu Gothic UI', 10)
 
 $lblServer = New-Object System.Windows.Forms.Label
 $lblServer.Location = New-Object System.Drawing.Point(16, 14)
-$lblServer.Size     = New-Object System.Drawing.Size(608, 28)
+$lblServer.Size     = New-Object System.Drawing.Size(688, 28)
 $lblServer.Font     = New-Object System.Drawing.Font('Yu Gothic UI', 13, [System.Drawing.FontStyle]::Bold)
 $lblServer.Anchor   = 'Top,Left,Right'
 
@@ -51,32 +52,51 @@ $btnSave  = New-Button 'GitHubへ保存' 472
 
 $lblResult = New-Object System.Windows.Forms.Label
 $lblResult.Location = New-Object System.Drawing.Point(16, 104)
-$lblResult.Size     = New-Object System.Drawing.Size(608, 24)
+$lblResult.Size     = New-Object System.Drawing.Size(688, 24)
 $lblResult.Font     = New-Object System.Drawing.Font('Yu Gothic UI', 10, [System.Drawing.FontStyle]::Bold)
 $lblResult.Anchor   = 'Top,Left,Right'
 $lblResult.ForeColor = $colGray
 $lblResult.Text     = '結果: （まだ実行していません）'
 
-$txt = New-Object System.Windows.Forms.TextBox
-$txt.Location   = New-Object System.Drawing.Point(16, 134)
-$txt.Size       = New-Object System.Drawing.Size(608, 330)
-$txt.Anchor     = 'Top,Bottom,Left,Right'
-$txt.Multiline  = $true
-$txt.ReadOnly   = $true
-$txt.ScrollBars = 'Both'
-$txt.WordWrap   = $false
-$txt.Font       = New-Object System.Drawing.Font('Consolas', 9)
-$txt.BackColor  = [System.Drawing.Color]::White
+function New-LogBox {
+    $t = New-Object System.Windows.Forms.TextBox
+    $t.Dock       = 'Fill'
+    $t.Multiline  = $true
+    $t.ReadOnly   = $true
+    $t.ScrollBars = 'Both'
+    $t.WordWrap   = $false
+    $t.Font       = New-Object System.Drawing.Font('Consolas', 9)
+    $t.BackColor  = [System.Drawing.Color]::White
+    return $t
+}
+$txtServer = New-LogBox
+$txt       = New-LogBox
 
-$form.Controls.AddRange(@($lblServer, $btnStart, $btnStop, $btnTest, $btnSave, $lblResult, $txt))
+$tabs = New-Object System.Windows.Forms.TabControl
+$tabs.Location = New-Object System.Drawing.Point(16, 134)
+$tabs.Size     = New-Object System.Drawing.Size(688, 390)
+$tabs.Anchor   = 'Top,Bottom,Left,Right'
+$tabServer = New-Object System.Windows.Forms.TabPage
+$tabServer.Text = 'サーバーログ'
+$tabServer.Controls.Add($txtServer)
+$tabWork = New-Object System.Windows.Forms.TabPage
+$tabWork.Text = 'テスト・保存'
+$tabWork.Controls.Add($txt)
+$tabs.TabPages.AddRange(@($tabServer, $tabWork))
+
+$form.Controls.AddRange(@($lblServer, $btnStart, $btnStop, $btnTest, $btnSave, $lblResult, $tabs))
 
 # ---------- 補助関数 ----------
 function Show-Msg($text, $buttons = 'OK', $icon = 'Information') {
     return [System.Windows.Forms.MessageBox]::Show($form, $text, $form.Text, $buttons, $icon)
 }
 
-function Add-Line($line) {
-    $txt.AppendText($line + "`r`n")
+function Add-Line($box, $line) {
+    if ($box.TextLength -gt $maxLogChars) {
+        # 長くなりすぎたら古い半分を捨てる
+        $box.Text = $box.Text.Substring($box.TextLength / 2)
+    }
+    $box.AppendText($line + "`r`n")
 }
 
 function Set-Result($text, $color) {
@@ -101,7 +121,7 @@ function Update-Buttons {
 
 function Update-Server {
     $running  = Test-PortListening
-    $starting = ((Get-Date) -lt $script:startingUntil)
+    $starting = ((Get-Date) -lt $script:startingUntil) -and ($null -ne $script:server)
     if ($running) {
         $script:startingUntil = [datetime]::MinValue
         $starting = $false
@@ -111,17 +131,15 @@ function Update-Server {
         $lblServer.Text      = 'サーバー: ● 起動処理中...'
         $lblServer.ForeColor = $colOrange
     } else {
-        $script:serverPid    = $null
         $lblServer.Text      = 'サーバー: ● 停止中'
         $lblServer.ForeColor = $colGray
     }
-    $btnStart.Enabled = (-not $running) -and (-not $starting)
-    $btnStop.Enabled  = ($running -or $starting)
+    $btnStart.Enabled = (-not $running) -and (-not $starting) -and ($null -eq $script:server)
+    $btnStop.Enabled  = $running -or $starting -or ($null -ne $script:server)
 }
 
-# ---------- 裏で実行して出力を欄に流す ----------
-function Start-Work($title, $file, $arguments, $workDir, $onDone) {
-    if ($script:job) { return }
+# ---------- 子プロセスを出力付きで起動し、出力を欄に流す ----------
+function Start-Redirected($file, $arguments, $workDir) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName               = $file
     $psi.Arguments              = $arguments
@@ -132,47 +150,54 @@ function Start-Work($title, $file, $arguments, $workDir, $onDone) {
     $psi.RedirectStandardError  = $true
     $psi.StandardOutputEncoding = $utf8
     $psi.StandardErrorEncoding  = $utf8
-    $psi.EnvironmentVariables['PYTHONUTF8']         = '1'
-    $psi.EnvironmentVariables['PYTHONUNBUFFERED']   = '1'
+    $psi.EnvironmentVariables['PYTHONUTF8']          = '1'
+    $psi.EnvironmentVariables['PYTHONUNBUFFERED']    = '1'
     $psi.EnvironmentVariables['GIT_TERMINAL_PROMPT'] = '0'
-
-    $txt.Clear()
-    Set-Result "$title 実行中..." $colOrange
     $proc = [System.Diagnostics.Process]::Start($psi)
-    $script:job = @{
-        Proc   = $proc
-        Out    = $proc.StandardOutput.ReadLineAsync()
-        Err    = $proc.StandardError.ReadLineAsync()
-        Lines  = New-Object 'System.Collections.Generic.List[string]'
-        OnDone = $onDone
-        Title  = $title
+    return @{
+        Proc  = $proc
+        Out   = $proc.StandardOutput.ReadLineAsync()
+        Err   = $proc.StandardError.ReadLineAsync()
+        Lines = New-Object 'System.Collections.Generic.List[string]'
     }
-    Update-Buttons
 }
 
-function Read-JobStream($j, $key) {
-    $reader = if ($key -eq 'Out') { $j.Proc.StandardOutput } else { $j.Proc.StandardError }
-    $count = 0
-    while ($j[$key] -and $j[$key].IsCompleted -and $count -lt 300) {
-        $line = $j[$key].Result
-        if ($null -eq $line) {
-            $j[$key] = $null
-        } else {
-            Add-Line $line
-            $j.Lines.Add($line)
-            $j[$key] = $reader.ReadLineAsync()
+# 読み終わった行を欄に書き出す。出力が両方とも終わったら $true を返す
+function Read-Output($state, $box, $keepLines) {
+    foreach ($key in 'Out', 'Err') {
+        $reader = if ($key -eq 'Out') { $state.Proc.StandardOutput } else { $state.Proc.StandardError }
+        $count = 0
+        while ($state[$key] -and $state[$key].IsCompleted -and $count -lt 300) {
+            $line = $state[$key].Result
+            if ($null -eq $line) {
+                $state[$key] = $null
+            } else {
+                Add-Line $box $line
+                if ($keepLines) { $state.Lines.Add($line) }
+                $state[$key] = $reader.ReadLineAsync()
+            }
+            $count++
         }
-        $count++
     }
+    return ((-not $state.Out) -and (-not $state.Err))
+}
+
+function Start-Work($title, $file, $arguments, $workDir, $onDone) {
+    if ($script:job) { return }
+    $txt.Clear()
+    $tabs.SelectedTab = $tabWork
+    Set-Result "$title 実行中..." $colOrange
+    $state = Start-Redirected $file $arguments $workDir
+    $state.OnDone = $onDone
+    $script:job = $state
+    Update-Buttons
 }
 
 function Update-Job {
     $j = $script:job
     if (-not $j) { return }
     try {
-        Read-JobStream $j 'Out'
-        Read-JobStream $j 'Err'
-        if ((-not $j.Out) -and (-not $j.Err)) {
+        if (Read-Output $j $txt $true) {
             $j.Proc.WaitForExit()
             $code = $j.Proc.ExitCode
             $script:job = $null
@@ -186,26 +211,46 @@ function Update-Job {
     }
 }
 
+function Update-ServerLog {
+    $s = $script:server
+    if (-not $s) { return }
+    try {
+        if (Read-Output $s $txtServer $false) {
+            $s.Proc.WaitForExit()
+            if ($s.Stopping) { Add-Line $txtServer '---- サーバーを停止しました ----' }
+            else { Add-Line $txtServer ("---- サーバーが終了しました（終了コード " + $s.Proc.ExitCode + "） ----") }
+            $script:server = $null
+            $script:startingUntil = [datetime]::MinValue
+            Update-Server
+        }
+    } catch {
+        Add-Line $txtServer ("---- ログの読み取りでエラー: " + $_.Exception.Message + " ----")
+        $script:server = $null
+        Update-Server
+    }
+}
+
 # ---------- 操作 ----------
 function Start-Server {
     if (-not (Test-Path $py)) {
         Show-Msg "仮想環境が見つかりません:`n$py`nREADME.md のセットアップ手順を先に実行してください。" 'OK' 'Warning' | Out-Null
         return
     }
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName         = $py
-    $psi.Arguments        = '-m uvicorn main:app --reload'
-    $psi.WorkingDirectory = $mainDir
-    $psi.UseShellExecute  = $true
-    $p = [System.Diagnostics.Process]::Start($psi)
-    $script:serverPid     = $p.Id
+    if ($script:server) { return }
+    $txtServer.Clear()
+    $tabs.SelectedTab = $tabServer
+    Add-Line $txtServer "---- サーバーを起動します: $url ----"
+    $script:server        = Start-Redirected $py '-m uvicorn main:app --reload' $mainDir
     $script:startingUntil = (Get-Date).AddSeconds(20)
     Update-Server
 }
 
 function Stop-Server {
     $ids = New-Object 'System.Collections.Generic.List[int]'
-    if ($script:serverPid) { $ids.Add([int]$script:serverPid) }
+    if ($script:server) {
+        $script:server.Stopping = $true
+        $ids.Add([int]$script:server.Proc.Id)
+    }
     try {
         Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction Stop |
             ForEach-Object { $ids.Add([int]$_.OwningProcess) }
@@ -215,6 +260,7 @@ function Stop-Server {
     }
     $script:startingUntil = [datetime]::MinValue
     Start-Sleep -Milliseconds 500
+    Update-ServerLog
     Update-Server
 }
 
@@ -266,6 +312,7 @@ $btnSave.Add_Click({  Invoke-Guarded { Start-Save } })
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 200
 $timer.Add_Tick({
+    Update-ServerLog
     Update-Job
     $script:tick++
     if ($script:tick % 5 -eq 0) { Update-Server }
@@ -288,7 +335,12 @@ $form.Add_FormClosing({
         $e.Cancel = $true
         return
     }
-    if (Test-PortListening) {
+    if ($script:server) {
+        # ログをこのウィンドウで受けているため、閉じるとサーバーも止める
+        $answer = Show-Msg 'このウィンドウを閉じるとサーバーも停止します。閉じますか？' 'OKCancel' 'Question'
+        if ($answer -ne 'OK') { $e.Cancel = $true; return }
+        Stop-Server
+    } elseif (Test-PortListening) {
         $answer = Show-Msg 'サーバーが起動中です。サーバーも停止しますか？' 'YesNoCancel' 'Question'
         if ($answer -eq 'Cancel') { $e.Cancel = $true; return }
         if ($answer -eq 'Yes') { Stop-Server }

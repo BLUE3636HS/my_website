@@ -15,12 +15,12 @@ from types import SimpleNamespace
 from fastapi import HTTPException
 from jinja2 import Environment, FileSystemLoader
 
-from group_reports import JST, run_scheduled_snapshots
+from group_reports import JST, build_group_report_router, pdf_sections, run_scheduled_snapshots
 from notifications import initialize_notification_tables
 from report_reviews import (
     acquire_review_lock, build_report_review_router, build_round_zip, force_release_review_lock, input_status,
     open_targets, release_review_lock, return_review, round_groups, round_summaries, run_report_deadlines,
-    run_report_reminders, save_review, student_submission_context, submit_report,
+    review_pdf, run_report_reminders, save_review, student_submission_context, submit_report,
 )
 from studies import initialize_studies
 from template_management import SnapshotDays, create_template_router, snapshot_today
@@ -98,19 +98,27 @@ class Base(unittest.TestCase):
 
 
 class SubmissionTests(Base):
-    def test_student_can_resubmit_until_deadline_and_last_one_counts(self):
+    def test_submission_is_final_until_teacher_returns_it(self):
         self.add_round('2026-11-20')
         self.submit('g1', '2026-11-20')
-        with self.db() as db, db:
-            self.set_draft(db, 'g1', 'sA', '学校A', {'a': {'value': '直した', 'images': []}})
-        self.submit('g1', '2026-11-20', student='u2')
         with self.db() as db:
-            versions = db.execute("SELECT kind,report_snapshot FROM group_report_version WHERE group_id='g1' ORDER BY version_number").fetchall()
-            sub = db.execute("SELECT method,submitted_by,version_id FROM group_report_submission WHERE group_id='g1'").fetchone()
-            current = db.execute('SELECT report_snapshot FROM group_report_version WHERE id=?', (sub[2],)).fetchone()[0]
-        self.assertEqual([v[0] for v in versions], ['manual', 'submission'])
-        self.assertEqual(sub[:2], ('manual', 'u2'))
-        self.assertIn('直した', current)
+            sub = db.execute("SELECT method,submitted_by,finalized_at FROM group_report_submission WHERE group_id='g1'").fetchone()
+            self.assertEqual(open_targets(db, '学校A', 'g1', datetime.date(2026, 11, 18)), [])  # 提出済みは提出ボタンが出ない
+        self.assertEqual(sub[:2], ('manual', 'u1'))
+        self.assertIsNotNone(sub[2])  # 提出した時点で確定
+        with self.assertRaises(HTTPException) as caught:
+            self.submit('g1', '2026-11-20', student='u2')  # 出し直せない
+        self.assertEqual(caught.exception.status_code, 409)
+        # 期限前でも先生がレビューして返却でき、要再提出なら再提出を出せる
+        sid = self.sub_id('g1', '2026-11-20')
+        self.call(acquire_review_lock, sid, '学校A', 't1')
+        self.call(return_review, sid, '学校A', 't1', '直して', {}, 'resubmit', '2026-11-25', now=at('2026-11-18'))
+        self.submit('g1', '2026-11-20', attempt=1, now=at('2026-11-19'))
+        with self.assertRaises(HTTPException) as caught:
+            self.submit('g1', '2026-11-20', attempt=1, now=at('2026-11-19'))
+        self.assertEqual(caught.exception.status_code, 409)
+        with self.db() as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM group_report_submission WHERE finalized_at IS NOT NULL').fetchone()[0], 2)
 
     def test_only_nearest_open_round_and_before_deadline(self):
         self.add_round('2026-11-20')
@@ -173,13 +181,18 @@ class ReviewTests(Base):
         self.sid = self.sub_id('g1', '2026-11-20')
         self.now = at('2026-11-22')
 
-    def test_review_requires_deadline_to_pass(self):
+    def test_submitted_report_can_be_reviewed_before_deadline(self):
         self.add_round('2026-11-30', '次')
         self.submit('g1', '2026-11-30', now=at('2026-11-25'))
         early = self.sub_id('g1', '2026-11-30')
-        with self.assertRaises(HTTPException) as caught:
-            self.call(acquire_review_lock, early, '学校A', 't1')
-        self.assertEqual(caught.exception.status_code, 409)
+        self.call(acquire_review_lock, early, '学校A', 't1')
+        with self.db() as db:
+            groups = {g['id']: g for g in round_groups(db, '学校A', 0, '2026-11-30', False)}
+            data, count = build_round_zip(db, self.path, self.image_dir.name, '学校A', 0, '2026-11-30')
+        self.assertEqual(groups['g1']['status'], 'reviewing')
+        self.assertTrue(groups['g1']['attempts'][0]['reviewable'])
+        self.assertEqual(groups['g2']['status'], 'not_submitted')
+        self.assertEqual(count, 1)  # 期限前でも提出済みの版はZIPに入る
 
     def test_lock_blocks_other_teachers_and_anyone_can_force_release(self):
         self.call(acquire_review_lock, self.sid, '学校A', 't1')
@@ -346,16 +359,19 @@ class SettingsTests(Base):
         result = self.call_save([self.future(3), self.future(10)], {self.future(10): '最終改'})
         self.assertEqual(result['days'][1]['title'], '最終改')
 
-    def test_removing_submission_day_turns_early_submission_into_normal_history(self):
+    def test_submission_day_with_a_submission_cannot_be_removed(self):
         day = self.future(3)
+        self.call_save([day], {day: '中間'})
+        self.call_save([day], {})  # 提出がなければ外せる
         self.call_save([day], {day: '中間'})
         with self.db() as db, db:
             submit_report(db, '学校A', 'g1', 'u1', day, 0)
-        self.call_save([day], {})
+        with self.assertRaises(HTTPException) as caught:
+            self.call_save([day], {})
+        self.assertEqual(caught.exception.status_code, 409)
         with self.db() as db:
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM group_report_submission').fetchone()[0], 0)
-            self.assertEqual(db.execute("SELECT kind FROM group_report_version WHERE group_id='g1'").fetchall(), [('manual',)])
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM group_report_snapshot_day').fetchone()[0], 1)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM group_report_submission').fetchone()[0], 1)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM group_report_submission_day').fetchone()[0], 1)
 
 
 class FakeRequest(SimpleNamespace):
@@ -391,8 +407,15 @@ class RouterTests(Base):
         return self.routes[(path, method)]
 
     def test_pages_render_for_teacher(self):
-        page = asyncio.run(self.endpoint('/teacher/report-reviews')(self.request()))
+        redirect = asyncio.run(self.endpoint('/teacher/report-reviews')(self.request()))
+        self.assertEqual(redirect.headers['location'], '/teacher/reports?tab=submissions')
+        reports = build_group_report_router(self.path, SimpleNamespace(TemplateResponse=lambda request, name, context: {
+            'html': Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=True).get_template(name).render(**context)}),
+            None, self.image_dir.name)
+        teacher_reports = next(r.endpoint for r in reports.routes if r.path == '/teacher/reports')
+        page = asyncio.run(teacher_reports(self.request(path='/teacher/reports'), 'all', 'submissions'))
         self.assertIn('中間成果レポート', page['html'])
+        self.assertIn('進捗確認', page['html'])
         page = asyncio.run(self.endpoint('/teacher/report-reviews/rounds/{frame_key}/{day}')(self.request(), 0, self.day))
         self.assertIn('班1', page['html'])
         self.assertIn('download.zip', page['html'])
@@ -438,9 +461,53 @@ class RouterTests(Base):
         template = env.from_string(env.loader.get_source(env, 'group_report.html')[0].replace("{% extends 'base.html' %}", ''))
         html = template.render(request=SimpleNamespace(session={'user_id': 'u1'}), group={'id': 'g1', 'name': '班1', 'kind': 'group'},
                                state={'template': TEMPLATE}, submission=submission, csrf_token='x')
-        self.assertIn('提出し直す' if submission['targets'][0]['submitted_at'] else '>提出<', html)
+        self.assertIn('>提出<', html)
+        self.assertNotIn('提出し直す', html)
         self.assertIn('再提出が必要です', html)
         self.assertIn('レビューした先生：t1', html)
+        # 要再提出のレビューは記入欄の下に赤文字で出す。全体コメントは項目より前
+        self.assertIn('先生のレビュー：よい', html)
+        self.assertLess(html.index('class="report-review"'), html.index('id="report-fields"'))
+        self.assertLess(html.index('report-review-text">全体'), html.index('id="report-fields"'))
+        self.assertGreater(html.index('先生のレビュー：よい'), html.index('data-key="a"'))
+        self.assertIn('review.pdf', html)
+
+    def test_pending_review_disappears_after_resubmission_and_is_not_shown_when_returned(self):
+        self.call(acquire_review_lock, self.sid, '学校A', 't1')
+        self.call(return_review, self.sid, '学校A', 't1', '全体', {'a': 'よい'}, 'resubmit', (snapshot_today() + datetime.timedelta(days=3)).isoformat())
+        with self.db() as db:
+            self.assertEqual([p['overall'] for p in student_submission_context(db, '学校A', 'g1')['pending_reviews']], ['全体'])
+        self.submit('g1', self.day, attempt=1, now=at(snapshot_today().isoformat()))
+        with self.db() as db:
+            self.assertEqual(student_submission_context(db, '学校A', 'g1')['pending_reviews'], [])
+
+    def test_returned_review_is_not_pending(self):
+        self.call(acquire_review_lock, self.sid, '学校A', 't1')
+        self.call(return_review, self.sid, '学校A', 't1', '全体', {'a': 'よい'}, 'returned')
+        with self.db() as db:
+            self.assertEqual(student_submission_context(db, '学校A', 'g1')['pending_reviews'], [])
+
+    def test_review_pdf_only_for_returned_and_owner(self):
+        with self.db() as db:
+            with self.assertRaises(HTTPException) as caught:
+                review_pdf(self.path, self.image_dir.name, db, self.sid, school='学校A')  # 未返却
+            self.assertEqual(caught.exception.status_code, 404)
+        self.call(acquire_review_lock, self.sid, '学校A', 't1')
+        self.call(return_review, self.sid, '学校A', 't1', '全体コメント', {'a': 'テーマにコメント'}, 'returned')
+        with self.db() as db:
+            pdf = review_pdf(self.path, self.image_dir.name, db, self.sid, school='学校A', group_id='g1')
+            self.assertTrue(pdf.startswith(b'%PDF'))
+            for kwargs in ({'school': '学校B'}, {'group_id': 'g2'}):
+                with self.subTest(kwargs=kwargs), self.assertRaises(HTTPException) as caught:
+                    review_pdf(self.path, self.image_dir.name, db, self.sid, **kwargs)
+                self.assertEqual(caught.exception.status_code, 404)
+            version = db.execute('SELECT template_snapshot,report_snapshot FROM group_report_submission s JOIN group_report_version v ON v.id=s.version_id WHERE s.id=?', (self.sid,)).fetchone()
+        sections = pdf_sections(self.path, self.image_dir.name, json.loads(version[0]), json.loads(version[1]), '',
+                                review={'overall': '全体コメント', 'fields': {'a': 'テーマにコメント'}})
+        reviews = [i for i, s in enumerate(sections) if isinstance(s, dict) and s.get('type') == 'review']
+        self.assertEqual(sections[reviews[0]]['text'], '全体コメント')  # 全体は先頭
+        self.assertEqual(sections[reviews[1]]['text'], 'テーマにコメント')
+        self.assertEqual(sections[reviews[1] - 1][0], 'テーマ')  # 項目の直後
 
 
 if __name__ == '__main__':

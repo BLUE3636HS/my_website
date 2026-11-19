@@ -76,3 +76,10 @@
 .report-figure figcaption { color: var(--text-muted, #667085); font-size: 12px; font-weight: 700; }
 .report-caption { box-sizing: border-box; width: 100%; padding: 6px 8px; border: 1px solid var(--border-strong, #c7ced8); border-radius: 8px; font: inherit; font-size: 13px; }
 .report-caption[readonly] { background: var(--surface-soft, #f7f9fb); }
+
+/* 先生のレビュー（要再提出）：記入欄の下に赤文字で出す */
+.report-review { margin: 14px 0; padding: 14px 16px; border: 1px solid #e3a3a3; border-left: 4px solid #d00000; border-radius: var(--radius-lg); background: #fff5f5; }
+#group-report .report-review h2 { margin: 0 0 6px; color: #d00000; font-size: 15px; }
+.report-review-text { margin: 6px 0 0; color: #d00000; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.7; }
+.report-field-review { margin-top: 10px; font-weight: 700; }
+.report-feedback-head { margin: 0; color: var(--text-strong); font-weight: 700; }

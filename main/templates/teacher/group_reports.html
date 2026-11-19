@@ -1,15 +1,47 @@
 {% extends 'teacher/base.html' %}
 {% import "student_icons.html" as icons %}
-{% block title %}成果レポート履歴{% endblock %}
-{% block css %}<link rel="stylesheet" href="/static/teacher/report_reviews.css?v=frame-1">{% endblock %}
+{% block title %}成果レポート管理{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/teacher/report_reviews.css?v=frame-3">{% endblock %}
 {% block content %}
 <div class="teacher-page teacher-reports-page">
     <header class="staff-page-hero">
         <p class="teacher-eyebrow">研究</p>
-        <h1>{{ school }}：成果レポート履歴</h1>
+        <h1>{{ school }}：成果レポート管理</h1>
+        {% if tab == 'submissions' %}
+        <p>提出日ごとに、各グループ・個人スペースの提出状況を確認し、提出された版を（期限前でも）レビューして返却できます。提出日は「成果レポート設定」の定期自動保存日で、枠ごとに指定します。</p>
+        {% else %}
         <p>グループ・個人スペースごとに保存されたレポートの版をPDFで確認・ダウンロードできます。</p>
+        {% endif %}
     </header>
-    {% set action = '/teacher/reports' %}{% include 'teacher/_frame_filter.html' %}
+    {% set action = '/teacher/reports' %}{% set filter_tab = tab %}{% include 'teacher/_frame_filter.html' %}
+    <nav class="report-tabs" aria-label="表示の切り替え">
+        <a class="report-tab" href="/teacher/reports?tab=progress{{ frame_filter.query.replace('?', '&') }}"{% if tab == 'progress' %} aria-current="page"{% endif %}>進捗確認</a>
+        <a class="report-tab" href="/teacher/reports?tab=submissions{{ frame_filter.query.replace('?', '&') }}"{% if tab == 'submissions' %} aria-current="page"{% endif %}>提出物確認</a>
+    </nav>
+    {% if tab == 'submissions' %}
+    {% if not rounds %}
+    <div class="staff-panel"><div class="staff-empty">{{ icons.icon("inbox") }}<p>{{ 'この枠の提出日はまだ指定されていません。' if frame_filter.value != 'all' else '提出日はまだ指定されていません。' }}</p></div></div>
+    {% else %}
+    <ul class="review-round-list">
+        {% for round in rounds %}
+        <li class="staff-panel review-round">
+            <a href="/teacher/report-reviews/rounds/{{ round.frame_key }}/{{ round.day }}{{ frame_filter.query }}">
+                <span class="review-round-phase is-{{ 'open' if round.phase == '受付中' else 'closed' }}">{{ round.phase }}</span>
+                <span class="review-round-frame">{{ round.frame_label }}</span>
+                <span class="review-round-title">{{ round.title }}</span>
+                <span class="review-round-day">提出期限：{{ round.label }} 23:59</span>
+            </a>
+            <p class="review-round-counts">
+                対象 {{ round.total }}
+                {% for key, label in [('not_submitted','未提出'),('early','提出済み（期限前）'),('no_draft','未提出（下書きなし）'),('unreviewed','未レビュー'),('reviewing','レビュー中'),('returned','返却済み'),('resubmit','要再提出'),('awaiting','再提出待ち')] %}
+                {% if round.counts.get(key) %}<span class="review-status is-{{ key }}">{{ label }} {{ round.counts[key] }}</span>{% endif %}
+                {% endfor %}
+            </p>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    {% else %}
     {% if not groups %}
     <div class="staff-panel"><div class="staff-empty">{{ icons.icon("inbox") }}<p>{{ 'この枠に保存済みレポートはありません。' if frame_filter.value != 'all' else '保存済みレポートはありません。' }}</p></div></div>
     {% endif %}
@@ -36,5 +68,6 @@
         </section>
     {% endfor %}
     </div>
+    {% endif %}
 </div>
 {% endblock %}

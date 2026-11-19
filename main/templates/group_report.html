@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}成果レポート記入{% endblock %}
-{% block css %}<link rel="stylesheet" href="/static/student/group_report.css?v=caption-1">{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/student/group_report.css?v=review-1">{% endblock %}
 {% block content %}
 <section id="group-report" data-group-id="{{ group.id }}" data-csrf="{{ csrf_token }}" data-user="{{ request.session.get('user_id','') }}"{% if group.kind == 'personal' %} data-personal="1"{% endif %}>
  <header><div><h1>{{ group.name }}：成果レポート</h1>{% if state and group.kind != 'personal' %}<p id="report-connection">接続中</p>{% endif %}</div>{% if state %}<button id="report-save-version" type="button">保存</button>{% endif %}</header>
@@ -13,10 +13,10 @@
   <div class="report-submit-target">
    <div>
     <p class="report-submit-name">{{ target.title }}{% if target.attempt %}（再提出{{ target.attempt }}）{% endif %}</p>
-    <p class="report-submit-due">提出期限：{{ target.due_label }} 23:59{% if target.submitted_at %}　<span class="report-submit-done">提出済み（{{ target.submitted_at }}）</span>{% else %}　<span class="report-submit-yet">未提出</span>{% endif %}</p>
-    <p class="report-submit-note">期限までは何度でも提出し直せます。最後に提出した内容が提出版になります。期限までに提出しなかった場合は、期限の時点の内容が自動で提出されます。</p>
+    <p class="report-submit-due">提出期限：{{ target.due_label }} 23:59　<span class="report-submit-yet">未提出</span></p>
+    <p class="report-submit-note">提出すると、先生が返却するまで出し直せません。提出前に内容をよく確認してください。期限までに提出しなかった場合は、期限の時点の内容が自動で提出されます。</p>
    </div>
-   <button type="button" class="report-submit" data-round-day="{{ target.round_day }}" data-attempt="{{ target.attempt }}" data-submitted="{{ '1' if target.submitted_at else '0' }}">{{ '提出し直す' if target.submitted_at else '提出' }}</button>
+   <button type="button" class="report-submit" data-round-day="{{ target.round_day }}" data-attempt="{{ target.attempt }}">提出</button>
   </div>
   {% endfor %}
   {% if submission.records %}
@@ -30,14 +30,11 @@
      {% if record.version_id %}<a class="report-version-pdf" href="/api/group-reports/{{ group.id }}/versions/{{ record.version_id }}.pdf" target="_blank" rel="noopener">提出版PDF</a>{% endif %}
     </div>
     {% if record.feedback %}
-    <details class="report-feedback" open>
-     <summary>先生からのフィードバック（{{ record.feedback.returned_at }} 返却）</summary>
-     {% if record.feedback.result == 'resubmit' %}<p class="report-feedback-resubmit">再提出が必要です。{% if record.feedback.resubmit_due %}再提出期限：{{ record.feedback.resubmit_due }} 23:59{% endif %}</p>{% endif %}
-     {% if record.feedback.overall %}<h3>全体コメント</h3><p class="report-feedback-text">{{ record.feedback.overall }}</p>{% endif %}
-     {% for item in record.feedback.fields %}<h3>{{ item.label }}</h3><p class="report-feedback-text">{{ item.comment }}</p>{% endfor %}
-     {% if not record.feedback.overall and not record.feedback.fields %}<p class="report-feedback-text">コメントはありません。</p>{% endif %}
+    <div class="report-feedback">
+     <p class="report-feedback-head">先生のレビュー（{{ record.feedback.returned_at }} 返却）　<a class="report-version-pdf" href="/api/group-reports/{{ group.id }}/submissions/{{ record.submission_id }}/review.pdf" target="_blank" rel="noopener">レビュー付きPDF</a></p>
+     {% if record.feedback.result == 'resubmit' %}<p class="report-feedback-resubmit">再提出が必要です。{% if record.feedback.resubmit_due %}再提出期限：{{ record.feedback.resubmit_due }} 23:59　{% endif %}レビューの内容は、下の記入欄に赤文字で表示しています。</p>{% endif %}
      <p class="report-feedback-editors">レビューした先生：{{ record.feedback.editors|join('、') }}</p>
-    </details>
+    </div>
     {% endif %}
    </li>
    {% endfor %}
@@ -45,7 +42,17 @@
   {% endif %}
  </section>
  {% endif %}
- <div id="report-fields">{% for field in state.template.fields %}<section class="report-field" data-key="{{ field.stable_key }}" data-type="{{ field.field_type }}"><h2>{{ field.label }}</h2>{% if field.field_type != 'image' %}<textarea class="report-value" rows="5" maxlength="{{ field.max_length if field.max_length else 20000 }}" aria-label="{{ field.label }}"></textarea>{% endif %}{% if field.field_type in ('image', 'both') %}<div class="report-dropzone"><p class="report-drop-text">画像を挿入する場合は、ここに画像ファイルをドラッグ＆ドロップするか、「画像を選ぶ」から選んでください。</p><p class="report-drop-note">JPEG・PNG、1つの項目に4枚まで（1枚5MBまで）</p><label class="report-drop-button">画像を選ぶ<input class="report-image" type="file" accept="image/jpeg,image/png" multiple aria-label="{{ field.label }}の画像を追加"></label></div><div class="report-images"></div>{% endif %}</section>{% endfor %}</div>
+ {% set pending = submission.pending_reviews if submission else [] %}
+ {% set field_keys = state.template.fields|map(attribute='stable_key')|list %}
+ {% for review in pending %}
+ <section class="report-review" aria-label="先生のレビュー（全体）">
+  <h2>先生のレビュー：{{ review.title }}・{{ review.attempt_label }}</h2>
+  {% if review.overall %}<p class="report-review-text">{{ review.overall }}</p>{% endif %}
+  {% for key, item in review.fields.items() if key not in field_keys %}<p class="report-review-text">【{{ item.label }}】{{ item.comment }}</p>{% endfor %}
+  {% if not review.overall and not review.fields %}<p class="report-review-text">全体へのコメントはありません。再提出してください。</p>{% endif %}
+ </section>
+ {% endfor %}
+ <div id="report-fields">{% for field in state.template.fields %}<section class="report-field" data-key="{{ field.stable_key }}" data-type="{{ field.field_type }}"><h2>{{ field.label }}</h2>{% if field.field_type != 'image' %}<textarea class="report-value" rows="5" maxlength="{{ field.max_length if field.max_length else 20000 }}" aria-label="{{ field.label }}"></textarea>{% endif %}{% if field.field_type in ('image', 'both') %}<div class="report-dropzone"><p class="report-drop-text">画像を挿入する場合は、ここに画像ファイルをドラッグ＆ドロップするか、「画像を選ぶ」から選んでください。</p><p class="report-drop-note">JPEG・PNG、1つの項目に4枚まで（1枚5MBまで）</p><label class="report-drop-button">画像を選ぶ<input class="report-image" type="file" accept="image/jpeg,image/png" multiple aria-label="{{ field.label }}の画像を追加"></label></div><div class="report-images"></div>{% endif %}{% for review in pending %}{% set comment = review.fields.get(field.stable_key) %}{% if comment %}<p class="report-review-text report-field-review">先生のレビュー：{{ comment.comment }}</p>{% endif %}{% endfor %}</section>{% endfor %}</div>
  <section class="report-history" aria-labelledby="report-history-title">
   <h2 id="report-history-title">保存履歴</h2>
   <p class="report-version-note">「保存」ボタンで保存した履歴は<strong>最新10件</strong>まで残ります。先生が指定した日の<strong>定期保存</strong>と、期限を迎えた<strong>提出</strong>はずっと残ります。</p>

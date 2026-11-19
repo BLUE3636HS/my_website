@@ -10,14 +10,14 @@
         <p class="teacher-eyebrow"><a href="/teacher/report-reviews/rounds/{{ sub.round_frame }}/{{ sub.round_day }}{{ back_query }}">{{ round_frame_label }}・{{ title }}（{{ day_label }}）</a>・{{ attempt_label }}</p>
         <h1>{{ group_name }}</h1>
         <p class="review-muted">枠：{{ group.frame_name or '枠なし' }}</p>
-        <p>{{ '自動提出' if sub.method == 'auto' else '提出' }}：{{ submitted_at }}{% if sub.method == 'manual' %}（{{ sub.submitted_by }}）{% endif %}　<span class="review-status is-{{ status }}">{{ status_label }}</span>　<a href="{{ pdf_url }}" target="_blank" rel="noopener">提出版PDFを開く</a></p>
+        <p>{{ '自動提出' if sub.method == 'auto' else '提出' }}：{{ submitted_at }}{% if sub.method == 'manual' %}（{{ sub.submitted_by }}）{% endif %}　<span class="review-status is-{{ status }}">{{ status_label }}</span>　<a href="{{ pdf_url }}" target="_blank" rel="noopener">提出版PDFを開く</a>{% if review_pdf_url %}　<a href="{{ review_pdf_url }}" target="_blank" rel="noopener">レビュー付きPDFを開く</a>{% endif %}</p>
     </header>
 
     <section class="staff-panel review-lock-panel" aria-live="polite">
         {% if returned %}
         <p class="review-lock-text">{{ returned_at }} に{{ '「要再提出」で' if review.result == 'resubmit' else '' }}返却しました（{{ review.returned_by }} 先生）。返却したレビューは変更できません。</p>
         {% elif not reviewable %}
-        <p class="review-lock-text">提出期限を過ぎるとレビューできます。</p>
+        <p class="review-lock-text">提出されるとレビューできます。</p>
         {% elif mine %}
         <p class="review-lock-text is-mine">あなたがレビュー中です。他の先生はこのレポートをレビューできません。終わったら「保存してレビューを終了」を押してください。</p>
         <div class="review-actions">

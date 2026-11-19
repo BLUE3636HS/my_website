@@ -96,10 +96,18 @@ def load_version(db,group_id,version_id):
     return row
 
 
-def pdf_sections(database_path,image_dir,template,values,metadata,header_style=None):
+def review_section(label,text):
+    return {'type':'review','label':label,'text':text}
+
+
+def pdf_sections(database_path,image_dir,template,values,metadata,header_style=None,review=None):
     # 先頭の情報（先生が成果レポート設定で選んだもの）。見出しは付けず、何も選ばれていなければ印字しない
+    # review={'overall':全体コメント,'fields':{項目のキー:コメント}} を渡すと、先生のレビューを赤文字で加える（全体は先頭、項目別は各項目の下）
     style=normalize_header_style(header_style)
     sections=[('保存情報',metadata,11,style['font_size'],True,'left',style['alignment'],False,style['bold'])] if metadata else []
+    review=review or {}
+    if (review.get('overall') or '').strip(): sections.append(review_section('先生のレビュー（全体）',review['overall']))
+    field_comments=review.get('fields') or {}
     if isinstance(database_path,sqlite3.Connection):
         assets={r[0]:r[1] for r in database_path.execute('SELECT content_hash,stored_name FROM group_report_asset')}
     else:
@@ -125,6 +133,8 @@ def pdf_sections(database_path,image_dir,template,values,metadata,header_style=N
                 sections.append({'type':'image','label':field['label'],'images':images,'heading_font_size':style[0],'body_font_size':style[1],'heading_alignment':align[0],'body_alignment':align[1],'heading_bold':align[2],'body_bold':align[3],'hide_heading':True if kind=='both' else field.get('hide_heading',False),'image_size':field.get('image_size','small'),'image_alignment':field.get('image_alignment','center')})
             elif kind=='image':
                 sections.append((field['label'],'(未入力)',*style,False,*align))
+        comment=field_comments.get(field['stable_key'])
+        if comment and comment.strip(): sections.append(review_section('先生のレビュー',comment))
     return sections
 
 
@@ -295,9 +305,18 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
         sections=pdf_sections(database_path,image_dir,json.loads(row['template_snapshot']),json.loads(row['report_snapshot']),row['header'],row['header_style'])
         pdf=await asyncio.to_thread(render_study_pdf,sections)
         return Response(pdf,media_type='application/pdf',headers={'Content-Disposition':f'inline; filename="report-v{row["version_number"]}.pdf"'})
+    @router.get('/api/group-reports/{group_id}/submissions/{submission_id}/review.pdf')
+    async def student_review_pdf(request:Request,group_id:str,submission_id:int):
+        from report_reviews import review_pdf  # 循環importを避ける
+        group_access(request.session,group_id)
+        def build():
+            with closing(connect_studies(database_path)) as db: return review_pdf(database_path,image_dir,db,submission_id,group_id=group_id)
+        pdf=await asyncio.to_thread(build)
+        return Response(pdf,media_type='application/pdf',headers={'Content-Disposition':'inline; filename="report-review.pdf"'})
     @router.get('/teacher/reports')
-    async def teacher_reports(request:Request,frame:str='all'):
-        from report_reviews import school_groups
+    async def teacher_reports(request:Request,frame:str='all',tab:str='progress'):
+        from report_reviews import school_groups,round_summaries,today_jst
+        if tab not in ('progress','submissions'): tab='progress'
         from workspace_frames import frame_filter
         if request.session.get('teacher_login') is not True: raise HTTPException(403,'先生としてログインしてください。')
         teacher_id=request.session.get('teacher_id')
@@ -307,11 +326,14 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
             selected=frame_filter(db,teacher[0],frame)
             # 個人スペースは作成者（本人）の名前も表示して、グループと区別する。削除されたグループは表示しない
             saved={row[0] for row in db.execute('SELECT DISTINCT group_id FROM group_report_version WHERE school_name=?',(teacher[0],))}
-            records=[]
-            for group in school_groups(db,teacher[0],selected['value']):
-                if group['id'] not in saved: continue
-                records.append({**group,'versions':version_rows(db,group['id'])})
-        return templates.TemplateResponse(request=request,name='teacher/group_reports.html',context={'request':request,'groups':records,'school':teacher[0],'teacher_id':teacher_id,'teacher_role':teacher[1],'frame_filter':selected})
+            records=[]; rounds=[]
+            if tab=='progress':
+                for group in school_groups(db,teacher[0],selected['value']):
+                    if group['id'] not in saved: continue
+                    records.append({**group,'versions':version_rows(db,group['id'])})
+            else:
+                rounds=round_summaries(db,teacher[0],today_jst(),selected['value'])
+        return templates.TemplateResponse(request=request,name='teacher/group_reports.html',context={'request':request,'groups':records,'rounds':rounds,'tab':tab,'school':teacher[0],'teacher_id':teacher_id,'teacher_role':teacher[1],'frame_filter':selected})
     @router.get('/teacher/reports/{group_id}/versions/{version_id}.pdf')
     async def teacher_version_pdf(request:Request,group_id:str,version_id:int):
         if request.session.get('teacher_login') is not True: raise HTTPException(403,'先生としてログインしてください。')

@@ -3,6 +3,7 @@ from io import BytesIO
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
@@ -29,7 +30,14 @@ def render_study_pdf(sections, user_id=None):
     if user_id is not None:
         story.append(Paragraph('ユーザーID：' + escape(str(user_id)), body))
         story.append(Spacer(1, 8))
+    review_style = ParagraphStyle('review', parent=body, fontSize=10, leading=15, textColor=colors.HexColor('#d00000'), spaceBefore=2, spaceAfter=8)
+    review_label = ParagraphStyle('review-label', parent=review_style, fontName=BOLD_FONT, spaceBefore=4, spaceAfter=2)
     for section in sections:
+        if isinstance(section, dict) and section.get('type') == 'review':
+            # 先生のレビュー（赤文字）。見出しと本文を離さない
+            text = escape(section['text'].replace('\r\n', '\n').replace('\r', '\n')).replace('\n', '<br/>')
+            story.append(KeepTogether([Paragraph(escape(section['label']), review_label), Paragraph(text, review_style)]))
+            continue
         if isinstance(section, dict):
             images = section['images']
             if not images:
