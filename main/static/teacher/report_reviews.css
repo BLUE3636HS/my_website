@@ -70,3 +70,6 @@
 .report-tab[aria-current="page"] { color: var(--primary); border-bottom-color: var(--primary); }
 .frame-filter-manage { margin-left: auto; color: var(--primary); font-weight: 700; font-size: 14px; }
 .review-round-frame { padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--text); font-size: 12px; font-weight: 700; }
+
+.review-attachment-list { margin: 8px 0; padding-left: 20px; line-height: 2; }
+.review-attachment-add { display: inline-block; cursor: pointer; }

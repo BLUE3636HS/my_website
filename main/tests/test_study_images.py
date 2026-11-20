@@ -63,35 +63,7 @@ class StudyImageTests(unittest.TestCase):
                     (study_id, field_id, position, stored_name, f'{position}.png', caption))
         return study_id
 
-    def test_legacy_image_study_pdf_order_and_admin_cleanup(self):
-        template_id, field_id = self.configure_image_template()
-        self.insert_image_study(template_id, field_id, [
-            ('赤い画像', png_bytes(color=(255, 0, 0, 255))), ('青い画像', png_bytes(color=(0, 0, 255, 255))),
-            ('緑の画像', png_bytes(color=(0, 255, 0, 255)))])
-        pdf = asyncio.run(main.pdf(1, fixtures.request('/uploads/1.pdf', self.session)))
-        self.assertEqual(pdf.media_type, 'application/pdf')
-        text = ''.join(page.extract_text() for page in PdfReader(io.BytesIO(pdf.body)).pages)
-        self.assertIn('実験写真', text)
-        self.assertLess(text.index('赤い画像'), text.index('青い画像'))
-        self.assertLess(text.index('青い画像'), text.index('緑の画像'))
-        asyncio.run(main.AdminDeleteStudy(fixtures.request('/admin/studies', {'admin_login': True}), 1))
-        self.assertEqual(self.rows('SELECT id FROM study_field_image'), [])
-        self.assertEqual(list(self.image_dir.iterdir()), [])
 
-    def test_template_image_upload_is_rejected_without_saving_files(self):
-        template_id, field_id = self.configure_image_template()
-        entries = [('registration_type', 'template'), ('template_id', str(template_id)),
-                   ('name', '画像研究'), ('introduce', '画像を含む研究'),
-                   ('csrf_token', 'csrf'), ('submission_token', self.token()),
-                   (f'image_{field_id}', UploadFile(io.BytesIO(png_bytes()), filename='one.png')),
-                   (f'caption_{field_id}', '説明')]
-        req = fixtures.request('/addform', self.session)
-        req._form = FormData(entries)
-        with self.assertRaises(HTTPException) as error:
-            asyncio.run(main.Add(req))
-        self.assertEqual(error.exception.status_code, 422)
-        self.assertEqual(self.rows('SELECT id FROM study'), [])
-        self.assertEqual(list(self.image_dir.iterdir()), [])
 
     def test_image_normalization_rejects_invalid_images(self):
         # グループレポートの画像アップロードで引き続き使う検証処理
@@ -105,14 +77,6 @@ class StudyImageTests(unittest.TestCase):
                 normalize_study_image(UploadFile(io.BytesIO(content), filename=name))
             self.assertIn(message, str(error.exception))
 
-    def test_teacher_delete_removes_image_file(self):
-        template_id, field_id = self.configure_image_template()
-        self.insert_image_study(template_id, field_id, [('説明', png_bytes())])
-        session = {'teacher_login': True, 'teacher_id': 'teacher1',
-                   'teacher_studylist_csrf_token': 'token'}
-        asyncio.run(main.TeacherDeleteStudy(fixtures.request('/teacher/studylist', session), 1, 'token'))
-        self.assertEqual(self.rows('SELECT id FROM study_field_image'), [])
-        self.assertEqual(list(self.image_dir.iterdir()), [])
 
     def test_migration_and_template_payload_include_image_metadata(self):
         template_id, field_id = self.configure_image_template(required=0, image_size='large', alignment='left')

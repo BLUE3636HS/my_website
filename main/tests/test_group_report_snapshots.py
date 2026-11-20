@@ -141,9 +141,19 @@ class SnapshotDaySettingsTests(unittest.TestCase):
         self.assertEqual([d['day'] for d in result['days']], [past, self.future(7), self.future(14)])
         with closing(sqlite3.connect(self.path)) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM group_report_snapshot_day WHERE school='学校B'").fetchone()[0], 1)
-        page = asyncio.run(self.page(self.request()))
+        page = asyncio.run(self.page(self.request(), 'none'))
         self.assertEqual(page['name'], 'teacher/report_snapshot_days.html')
         self.assertEqual(len(page['context']['days']), 3)
+
+    def test_page_shows_only_the_frame_picker_until_a_frame_is_chosen(self):
+        page = asyncio.run(self.page(self.request()))
+        self.assertIsNone(page['context']['frame'])
+        self.assertEqual(page['context']['days'], [])
+        self.assertIsNone(page['context']['saved_label'])
+        saved = asyncio.run(self.page(self.request(), '', 'none'))  # 保存後は最初の表示に戻り、保存した枠の名前を知らせる
+        self.assertIsNone(saved['context']['frame'])
+        self.assertEqual(saved['context']['saved_label'], '枠なし')
+        self.assertIsNone(asyncio.run(self.page(self.request(), 'unknown'))['context']['frame'])
 
     def test_rejects_today_past_bad_format_and_far_future(self):
         for value in (snapshot_today().isoformat(), self.future(-1), '2026/12/01', '2026-2-1', self.future(800)):

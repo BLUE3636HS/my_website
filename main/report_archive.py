@@ -182,7 +182,7 @@ def round_archive_status(db, school, frame_key, day):
     latest = round_latest(db, school, frame_key, day)
     archived = archived_ids(db, school, latest)
     waiting = db.execute("""SELECT COUNT(DISTINCT group_id) FROM group_report_submission
-        WHERE school=? AND round_frame=? AND round_day=? AND version_id IS NULL""", (school, frame_key, day)).fetchone()[0]
+        WHERE school=? AND round_frame=? AND round_day=? AND version_id IS NULL AND pdf_path IS NULL""", (school, frame_key, day)).fetchone()[0]
     return {'pending': len(latest) - len(archived), 'archived': len(archived), 'waiting': waiting}
 
 

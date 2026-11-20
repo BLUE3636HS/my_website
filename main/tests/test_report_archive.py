@@ -223,7 +223,7 @@ class RouterTests(ArchiveBase):
     def setUp(self):
         super().setUp()
         env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=True)
-        defaults = {'student_features': {'report_archive': True, 'studies_add': True, 'community': True,
+        defaults = {'student_features': {'report_archive': True, 'community': True,
                                           'dashboard': True}, 'current_path': '/', 'unread_notification_count': 0,
                     'is_super_admin': True, 'admin_id': 'root', 'mentor_inquiry_unread_count': 0}
 

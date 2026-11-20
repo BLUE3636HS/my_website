@@ -100,31 +100,7 @@ class LegacyIndividualSubmissionTests(unittest.TestCase):
                     VALUES (?,?,?,?,?,?,'PNG',80,60)""", (study_id, field_id, position, stored_name, stored_name, caption))
         return study_id
 
-    def test_text_and_images_are_printed_under_the_text(self):
-        with closing(connect_studies(self.path)) as db, db:
-            initialize_school_feature_settings(db)
-            template_id = db.execute("INSERT INTO study_template(name,active) VALUES ('文字と画像',1)").lastrowid
-            field_id = db.execute("""INSERT INTO study_template_field(template_id,label,position,required,field_type,with_images,max_length)
-                VALUES (?,'観察',0,0,'text',1,100)""", (template_id,)).lastrowid
-        image_dir = self.root / 'study-images'; image_dir.mkdir()
-        (image_dir / 'a.png').write_bytes(png_bytes())
-        with patch.object(main, 'STUDY_IMAGE_UPLOADS_DIR', image_dir):
-            self.insert_study(template_id, '観察した文章', field_id, [('a.png', '実験の様子')])
-            pdf = asyncio.run(main.pdf(1, fixtures.request('/uploads/1.pdf', self.session)))
-        text = ''.join(page.extract_text() for page in PdfReader(io.BytesIO(pdf.body)).pages)
-        self.assertEqual(text.count('観察'), 2)  # 見出しは1回（「観察」＋本文「観察した文章」）
-        self.assertLess(text.index('観察した文章'), text.index('実験の様子'))
 
-    def test_empty_text_in_both_prints_placeholder(self):
-        with closing(connect_studies(self.path)) as db, db:
-            initialize_school_feature_settings(db)
-            template_id = db.execute("INSERT INTO study_template(name,active) VALUES ('文字と画像',1)").lastrowid
-            field_id = db.execute("""INSERT INTO study_template_field(template_id,label,position,required,field_type,with_images)
-                VALUES (?,'観察',0,0,'text',1)""", (template_id,)).lastrowid
-        self.insert_study(template_id, '', field_id)
-        pdf = asyncio.run(main.pdf(1, fixtures.request('/uploads/1.pdf', self.session)))
-        text = ''.join(page.extract_text() for page in PdfReader(io.BytesIO(pdf.body)).pages)
-        self.assertIn('(未入力)', text)
 
 
 if __name__ == '__main__':

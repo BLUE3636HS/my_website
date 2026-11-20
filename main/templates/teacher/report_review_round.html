@@ -5,14 +5,14 @@
 {% block content %}
 <div class="teacher-page teacher-review-page">
     <header class="staff-page-hero">
-        <p class="teacher-eyebrow">{{ frame_label }}・提出日 {{ day_label }} 23:59・{{ phase }}</p>
+        <p class="teacher-eyebrow">{{ frame_label }}・提出日 {{ day_label }} 23:59・{{ phase }}・提出形式：{{ format_label }}</p>
         <h1>{{ title }}</h1>
         {% if finalized %}
         <p>提出された版をレビューできます。期限までに提出しなかったグループは、期限の時点の内容が自動で提出されています。</p>
         {% else %}
         <p>期限前です。提出された版は、期限前でもレビューできます（生徒は提出すると、返却されるまで出し直せません）。未入力の項目数で、記入が進んでいないグループを確認できます。</p>
         {% endif %}
-        {% if downloadable %}<p><a class="review-button" href="/teacher/report-reviews/rounds/{{ frame_key }}/{{ day }}/download.zip">提出版PDFを一括ダウンロード（ZIP）</a></p>{% endif %}
+        {% if downloadable %}<p><a class="review-button" href="/teacher/report-reviews/rounds/{{ frame_key }}/{{ day }}/download.zip">提出物を一括ダウンロード（ZIP）</a></p>{% endif %}
         <p><a href="/teacher/reports?tab=submissions{{ back_query.replace('?', '&') }}">提出日の一覧に戻る</a></p>
     </header>
     {% if not groups %}
@@ -52,7 +52,7 @@
                     <ul class="review-attempts">
                     {% for a in group.attempts %}
                         <li>
-                            <span class="review-attempt-label">{{ a.attempt_label }}</span>
+                            <span class="review-attempt-label">{{ a.attempt_label }}</span>{% if a.has_template %}<span class="review-muted">テンプレート</span>{% endif %}{% if a.has_pdf %}<span class="review-muted">PDF</span>{% endif %}
                             <span class="review-status is-{{ a.status }}">{{ a.status_label }}</span>
                             {% if a.submitted_label %}<span class="review-muted">{{ '自動提出' if a.method == 'auto' else '提出' }} {{ a.submitted_label }}</span>{% endif %}
                             {% if a.lock_holder %}<span class="review-lock">{{ a.lock_holder }} 先生がレビュー中</span>{% endif %}

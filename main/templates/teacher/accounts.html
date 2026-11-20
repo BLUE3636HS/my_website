@@ -43,10 +43,10 @@
         </div>
         <div class="teacher-table-scroll">
             <table>
-                <thead><tr><th scope="col">生徒ID</th><th scope="col">名前</th><th scope="col">フリガナ</th>{% for field in field_columns %}<th scope="col">{% if field.sortable_numeric %}<button type="button" class="teacher-number-sort" data-column-index="{{ loop.index + 2 }}" data-direction="none" aria-label="{{ field.label }}を昇順で並べ替え" title="昇順・降順に並べ替え"><span aria-hidden="true">↕</span>{{ field.label }}</button>{% else %}{{ field.label }}{% endif %}</th>{% endfor %}<th scope="col">ログイン状況</th><th scope="col">提出物</th></tr></thead>
+                <thead><tr><th scope="col">生徒ID</th><th scope="col">名前</th><th scope="col">フリガナ</th>{% for field in field_columns %}<th scope="col">{% if field.sortable_numeric %}<button type="button" class="teacher-number-sort" data-column-index="{{ loop.index + 2 }}" data-direction="none" aria-label="{{ field.label }}を昇順で並べ替え" title="昇順・降順に並べ替え"><span aria-hidden="true">↕</span>{{ field.label }}</button>{% else %}{{ field.label }}{% endif %}</th>{% endfor %}<th scope="col">ログイン状況</th></tr></thead>
                 <tbody>
                 {% for student in students %}
-                    {% set login = student["login"] %}<tr class="teacher-login-row is-login-{{ login.state }}" data-login-state="{{ login.state }}"><td>{{ student["id"] }}</td><td>{{ student["name"] or '未登録' }}</td><td>{{ student["furigana"] or '未登録' }}</td>{% for value in student["values"] %}<td>{% if value is sameas true %}はい{% elif value is sameas false %}いいえ{% elif value is sequence and value is not string %}{{ value|join('、') }}{% elif value is none or value == '' %}<span class="teacher-field-empty">未入力</span>{% else %}{{ value }}{% endif %}</td>{% endfor %}<td class="teacher-login-cell">{% if login.state == 'never' %}<span class="teacher-login-badge is-never">未ログイン</span><small>一度もログインしていません</small>{% elif login.state == 'stale' %}<span class="teacher-login-badge is-stale">{{ login.days }}日間なし</span><small>最終 {{ login.last_access_at }}</small>{% else %}<span class="teacher-login-ok">{{ login.last_access_at or '記録なし' }}</span>{% endif %}</td><td><button type="button" class="teacher-submission-open" data-student-id="{{ student['id'] }}" data-submissions="{{ student['submissions'] | tojson | forceescape }}">提出物({{ student['submissions']|length }})</button></td></tr>
+                    {% set login = student["login"] %}<tr class="teacher-login-row is-login-{{ login.state }}" data-login-state="{{ login.state }}"><td>{{ student["id"] }}</td><td>{{ student["name"] or '未登録' }}</td><td>{{ student["furigana"] or '未登録' }}</td>{% for value in student["values"] %}<td>{% if value is sameas true %}はい{% elif value is sameas false %}いいえ{% elif value is sequence and value is not string %}{{ value|join('、') }}{% elif value is none or value == '' %}<span class="teacher-field-empty">未入力</span>{% else %}{{ value }}{% endif %}</td>{% endfor %}<td class="teacher-login-cell">{% if login.state == 'never' %}<span class="teacher-login-badge is-never">未ログイン</span><small>一度もログインしていません</small>{% elif login.state == 'stale' %}<span class="teacher-login-badge is-stale">{{ login.days }}日間なし</span><small>最終 {{ login.last_access_at }}</small>{% else %}<span class="teacher-login-ok">{{ login.last_access_at or '記録なし' }}</span>{% endif %}</td></tr>
                 {% else %}
                     <tr><td colspan="{{ field_columns|length + 5 }}">登録中の生徒はいません。</td></tr>
                 {% endfor %}
@@ -55,10 +55,6 @@
         </div>
     </section>
 </div>
-<dialog class="teacher-submission-dialog" aria-labelledby="teacher-submission-title">
-    <div class="teacher-submission-dialog-header"><h2 id="teacher-submission-title">提出物</h2><button type="button" class="teacher-submission-close" aria-label="閉じる">閉じる</button></div>
-    <div class="teacher-submission-dialog-body"></div>
-</dialog>
 {% endblock %}
 {% block script %}
 <script>
@@ -82,48 +78,6 @@
     };
     fieldTypeSelect.addEventListener("change", updateOptionsVisibility);
     updateOptionsVisibility();
-
-    const submissionDialog = document.querySelector(".teacher-submission-dialog");
-    const submissionDialogBody = submissionDialog.querySelector(".teacher-submission-dialog-body");
-    const renderSubmissions = (button) => {
-        let submissions = [];
-        try { submissions = JSON.parse(button.dataset.submissions || "[]"); } catch (_) { submissions = []; }
-        document.getElementById("teacher-submission-title").textContent = `${button.dataset.studentId} の提出物`;
-        if (!submissions.length) {
-            const empty = document.createElement("p");
-            empty.className = "teacher-submission-empty";
-            empty.textContent = "提出物はありません。";
-            submissionDialogBody.replaceChildren(empty);
-            return;
-        }
-        const list = document.createElement("ol");
-        list.className = "teacher-submission-list";
-        submissions.forEach((submission) => {
-            const item = document.createElement("li");
-            const link = document.createElement("a");
-            link.className = "teacher-submission-link";
-            const query = submission.kind === "group"
-                ? (submission.group_name || submission.title || "")
-                : (button.dataset.studentId || "");
-            const params = new URLSearchParams({ q: query });
-            if (submission.id !== undefined && submission.id !== null) params.set("study", String(submission.id));
-            link.href = `/teacher/studylist?${params.toString()}`;
-            const title = document.createElement("strong");
-            title.textContent = submission.title || "（タイトルなし）";
-            const metadata = document.createElement("p");
-            const type = submission.kind === "group" ? `グループ提出${submission.group_name ? `（${submission.group_name}）` : ""}` : "個人提出";
-            metadata.textContent = `${submission.time || "日時不明"}・${type}`;
-            link.append(title, metadata);
-            item.append(link);
-            list.append(item);
-        });
-        submissionDialogBody.replaceChildren(list);
-    };
-    document.querySelectorAll(".teacher-submission-open").forEach((button) => {
-        button.addEventListener("click", () => { renderSubmissions(button); submissionDialog.showModal(); });
-    });
-    submissionDialog.querySelector(".teacher-submission-close").addEventListener("click", () => submissionDialog.close());
-    submissionDialog.addEventListener("click", (event) => { if (event.target === submissionDialog) submissionDialog.close(); });
 
     document.querySelectorAll(".teacher-number-sort").forEach((button) => {
         button.addEventListener("click", () => {

@@ -103,7 +103,7 @@ def snapshot_day_items(db, school, frame_key=0):
     """枠（0＝枠なし）の自動保存日の一覧。提出日には名前（title）を付ける。"""
     titles = submission_days(db, school, frame_key)
     return [{'day': r[0], 'processed': r[1] is not None, 'submission': r[0] in titles,
-             'title': titles.get(r[0], {}).get('title', '')} for r in db.execute(
+             'title': titles.get(r[0], {}).get('title', ''), 'format': titles.get(r[0], {}).get('format', 'template')} for r in db.execute(
         'SELECT day,processed_at FROM group_report_snapshot_day WHERE school=? AND frame_id=? ORDER BY day', (school, frame_key))]
 
 
@@ -122,6 +122,8 @@ class SnapshotDays(BaseModel):
     days: list[StrictStr] = Field(default_factory=list, max_length=400)
     # 自動保存日のうち提出日にする日と、その名前（{日付: 名前}）
     submissions: dict[StrictStr, StrictStr] = Field(default_factory=dict, max_length=400)
+    # 提出日ごとの提出形式（{日付: 'template'|'pdf'|'either'}）。指定がなければテンプレート
+    formats: dict[StrictStr, StrictStr] = Field(default_factory=dict, max_length=400)
     # 設定する枠（'none'＝枠なし、または枠ID）
     frame: StrictStr = 'none'
 
@@ -269,14 +271,17 @@ def create_template_router(database_path, templates):
                                        for field in initial['fields']] if initial else []})
 
     @router.get('/teacher/school-report/snapshot-days')
-    async def snapshot_days_page(request: Request, frame: str = 'none'):
+    async def snapshot_days_page(request: Request, frame: str = '', saved: str = ''):
         school = super_teacher_school(request)
         token = request.session.setdefault('school_report_template_csrf', secrets.token_urlsafe(32))
         with closing(connect_studies(database_path())) as db:
             options = snapshot_frame_options(db, school)
-        selected = next((o for o in options if o['value'] == frame), options[0])
+        # 最初は「設定する枠」だけを表示する。枠を選ぶと、その枠の日付の設定を表示する（保存すると最初の表示に戻る）
+        selected = next((o for o in options if o['value'] == frame), None) if frame else None
+        saved_option = next((o for o in options if o['value'] == saved), None) if saved else None
         return templates.TemplateResponse(request=request, name='teacher/report_snapshot_days.html', context={
-            'request': request, 'school': school, 'csrf_token': token, 'days': selected['days'], 'today': snapshot_today().isoformat(),
+            'request': request, 'school': school, 'csrf_token': token, 'days': selected['days'] if selected else [],
+            'today': snapshot_today().isoformat(), 'saved_label': saved_option['label'] if saved_option else None,
             'frame_options': options, 'frame': selected,
             'teacher_id': request.session.get('teacher_id'), 'teacher_role': 'super_teacher'})
 
@@ -307,7 +312,7 @@ def create_template_router(database_path, templates):
             db.execute('BEGIN IMMEDIATE')
             frame_key = parse_frame_key(db, school, data.frame)
             # 今日以前の日付（保存済み・保存待ち）は変更しない。明日以降だけを送られた内容に置き換える。
-            apply_submission_days(db, school, frame_key, today, titles, actor, now)
+            apply_submission_days(db, school, frame_key, today, titles, actor, now, data.formats)
             current = {r[0] for r in db.execute('SELECT day FROM group_report_snapshot_day WHERE school=? AND frame_id=? AND day>?',
                                                 (school, frame_key, today.isoformat()))}
             for day in current - requested:

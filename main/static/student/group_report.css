@@ -83,3 +83,6 @@
 .report-review-text { margin: 6px 0 0; color: #d00000; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.7; }
 .report-field-review { margin-top: 10px; font-weight: 700; }
 .report-feedback-head { margin: 0; color: var(--text-strong); font-weight: 700; }
+
+.report-format-badge { display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px; background: #fff; border: 1px solid var(--primary); color: var(--primary-strong, var(--primary)); font-size: 11px; font-weight: 700; vertical-align: middle; }
+.report-feedback-attachments { margin: 8px 0; padding-left: 18px; font-size: 13px; }

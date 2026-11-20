@@ -1,7 +1,7 @@
 {% extends 'teacher/base.html' %}
 {% import "student_icons.html" as icons %}
 {% block title %}レビュー：{{ group_name }}{% endblock %}
-{% block css %}<link rel="stylesheet" href="/static/teacher/report_reviews.css?v=frame-2">{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/teacher/report_reviews.css?v=pdf-1">{% endblock %}
 {% block content %}
 {% set returned = review and review.result %}
 {% set mine = lock_holder == teacher_id and not returned %}
@@ -10,7 +10,7 @@
         <p class="teacher-eyebrow"><a href="/teacher/report-reviews/rounds/{{ sub.round_frame }}/{{ sub.round_day }}{{ back_query }}">{{ round_frame_label }}・{{ title }}（{{ day_label }}）</a>・{{ attempt_label }}</p>
         <h1>{{ group_name }}</h1>
         <p class="review-muted">枠：{{ group.frame_name or '枠なし' }}</p>
-        <p>{{ '自動提出' if sub.method == 'auto' else '提出' }}：{{ submitted_at }}{% if sub.method == 'manual' %}（{{ sub.submitted_by }}）{% endif %}　<span class="review-status is-{{ status }}">{{ status_label }}</span>　<a href="{{ pdf_url }}" target="_blank" rel="noopener">提出版PDFを開く</a>{% if review_pdf_url %}　<a href="{{ review_pdf_url }}" target="_blank" rel="noopener">レビュー付きPDFを開く</a>{% endif %}</p>
+        <p>{{ '自動提出' if sub.method == 'auto' else '提出' }}：{{ submitted_at }}{% if sub.method == 'manual' %}（{{ sub.submitted_by }}）{% endif %}　<span class="review-status is-{{ status }}">{{ status_label }}</span>　{% if pdf_url %}<a href="{{ pdf_url }}" target="_blank" rel="noopener">提出版PDFを開く</a>{% endif %}{% if submitted_pdf_url %}　<a href="{{ submitted_pdf_url }}" target="_blank" rel="noopener">提出されたPDF（{{ submitted_pdf_name }}）を開く</a>{% endif %}{% if review_pdf_url %}　<a href="{{ review_pdf_url }}" target="_blank" rel="noopener">レビュー付きPDFを開く</a>{% endif %}</p>
     </header>
 
     <section class="staff-panel review-lock-panel" aria-live="polite">
@@ -43,6 +43,7 @@
     </details>
     {% endfor %}
 
+    {% if not pdf_url %}<p class="review-muted staff-panel">PDFで提出されたため、項目ごとのコメントはありません。「全体コメント」と添付ファイルでレビューしてください。</p>{% endif %}
     <div class="review-fields">
     {% for field in fields %}
         <section class="staff-panel review-field">
@@ -69,6 +70,16 @@
         <p class="review-editors">編集した先生：<span id="review-editors">{{ review.editors|join('、') if review and review.editors else 'まだいません' }}</span></p>
     </section>
 
+    <section class="staff-panel review-attachments" id="review-attachments">
+        <h2>添付ファイル</h2>
+        <p class="review-muted">レビューにファイルを添付できます（PDF・画像・Word/Excel/PowerPoint、{{ attachment_max }}件まで、1件{{ attachment_max_mb }}MBまで）。返却すると生徒がダウンロードできます。</p>
+        <ul class="review-attachment-list" id="review-attachment-list">
+            {% for file in attachments %}<li><a href="/teacher/report-reviews/attachments/{{ file.id }}">{{ file.filename }}（{{ file.size_label }}）</a>{% if mine %}　<button type="button" class="review-button is-secondary review-attachment-delete" data-id="{{ file.id }}">削除</button>{% endif %}</li>{% endfor %}
+        </ul>
+        {% if not attachments %}<p class="review-muted">添付ファイルはありません。</p>{% endif %}
+        {% if mine %}<label class="review-button is-secondary review-attachment-add">ファイルを追加<input type="file" id="review-attachment-file" hidden accept=".pdf,.png,.jpg,.jpeg,.gif,.doc,.docx,.xls,.xlsx,.ppt,.pptx"></label>{% endif %}
+    </section>
+
     {% if mine %}
     <section class="staff-panel review-return">
         <h2>返却</h2>
@@ -83,4 +94,4 @@
     {% endif %}
 </div>
 {% endblock %}
-{% block script %}<script src="/static/teacher/report_review.js" defer></script>{% endblock %}
+{% block script %}<script src="/static/teacher/report_review.js?v=pdf-1" defer></script>{% endblock %}

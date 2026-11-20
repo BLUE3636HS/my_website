@@ -218,6 +218,7 @@ def initialize_report_review_tables(db):
         submission_id INTEGER NOT NULL REFERENCES group_report_submission(id) ON DELETE CASCADE,
         student_id TEXT NOT NULL, seen_at TEXT NOT NULL, PRIMARY KEY(submission_id,student_id))""")
     add_frame_to_report_days(db)
+    add_pdf_submission_schema(db)
     # 再提出の行が「枠なし」で作られていた不具合の補正：再提出は、同じ提出日の本提出と同じ枠の提出回にする
     db.execute("""UPDATE group_report_submission SET round_frame=(
             SELECT p.round_frame FROM group_report_submission p
@@ -254,6 +255,25 @@ def add_frame_to_report_days(db):
     # 提出がどの枠の提出回のものか（提出後に枠を変えても、元の提出回に残る）
     if 'round_frame' not in {row[1] for row in db.execute("PRAGMA table_info(group_report_submission)")}:
         db.execute("ALTER TABLE group_report_submission ADD COLUMN round_frame INTEGER NOT NULL DEFAULT 0")
+
+
+def add_pdf_submission_schema(db):
+    """提出日ごとの提出形式（テンプレート／PDF／どちらでも）と、PDFでの提出・レビューへの添付ファイルのための列とテーブル。"""
+    day_columns = {row[1] for row in db.execute("PRAGMA table_info(group_report_submission_day)")}
+    if 'submit_format' not in day_columns:
+        # 今までの提出日はテンプレートでの提出だけだったので、template にする
+        db.execute("ALTER TABLE group_report_submission_day ADD COLUMN submit_format TEXT NOT NULL DEFAULT 'template'")
+    submission_columns = {row[1] for row in db.execute("PRAGMA table_info(group_report_submission)")}
+    for column in ('pdf_path', 'pdf_filename', 'pdf_submitted_by', 'pdf_submitted_at'):
+        if column not in submission_columns:
+            db.execute(f"ALTER TABLE group_report_submission ADD COLUMN {column} TEXT")
+    # 先生がレビューに添付するファイル（返却すると生徒がダウンロードできる）
+    db.execute("""CREATE TABLE IF NOT EXISTS group_report_review_attachment (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        submission_id INTEGER NOT NULL REFERENCES group_report_submission(id) ON DELETE CASCADE,
+        filename TEXT NOT NULL, stored_name TEXT NOT NULL UNIQUE, content_type TEXT NOT NULL,
+        size INTEGER NOT NULL, uploaded_by TEXT NOT NULL, uploaded_at TEXT NOT NULL)""")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_report_review_attachment_submission ON group_report_review_attachment(submission_id)")
 
 
 def prune_manual_report_versions(db, group_id=None, keep=MANUAL_REPORT_VERSION_LIMIT):

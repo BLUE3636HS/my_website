@@ -122,7 +122,8 @@ class AdminManagementTests(unittest.TestCase):
         templates = Jinja2Templates(directory=str(Path(main.__file__).parent / 'templates'), context_processors=[main.admin_template_context])
         html = templates.TemplateResponse(request=request, name='admin/base.html').body.decode()
         self.assertNotIn('管理者管理', html)
-        self.assertIn('研究成果管理', html)
+        self.assertIn('テンプレート管理', html)
+        self.assertNotIn('研究成果管理', html)  # 旧PDF提出の廃止に合わせて、研究成果の管理画面はなくなった
 
     def test_admin_login_preserves_student_and_teacher_sessions(self):
         import base64

@@ -59,8 +59,6 @@ class SchoolFeatureSettingsTests(unittest.TestCase):
     def test_student_page_and_api_paths_share_feature_control(self):
         paths = {
             "/dashboard": "dashboard",
-            "/addform": "studies_add",
-            "/studylist": "studies_add",
             "/community/posts": "community",
             "/reservation/availability": "workshop_reservation",
             "/reservation/date": "workshop_reservation",

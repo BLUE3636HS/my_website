@@ -118,27 +118,6 @@ class PersonalSpaceTests(unittest.TestCase):
         listed = self.chat.admin_groups()['groups']
         self.assertEqual(listed[0]['kind'], 'personal')
 
-    def test_personal_space_is_not_offered_or_accepted_for_group_pdf_submission(self):
-        space = self.personal('個人の研究')
-        group = self.chat.create_group(self.session, '共同研究')
-        main.seed_school_feature_settings(self.path)
-        with patch.object(main, 'tekne_chat_service', self.chat):
-            coroutine = main.AddForm(fixtures.request('/addform', self.session))
-            try:
-                response = coroutine.send(None)
-            except StopIteration as result:
-                response = result.value
-            self.assertEqual([g['id'] for g in response.context['submission_groups']], [group['id']])
-            self.assertNotIn('個人の研究', response.body.decode())
-            req = fixtures.request('/addform', self.session)
-            req._form = FormData({'registration_type': 'pdf', 'name': '研究', 'introduce': '紹介',
-                                  'csrf_token': 'csrf', 'submission_token': self.token(),
-                                  'submission_kind': 'group', 'chat_group_id': space['id'],
-                                  'pdf': UploadFile(io.BytesIO(fixtures.sample_pdf()), filename='a.pdf')})
-            with self.assertRaises(HTTPException) as error:
-                asyncio.run(main.Add(req))
-        self.assertEqual(error.exception.status_code, 422)
-        self.assertEqual(self.rows('SELECT id FROM study'), [])
 
     def insert_version(self, group_id, version=1, kind='manual', day=None):
         with closing(connect_studies(self.path)) as db, db:

@@ -80,27 +80,6 @@ class TeacherAccountsTests(unittest.TestCase):
         response = self.render({"teacher_login": True, "teacher_id": "teacher-1"})
         self.assertIn("登録中の生徒はいません。", response.body.decode())
 
-    def test_submission_dialog_lists_individual_and_snapshot_group_submissions_newest_first(self):
-        with closing(sqlite3.connect(self.db_path)) as db:
-            db.executescript("""
-                INSERT INTO study VALUES (1, 'Individual report', '2026-10-01 10:00:00', 'individual', NULL, 'student-a');
-                INSERT INTO study VALUES (2, 'Group report', '2026-10-02 10:00:00', 'group', 'Group Alpha', 'student-b');
-                INSERT INTO study VALUES (3, 'Other school report', '2026-10-03 10:00:00', 'individual', NULL, 'student-c');
-                INSERT INTO study_submission_member VALUES (2, 'student-a', 0);
-                INSERT INTO study_submission_member VALUES (2, 'student-b', 1);
-                INSERT INTO study_submission_member VALUES (3, 'student-c', 0);
-            """)
-            db.commit()
-        html = self.render({"teacher_login": True, "teacher_id": "teacher-1"}).body.decode()
-        self.assertIn("提出物(2)", html)
-        self.assertIn("Individual report", html)
-        self.assertIn("Group report", html)
-        self.assertIn("Group Alpha", html)
-        self.assertNotIn("Other school report", html)
-        self.assertLess(html.index("Group report"), html.index("Individual report"))
-        self.assertIn("&#34;id&#34;: 1", html.replace("&quot;", "&#34;"))
-        self.assertIn("/teacher/studylist?", html)
-
     def test_super_teacher_can_manage_only_own_school_feature_settings(self):
         with closing(sqlite3.connect(self.db_path)) as db:
             db.execute("UPDATE teacher SET role='super_teacher' WHERE id='teacher-1'")
@@ -120,7 +99,7 @@ class TeacherAccountsTests(unittest.TestCase):
         self.assertIn('href="/teacher/school-features"', response.body.decode())
 
         token = session["teacher_school_features_csrf"]
-        body = f"csrf_token={token}&enabled%3Adashboard=1&enabled%3Acommunity=1&enabled%3Astudies_add=1&enabled%3Aworkshop_reservation=1&enabled%3Amentor_reservation=1&enabled%3Aequipment_reservation=1"
+        body = f"csrf_token={token}&enabled%3Adashboard=1&enabled%3Acommunity=1&enabled%3Aworkshop_reservation=1&enabled%3Amentor_reservation=1&enabled%3Aequipment_reservation=1"
         post_scope = request(session).scope
         post_scope.update({"method": "POST", "path": "/teacher/school-features",
                            "headers": [(b"content-type", b"application/x-www-form-urlencoded")],
@@ -135,7 +114,6 @@ class TeacherAccountsTests(unittest.TestCase):
                 "csrf_token": token,
                 "enabled:dashboard": "1",
                 "enabled:community": "1",
-                "enabled:studies_add": "1",
                 "enabled:workshop_reservation": "1",
                 "enabled:mentor_reservation": "1",
                 "enabled:equipment_reservation": "1",

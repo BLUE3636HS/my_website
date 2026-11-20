@@ -31,10 +31,11 @@
                 <span class="review-round-frame">{{ round.frame_label }}</span>
                 <span class="review-round-title">{{ round.title }}</span>
                 <span class="review-round-day">提出期限：{{ round.label }} 23:59</span>
+                <span class="review-round-day">提出形式：{{ round.format_label }}</span>
             </a>
             <p class="review-round-counts">
                 対象 {{ round.total }}
-                {% for key, label in [('not_submitted','未提出'),('early','提出済み（期限前）'),('no_draft','未提出（下書きなし）'),('unreviewed','未レビュー'),('reviewing','レビュー中'),('returned','返却済み'),('resubmit','要再提出'),('awaiting','再提出待ち')] %}
+                {% for key, label in [('not_submitted','未提出'),('early','提出済み（期限前）'),('no_draft', '提出なし' if round.format == 'pdf' else '未提出（下書きなし）'),('unreviewed','未レビュー'),('reviewing','レビュー中'),('returned','返却済み'),('resubmit','要再提出'),('awaiting','再提出待ち')] %}
                 {% if round.counts.get(key) %}<span class="review-status is-{{ key }}">{{ label }} {{ round.counts[key] }}</span>{% endif %}
                 {% endfor %}
             </p>

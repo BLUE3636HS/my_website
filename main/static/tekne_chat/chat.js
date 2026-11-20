@@ -225,6 +225,7 @@
             if (!refreshed) {
                 state.socket?.close(); state.group = null; state.selectedEntry = null; renderSelectionActions(); setEnabled(false); $("tc-current-name").textContent = "グループを選択";
                 if ($("tc-report-link")) $("tc-report-link").hidden = true;
+                if ($("tc-pdf-submit")) $("tc-pdf-submit").hidden = true;
                 if ($("tc-review-notice")) $("tc-review-notice").hidden = true;
                 messagesEl.replaceChildren();
             } else {
@@ -252,6 +253,62 @@
             reviewNotice.hidden = false;
         } catch { /* 知らせが取れなくてもワークスペースは使える */ }
     }
+    // 「PDFを提出」：先生がPDFでの提出を受け付けている提出日（PDFのみ／どちらでも）があるときだけ押せる
+    async function loadPdfTargets(groupId) {
+        const button = $("tc-pdf-submit");
+        if (!button) return;
+        button.hidden = false; button.disabled = true;
+        button.title = "いまPDFで提出できる提出日はありません";
+        state.pdfTargets = [];
+        try {
+            const result = await api(`/api/group-reports/${encodeURIComponent(groupId)}/pdf-targets`);
+            if (state.group?.id !== groupId) return;
+            state.pdfTargets = result.targets || [];
+            button.disabled = !state.pdfTargets.length;
+            button.title = state.pdfTargets.length ? "PDFを提出" : "いまPDFで提出できる提出日はありません";
+        } catch { /* 取れなくてもワークスペースは使える（ボタンは押せないまま） */ }
+    }
+    function pdfTargetLabel(target) {
+        return `${target.title || "提出"}${target.attempt ? `（再提出${target.attempt}）` : ""}　期限：${target.due_label} 23:59`;
+    }
+    function updatePdfNote() {
+        const target = state.pdfTargets?.[Number($("tc-pdf-target").value)];
+        $("tc-pdf-note").textContent = !target ? "" : target.format === "either"
+            ? `この提出日はPDFでもテンプレートでも提出できます。${target.has_template ? "テンプレートでは提出済みです。" : ""}`
+            : "この提出日はPDFで提出します。";
+    }
+    $("tc-pdf-submit")?.addEventListener("click", () => {
+        const targets = state.pdfTargets || [];
+        $("tc-pdf-status").textContent = "";
+        $("tc-pdf-form").reset();
+        $("tc-pdf-empty").hidden = targets.length > 0;
+        $("tc-pdf-fields").hidden = !targets.length;
+        $("tc-pdf-send").hidden = !targets.length;
+        const select = $("tc-pdf-target");
+        select.replaceChildren(...targets.map((target, index) => { const option = document.createElement("option"); option.value = String(index); option.textContent = pdfTargetLabel(target); return option; }));
+        updatePdfNote();
+        $("tc-pdf-dialog").showModal();
+    });
+    $("tc-pdf-target")?.addEventListener("change", updatePdfNote);
+    $("tc-pdf-form")?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const target = state.pdfTargets?.[Number($("tc-pdf-target").value)];
+        const file = $("tc-pdf-file").files[0];
+        if (!target || !file || !state.group) return;
+        if (!confirm(`「${target.title || "提出"}」に「${file.name}」を提出します。提出すると、先生が返却するまで出し直せません。提出しますか？`)) return;
+        const groupId = state.group.id;
+        const send = $("tc-pdf-send");
+        send.disabled = true; $("tc-pdf-status").textContent = "提出しています…";
+        try {
+            const data = new FormData();
+            data.set("csrf_token", csrf); data.set("round_day", target.round_day); data.set("attempt", String(target.attempt)); data.set("pdf", file);
+            await api(`/api/group-reports/${encodeURIComponent(groupId)}/submit-pdf`, { method: "POST", body: data });
+            $("tc-pdf-dialog").close();
+            notice.textContent = "PDFを提出しました。提出状況は「レポート記入」画面で確認できます。";
+            loadPdfTargets(groupId); loadReviewNotice(groupId);
+        } catch (error) { $("tc-pdf-status").textContent = error.message || "提出できませんでした。"; }
+        finally { send.disabled = false; }
+    });
     async function openGroup(groupId, options = {}) {
         clearError();
         state.socket?.close(); clearTimeout(state.reconnectTimer);
@@ -261,6 +318,7 @@
         const group = state.group;
         const reportLink = $("tc-report-link"); if (reportLink) { reportLink.href = `/tekne-chat/groups/${encodeURIComponent(groupId)}/report`; reportLink.hidden = false; }
         loadReviewNotice(groupId);
+        loadPdfTargets(groupId);
         $("tc-current-name").textContent = group.name;
         const currentIcon = groupIcon(group); currentIcon.id = "tc-current-icon";
         $("tc-current-icon").replaceWith(currentIcon);

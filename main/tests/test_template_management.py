@@ -109,26 +109,6 @@ class TemplateManagementTests(unittest.TestCase):
         self.assertEqual(self.rows("SELECT template_id FROM school_report_template WHERE school='school1'"), [(1,)])
         self.assertEqual(self.rows("SELECT id FROM study_template WHERE owner_school='school1'"), [])
 
-    def test_independent_alignment_and_bold_saved_and_rendered(self):
-        self.create([{'label': '中央見出し', 'heading_alignment': 'center',
-                      'body_alignment': 'right', 'heading_bold': True, 'body_bold': False},
-                     {'label': '左見出し', 'heading_alignment': 'left',
-                      'body_alignment': 'center', 'heading_bold': False, 'body_bold': True}])
-        with closing(connect_studies(self.path)) as db:
-            fields = get_templates(db)[1]['fields']
-        self.assertEqual([(f['heading_alignment'], f['body_alignment'], f['heading_bold'], f['body_bold']) for f in fields[1:]],
-                         [('center', 'right', True, False), ('left', 'center', False, True)])
-        self.insert_template_study(template_id=2, values={f['id']: '本文' for f in fields})
-        response = asyncio.run(main.pdf(1, fixtures.request('/uploads/1.pdf', self.session)))
-        reader = PdfReader(io.BytesIO(response.body))
-        fonts = []
-        reader.pages[0].extract_text(visitor_text=lambda text, cm, tm, font, size:
-                                    fonts.append(str(font.get('/BaseFont'))) if text.strip() and font else None)
-        self.assertTrue(any('Bold' in font for font in fonts))
-        self.assertTrue(any('Regular' in font for font in fonts))
-        html = asyncio.run(self.endpoint('/admin/study-templates', 'GET')(self.admin_request())).body.decode()
-        self.assertIn('中央よせ・太字', html)
-        self.assertIn('右よせ・通常', html)
 
     def test_alignment_and_bold_validation_and_migration_defaults(self):
         for change in ({'heading_alignment': 'justify'}, {'body_alignment': ''},
@@ -192,18 +172,6 @@ class TemplateManagementTests(unittest.TestCase):
         self.assertEqual(self.rows('SELECT id FROM study_template'), [(1,)])
         self.assertEqual(len(self.rows('SELECT id FROM study_template_field')), 9)
 
-    def test_hidden_template_still_renders_existing_submission(self):
-        self.insert_template_study(values={1: '既存の本文'})
-        toggle = self.endpoint('/admin/study-templates/{template_id}/visibility', 'POST')
-        asyncio.run(toggle(self.admin_request(), 1, Visibility(csrf_token='token', active=False)))
-        with closing(connect_studies(self.path)) as db:
-            self.assertEqual(get_templates(db), [])
-            self.assertEqual(len(get_templates(db, include_inactive=True)), 1)
-        response = asyncio.run(main.pdf(1, fixtures.request('/uploads/1.pdf', self.session)))
-        self.assertIn('既存の本文', PdfReader(io.BytesIO(response.body)).pages[0].extract_text())
-        asyncio.run(toggle(self.admin_request(), 1, Visibility(csrf_token='token', active=True)))
-        with closing(connect_studies(self.path)) as db:
-            self.assertEqual(len(get_templates(db)), 1)
 
     def test_pages_render_and_escape_definition(self):
         self.create([{'label': '<script>test</script>'}])

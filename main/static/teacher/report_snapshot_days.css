@@ -109,3 +109,4 @@
 .snapshot-copy { padding: 10px 14px; border-radius: 12px; background: #f4f8f1; }
 .snapshot-copy button { min-height: 40px; padding: 0 16px; border: 1px solid var(--teacher-green, #2f6b14); border-radius: 999px; background: #fff; color: var(--teacher-green, #2f6b14); font: inherit; font-weight: 700; cursor: pointer; }
 .snapshot-copy .snapshot-days-note { flex-basis: 100%; margin: 0; font-size: 13px; }
+.snapshot-submission-format { padding: 8px 10px; border: 1px solid rgba(47, 107, 20, .35); border-radius: 8px; font: inherit; background: #fff; }

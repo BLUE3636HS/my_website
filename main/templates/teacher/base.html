@@ -33,7 +33,6 @@
                     </div>
                     <div class="staff-nav-group">
                         <p class="staff-nav-heading">研究</p>
-                        {{ nav_link('/teacher/studylist', '自校提出物確認', 'list') }}
                         <a class="staff-nav-link teacher-nav-link" href="/teacher/reports"{% if current_path == '/teacher/reports' or current_path.startswith('/teacher/reports/') or current_path == '/teacher/report-reviews' or current_path.startswith('/teacher/report-reviews/') or current_path == '/teacher/report-archive' or current_path.startswith('/teacher/report-archive/') %} aria-current="page"{% endif %}>{{ icons.icon('report') }}<span>成果レポート管理</span></a>
                     </div>
                     <div class="staff-nav-group">
@@ -62,7 +61,6 @@
                     <button class="staff-icon-button staff-menu-toggle" type="button" data-nav-open aria-controls="staff-sidebar" aria-expanded="false" aria-label="メニューを開く">{{ icons.icon("menu") }}</button>
                     {#- サイドバーにある項目はすべて最上位の階層。その下のURLだけ2階層目にする -#}
                     {%- set top_pages = [
-                        ('/teacher/studylist', '自校提出物確認'),
                         ('/teacher/reports', '成果レポート管理'),
                         ('/teacher/report-reviews', '成果レポート管理'),
                         ('/teacher/report-archive', '成果レポート管理'),

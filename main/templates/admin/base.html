@@ -44,7 +44,6 @@
                     </div>
                     <div class="staff-nav-group">
                         <p class="staff-nav-heading">研究</p>
-                        {{ nav_link('/admin/studies', '研究成果管理', 'report') }}
                         {{ nav_link('/admin/study-templates', 'テンプレート管理', 'layout') }}
                         {% if is_super_admin %}{{ nav_link('/admin/report-archive', 'レポートアーカイブ管理', 'report') }}{% endif %}
                     </div>

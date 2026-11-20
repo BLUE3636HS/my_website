@@ -103,3 +103,66 @@
         });
     }
 })();
+
+// レビューへの添付ファイル（追加・削除）。追加するときは、書きかけのコメントを先に保存してから、ページを読み込み直す
+(() => {
+    const root = document.getElementById("report-review");
+    if (!root) return;
+    const id = root.dataset.id;
+    const csrf = root.dataset.csrf;
+    const message = document.getElementById("review-message");
+    function showMessage(text, isError) {
+        if (!message) return;
+        message.textContent = text;
+        message.hidden = !text;
+        message.classList.toggle("is-error", !!isError);
+    }
+    async function request(url, options) {
+        const response = await fetch(url, options);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            const detail = Array.isArray(data.detail) ? "入力内容を確認してください。" : data.detail;
+            throw new Error(detail || "処理に失敗しました。");
+        }
+        return data;
+    }
+    function saveComments() {
+        const fieldComments = {};
+        document.querySelectorAll(".review-field-comment").forEach((input) => { fieldComments[input.dataset.key] = input.value; });
+        return request(`/teacher/api/report-reviews/${id}/save`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ csrf_token: csrf, overall_comment: document.getElementById("review-overall").value, field_comments: fieldComments }),
+        });
+    }
+    document.getElementById("review-attachment-file")?.addEventListener("change", async (event) => {
+        const input = event.target;
+        const file = input.files[0];
+        if (!file) return;
+        try {
+            showMessage("添付しています…", false);
+            await saveComments();
+            const body = new FormData();
+            body.set("csrf_token", csrf);
+            body.set("file", file);
+            await request(`/teacher/api/report-reviews/${id}/attachments`, { method: "POST", body });
+            location.reload();
+        } catch (error) {
+            showMessage(error.message, true);
+            input.value = "";
+        }
+    });
+    document.querySelectorAll(".review-attachment-delete").forEach((button) => button.addEventListener("click", async () => {
+        if (!confirm("この添付ファイルを削除しますか？")) return;
+        button.disabled = true;
+        try {
+            await saveComments();
+            await request(`/teacher/api/report-reviews/${id}/attachments/${button.dataset.id}/delete`, {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ csrf_token: csrf }),
+            });
+            location.reload();
+        } catch (error) {
+            showMessage(error.message, true);
+            button.disabled = false;
+        }
+    }));
+})();

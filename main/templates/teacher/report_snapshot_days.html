@@ -2,7 +2,7 @@
 {% block title %}定期自動保存日{% endblock %}
 {% block css %}<link rel="stylesheet" href="/static/teacher/report_snapshot_days.css?v=frame-1">{% endblock %}
 {% block content %}
-<div class="teacher-page teacher-snapshot-days-page" id="snapshot-days" data-today="{{ today }}" data-csrf="{{ csrf_token }}" data-frame="{{ frame.value }}" data-frame-label="{{ frame.label }}">
+<div class="teacher-page teacher-snapshot-days-page" id="snapshot-days" data-today="{{ today }}" data-csrf="{{ csrf_token }}" data-frame="{{ frame.value if frame else '' }}" data-frame-label="{{ frame.label if frame else '' }}">
     <section class="teacher-dashboard-card">
         <p class="teacher-eyebrow">設定</p>
         <h1>定期自動保存日・提出日</h1>
@@ -10,10 +10,14 @@
         <form class="snapshot-frame-bar" method="get" action="/teacher/school-report/snapshot-days">
             <label for="snapshot-frame">設定する枠</label>
             <select id="snapshot-frame" name="frame" onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
-                {% for option in frame_options %}<option value="{{ option.value }}"{% if option.value == frame.value %} selected{% endif %}>{{ option.label }}（{{ option.days|length }}日）</option>{% endfor %}
+                <option value=""{% if not frame %} selected{% endif %}>枠を選んでください</option>
+                {% for option in frame_options %}<option value="{{ option.value }}"{% if frame and option.value == frame.value %} selected{% endif %}>{{ option.label }}（{{ option.days|length }}日）</option>{% endfor %}
             </select>
             <noscript><button type="submit">切り替える</button></noscript>
         </form>
+        {% if saved_label %}<p class="snapshot-message" role="status">「{{ saved_label }}」の自動保存日・提出日を保存しました。</p>{% endif %}
+        {% if not frame %}<p class="snapshot-days-note">設定したい枠を選ぶと、その枠の日付の設定が表示されます。</p>{% endif %}
+        {% if frame %}
         {% if frame_options|length > 1 %}
         <div class="snapshot-copy">
             <label for="snapshot-copy-source">他の枠から日付をコピー</label>
@@ -26,10 +30,10 @@
         {% endif %}
         <ol class="snapshot-steps">
             <li>日付を<strong>1回</strong>クリックすると<strong>自動保存日</strong>になります。</li>
-            <li>もう<strong>1回</strong>クリックすると<strong>提出日</strong>になります。下の「指定中の日付」に提出日の名前を入力してください。</li>
+            <li>もう<strong>1回</strong>クリックすると<strong>提出日</strong>になります。下の「指定中の日付」に提出日の名前を入力し、<strong>提出形式</strong>（テンプレートで提出／PDFで提出／どちらでも提出可）を選んでください。</li>
             <li>もう<strong>1回</strong>クリックすると指定を解除します。</li>
         </ol>
-        <p class="snapshot-days-note">変更できるのは明日以降の日付だけです。最後に「設定を保存」を押してください。提出日の23:59が提出期限になり、生徒は期限まで「提出」ボタンで提出できます。期限までに提出しなかったワークスペースは、その時点の内容が自動で提出されます（提出日にも自動保存は行われます）。提出された版は「成果レポート管理」の「提出物確認」でレビューできます。</p>
+        <p class="snapshot-days-note">変更できるのは明日以降の日付だけです。最後に「設定を保存」を押してください。提出日の23:59が提出期限になります。<strong>テンプレートで提出</strong>の提出日は、生徒が成果レポート画面の「提出」ボタンで提出します。<strong>PDFで提出</strong>の提出日は、生徒がワークスペースの「PDFを提出」ボタンからPDFを提出します。<strong>どちらでも提出可</strong>の提出日は、どちらでも（両方でも）提出できます。期限までに提出しなかったワークスペースは、テンプレートの提出日ではその時点の内容が自動で提出されます。PDFの提出日では自動提出はせず「提出なし」になります。どちらでも提出可の提出日では、PDFを出していれば自動提出せず、何も出していなければテンプレートの内容が自動で提出されます（提出日にも自動保存は行われます）。すでに提出がある提出日の提出形式は変更できません。提出された版は「成果レポート管理」の「提出物確認」でレビューできます。</p>
         <div class="snapshot-calendar" aria-live="polite">
             <div class="snapshot-calendar-head">
                 <button type="button" id="snapshot-prev" aria-label="前の月">‹</button>
@@ -48,9 +52,12 @@
         <ul id="snapshot-list" class="snapshot-list"></ul>
         <p id="snapshot-message" class="snapshot-message" role="status" hidden></p>
         <button type="button" id="snapshot-save" class="snapshot-save">設定を保存</button>
+        {% endif %}
     </section>
 </div>
+{% if frame %}
 <script id="snapshot-initial" type="application/json">{{ days|tojson }}</script>
 <script id="snapshot-frames" type="application/json">{{ frame_options|tojson }}</script>
+{% endif %}
 {% endblock %}
-{% block script %}<script src="/static/teacher/report_snapshot_days.js?v=frame-1" defer></script>{% endblock %}
+{% block script %}{% if frame %}<script src="/static/teacher/report_snapshot_days.js?v=frame-2" defer></script>{% endif %}{% endblock %}

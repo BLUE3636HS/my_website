@@ -1,22 +1,26 @@
 {% extends 'base.html' %}
 {% block title %}成果レポート記入{% endblock %}
-{% block css %}<link rel="stylesheet" href="/static/student/group_report.css?v=review-1">{% endblock %}
+{% block css %}<link rel="stylesheet" href="/static/student/group_report.css?v=pdf-1">{% endblock %}
 {% block content %}
 <section id="group-report" data-group-id="{{ group.id }}" data-csrf="{{ csrf_token }}" data-user="{{ request.session.get('user_id','') }}"{% if group.kind == 'personal' %} data-personal="1"{% endif %}>
- <header><div><h1>{{ group.name }}：成果レポート</h1>{% if state and group.kind != 'personal' %}<p id="report-connection">接続中</p>{% endif %}</div>{% if state %}<button id="report-save-version" type="button">保存</button>{% endif %}</header>
- {% if not state %}<p class="report-empty">学校用の成果レポートテンプレートが設定されていません。先生に設定を依頼してください。</p>{% else %}
- <p>保存状態：<span id="report-save-state">読み込み中</span>{% if group.kind != 'personal' %}　編集中：<span id="report-presence">1</span>人{% endif %}</p>
+ {% macro submission_section() %}
  {% if submission and (submission.targets or submission.records) %}
  <section class="report-submission" aria-labelledby="report-submission-title">
   <h2 id="report-submission-title">提出・先生からのフィードバック</h2>
   {% for target in submission.targets %}
   <div class="report-submit-target">
    <div>
-    <p class="report-submit-name">{{ target.title }}{% if target.attempt %}（再提出{{ target.attempt }}）{% endif %}</p>
-    <p class="report-submit-due">提出期限：{{ target.due_label }} 23:59　<span class="report-submit-yet">未提出</span></p>
+    <p class="report-submit-name">{{ target.title }}{% if target.attempt %}（再提出{{ target.attempt }}）{% endif %}　<span class="report-format-badge">{{ target.format_label }}</span></p>
+    <p class="report-submit-due">提出期限：{{ target.due_label }} 23:59　{% if target.has_template or target.has_pdf %}<span class="report-submit-done">{{ '両方' if target.has_template and target.has_pdf else 'PDFで' if target.has_pdf else 'テンプレートで' }}提出済み</span>{% else %}<span class="report-submit-yet">未提出</span>{% endif %}</p>
+    {% if target.format == 'pdf' %}
+    <p class="report-submit-note">この提出日はPDFで提出します。ワークスペース画面の「PDFを提出」ボタンから提出してください。提出すると、先生が返却するまで出し直せません。期限までに提出しなかった場合は「提出なし」になります。</p>
+    {% elif target.format == 'either' %}
+    <p class="report-submit-note">PDFでもテンプレートでも提出できます（両方でも可）。テンプレートはこの画面の「提出」ボタン、PDFはワークスペース画面の「PDFを提出」ボタンから提出してください。提出すると、先生が返却するまで出し直せません。期限までにPDFを提出しなかった場合は、期限の時点のテンプレートの内容が自動で提出されます。</p>
+    {% else %}
     <p class="report-submit-note">提出すると、先生が返却するまで出し直せません。提出前に内容をよく確認してください。期限までに提出しなかった場合は、期限の時点の内容が自動で提出されます。</p>
+    {% endif %}
    </div>
-   <button type="button" class="report-submit" data-round-day="{{ target.round_day }}" data-attempt="{{ target.attempt }}">提出</button>
+   {% if target.can_template and state %}<button type="button" class="report-submit" data-round-day="{{ target.round_day }}" data-attempt="{{ target.attempt }}">提出</button>{% endif %}
   </div>
   {% endfor %}
   {% if submission.records %}
@@ -28,11 +32,20 @@
      <span class="report-submission-status">{{ record.status }}</span>
      {% if record.submitted_at %}<span class="report-submission-time">{{ '自動提出' if record.method == 'auto' else '提出' }}：{{ record.submitted_at }}</span>{% endif %}
      {% if record.version_id %}<a class="report-version-pdf" href="/api/group-reports/{{ group.id }}/versions/{{ record.version_id }}.pdf" target="_blank" rel="noopener">提出版PDF</a>{% endif %}
+     {% if record.pdf_filename %}<a class="report-version-pdf" href="/api/group-reports/{{ group.id }}/submissions/{{ record.submission_id }}/submitted.pdf" target="_blank" rel="noopener">提出したPDF（{{ record.pdf_filename }}）</a>{% endif %}
     </div>
     {% if record.feedback %}
     <div class="report-feedback">
-     <p class="report-feedback-head">先生のレビュー（{{ record.feedback.returned_at }} 返却）　<a class="report-version-pdf" href="/api/group-reports/{{ group.id }}/submissions/{{ record.submission_id }}/review.pdf" target="_blank" rel="noopener">レビュー付きPDF</a></p>
-     {% if record.feedback.pending %}<p class="report-feedback-resubmit">再提出が必要です。{% if record.feedback.resubmit_due %}再提出期限：{{ record.feedback.resubmit_due }} 23:59　{% endif %}レビューの内容は、下の記入欄に赤文字で表示しています。</p>{% elif record.feedback.result == 'resubmit' %}<p class="report-feedback-editors">再提出済みです。このときのレビューは「レビュー付きPDF」で確認できます。</p>{% endif %}
+     <p class="report-feedback-head">先生のレビュー（{{ record.feedback.returned_at }} 返却）{% if record.version_id %}　<a class="report-version-pdf" href="/api/group-reports/{{ group.id }}/submissions/{{ record.submission_id }}/review.pdf" target="_blank" rel="noopener">レビュー付きPDF</a>{% endif %}</p>
+     {% if not record.version_id %}
+     {% if record.feedback.overall %}<p class="report-review-text">{{ record.feedback.overall }}</p>{% else %}<p class="report-review-text">全体へのコメントはありません。</p>{% endif %}
+     {% endif %}
+     {% if record.feedback.attachments %}
+     <ul class="report-feedback-attachments">
+      {% for file in record.feedback.attachments %}<li><a class="report-version-pdf" href="/api/group-reports/{{ group.id }}/review-attachments/{{ file.id }}">{{ file.filename }}（{{ file.size_label }}）</a></li>{% endfor %}
+     </ul>
+     {% endif %}
+     {% if record.feedback.pending %}<p class="report-feedback-resubmit">再提出が必要です。{% if record.feedback.resubmit_due %}再提出期限：{{ record.feedback.resubmit_due }} 23:59　{% endif %}{% if record.version_id %}レビューの内容は、下の記入欄に赤文字で表示しています。{% endif %}</p>{% elif record.feedback.result == 'resubmit' %}<p class="report-feedback-editors">再提出済みです。{% if record.version_id %}このときのレビューは「レビュー付きPDF」で確認できます。{% endif %}</p>{% endif %}
      <p class="report-feedback-editors">レビューした先生：{{ record.feedback.editors|join('、') }}</p>
     </div>
     {% endif %}
@@ -42,6 +55,13 @@
   {% endif %}
  </section>
  {% endif %}
+ {% endmacro %}
+ <header><div><h1>{{ group.name }}：成果レポート</h1>{% if state and group.kind != 'personal' %}<p id="report-connection">接続中</p>{% endif %}</div>{% if state %}<button id="report-save-version" type="button">保存</button>{% endif %}</header>
+ {% if not state %}<p class="report-empty">学校用の成果レポートテンプレートが設定されていません。先生に設定を依頼してください。</p>
+ {{ submission_section() }}
+ {% else %}
+ <p>保存状態：<span id="report-save-state">読み込み中</span>{% if group.kind != 'personal' %}　編集中：<span id="report-presence">1</span>人{% endif %}</p>
+ {{ submission_section() }}
  {% set pending = submission.pending_reviews if submission else [] %}
  {% set field_keys = state.template.fields|map(attribute='stable_key')|list %}
  {% for review in pending %}

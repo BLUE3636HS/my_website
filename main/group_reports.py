@@ -203,7 +203,7 @@ def build_group_report_router(database_path, templates, chat_service, image_dir)
         from report_reviews import mark_reviews_seen,student_submission_context  # 循環importを避ける
         with closing(connect_studies(database_path)) as db:
             state=draft(db,group); db.commit()
-            submission=student_submission_context(db,group['school_name'],group_id) if state else None
+            submission=student_submission_context(db,group['school_name'],group_id)
             mark_reviews_seen(db,group_id,user); db.commit()  # 開いたら返却済みレビューは既読（ワークスペースの「新しいレビュー」を消す）
         return templates.TemplateResponse(request=request,name='group_report.html',context={'request':request,'group':group,'state':state,'submission':submission,'csrf_token':request.session.get('tekne_chat_csrf','')})
     @router.get('/api/group-reports/{group_id}')
